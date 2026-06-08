@@ -1,0 +1,27 @@
+## What does this PR do?
+
+<!-- One or two sentences. What changed and why. -->
+
+## Type of change
+
+- [ ] `feat` — new functionality
+- [ ] `fix` — bug fix
+- [ ] `refactor` — code restructure, no behavior change
+- [ ] `docs` — documentation only
+- [ ] `chore` — build, tooling, dependencies
+- [ ] `perf` — performance improvement
+- [ ] `style` — formatting, whitespace
+- [ ] `test` — adding or updating tests
+
+## Checklist
+
+- [ ] Builds without errors (`pnpm build`)
+- [ ] Tests pass (`pnpm test`)
+- [ ] `CHANGELOG.md` updated under `[Unreleased]`
+- [ ] Commits follow Conventional Commits
+- [ ] No VS Code API added to `packages/animoria-core`
+- [ ] Tests added or updated where applicable
+
+## Related issue
+
+<!-- Closes #ISSUE_NUMBER — delete if not applicable -->

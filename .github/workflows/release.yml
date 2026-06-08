@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    name: Publish Extension
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages
+        run: pnpm build
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Install vsce and ovsx
+        run: npm install -g @vscode/vsce ovsx
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Verify package.json version matches tag
+        run: |
+          PKG_VERSION=$(node -p "require('./packages/animoria-vscode/package.json').version")
+          TAG_VERSION=${{ steps.version.outputs.VERSION }}
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "Version mismatch: package.json=$PKG_VERSION tag=$TAG_VERSION"
+            exit 1
+          fi
+
+      - name: Package extension
+        working-directory: packages/animoria-vscode
+        run: vsce package --no-dependencies -o animoria-${{ steps.version.outputs.VERSION }}.vsix
+
+      - name: Publish to VS Code Marketplace
+        working-directory: packages/animoria-vscode
+        run: vsce publish --no-dependencies --packagePath animoria-${{ steps.version.outputs.VERSION }}.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Publish to Open VSX Registry
+        working-directory: packages/animoria-vscode
+        run: ovsx publish animoria-${{ steps.version.outputs.VERSION }}.vsix -p ${{ secrets.OVSX_PAT }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: packages/animoria-vscode/animoria-${{ steps.version.outputs.VERSION }}.vsix
+          generate_release_notes: true
+          body: |
+            ## Animoria v${{ steps.version.outputs.VERSION }}
+
+            See [CHANGELOG.md](https://github.com/sxnnyside-project/animoria/blob/main/packages/animoria-vscode/CHANGELOG.md) for details.
+
+            ### Install
+            Search **Animoria** in the VS Code Extensions panel,
+            or download the `.vsix` from this release and install manually:
+
+            ```
+            code --install-extension animoria-${{ steps.version.outputs.VERSION }}.vsix
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

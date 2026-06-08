@@ -1,0 +1,13 @@
+{
+  "v": "5.9.0",
+  "fr": 30,
+  "ip": 0,
+  "op": 60,
+  "w": 512,
+  "h": 512,
+  "nm": "loading",
+  "layers": [
+    { "ty": 4, "nm": "Shape Layer 1", "ip": 0, "op": 60 }
+  ],
+  "markers": []
+}

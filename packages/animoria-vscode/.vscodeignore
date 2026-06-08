@@ -1,0 +1,48 @@
+# Source files — never bundle
+src/
+tsconfig.json
+vite.config.ts
+.turbo/
+
+# Dev dependencies and workspace tooling
+node_modules/
+.pnpm-store/
+*.tgz
+
+# Test and lint artefacts
+*.test.ts
+*.spec.ts
+**/__tests__/
+.eslintrc*
+.eslintignore
+jest.config.*
+
+# Build intermediates and maps
+dist/**/*.map
+
+# Monorepo root files that leak in
+../../.gitignore
+../../pnpm-lock.yaml
+../../pnpm-workspace.yaml
+../../turbo.json
+../../package.json
+../../README.md
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+
+# Keep in the .vsix:
+# ✔  dist/extension.js
+# ✔  assets/icon.svg
+# ✔  assets/icon.png   (if present)
+# ✔  package.json
+# ✔  README.md
+# ✔  CHANGELOG.md
+# ✔  LICENSE           (if present)
+
+# Animoria generated artifacts
+.animoria/

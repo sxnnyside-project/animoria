@@ -1,0 +1,8 @@
+node_modules
+dist
+.turbo
+*.vsix
+.animoria-cache.json
+
+# Animoria generated artifacts
+.animoria/

@@ -1,0 +1,184 @@
+{
+  "name": "animoria-vscode",
+  "displayName": "Animoria",
+  "description": "Visual Asset Memory for Developers — browse, preview, and trace Lottie animations directly inside VS Code.",
+  "version": "0.1.0",
+  "publisher": "SxnnysideProject",
+  "author": {
+    "name": "Sxnnyside Project",
+    "url": "https://github.com/sxnnyside-project"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/sxnnyside-project/animoria#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sxnnyside-project/animoria.git",
+    "directory": "packages/animoria-vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/sxnnyside-project/animoria/issues"
+  },
+  "icon": "assets/icon.png",
+  "galleryBanner": {
+    "color": "#0D0D0F",
+    "theme": "dark"
+  },
+  "keywords": [
+    "lottie",
+    "animation",
+    "bodymovin",
+    "preview",
+    "asset",
+    "after effects",
+    "json animation",
+    "motion",
+    "design",
+    "gallery"
+  ],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "qna": "marketplace",
+  "activationEvents": [
+    "workspaceContains:**/*.json",
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "animoria",
+          "title": "Animoria",
+          "icon": "assets/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "animoria": [
+        {
+          "id": "animoria.gallery",
+          "name": "Gallery",
+          "type": "tree"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "animoria.refresh",
+        "title": "Animoria: Refresh Gallery",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "animoria.openPreview",
+        "title": "Animoria: Open Preview"
+      },
+      {
+        "command": "animoria.revealInExplorer",
+        "title": "Animoria: Reveal in Explorer"
+      },
+      {
+        "command": "animoria.search",
+        "title": "Animoria: Search Animations",
+        "icon": "$(search)"
+      },
+      {
+        "command": "animoria.runGovernance",
+        "title": "Animoria: Run Governance Analysis",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "animoria.exportGovernanceReport",
+        "title": "Animoria: Export Governance Report"
+      },
+      {
+        "command": "animoria.deleteAsset",
+        "title": "Animoria: Delete Asset",
+        "icon": "$(trash)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "animoria.refresh",
+          "when": "view == animoria.gallery",
+          "group": "navigation"
+        },
+        {
+          "command": "animoria.search",
+          "when": "view == animoria.gallery",
+          "group": "navigation"
+        },
+        {
+          "command": "animoria.runGovernance",
+          "when": "view == animoria.gallery",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "animoria.openPreview",
+          "when": "view == animoria.gallery",
+          "group": "inline"
+        },
+        {
+          "command": "animoria.revealInExplorer",
+          "when": "view == animoria.gallery"
+        },
+        {
+          "command": "animoria.deleteAsset",
+          "when": "view == animoria.gallery && viewItem == animoriaGovernanceIssue",
+          "group": "inline"
+        },
+        {
+          "command": "animoria.exportGovernanceReport",
+          "when": "view == animoria.gallery && viewItem == animoriaGovernanceSection"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Animoria",
+      "properties": {
+        "animoria.chromiumPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to a Chrome or Chromium executable used for thumbnail generation. Leave empty for auto-detection. Example: `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`"
+        },
+        "animoria.enableThumbnails": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Generate static thumbnail previews for animated assets in the gallery sidebar. Requires Chrome/Chromium."
+        },
+        "animoria.governance.overusedThreshold": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "markdownDescription": "Number of source file references at or above which an asset is flagged as **overused** in the Governance report."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "dev": "vite build --watch",
+    "lint": "eslint src",
+    "package": "vsce package --no-dependencies",
+    "publish": "vsce publish --no-dependencies"
+  },
+  "dependencies": {
+    "@animoria/core": "workspace:*",
+    "puppeteer-core": "^25.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.2",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.9.2",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.16",
+    "vite-plugin-node-polyfills": "^0.28.0"
+  }
+}

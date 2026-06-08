@@ -1,0 +1,30 @@
+{
+  "name": "@animoria/core",
+  "version": "0.1.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.2",
+    "@vitest/coverage-v8": "^4.1.8",
+    "typescript": "^5.0.0",
+    "vitest": "^1.6.1"
+  },
+  "vitest": {
+    "include": [
+      "tests/**/*.test.ts"
+    ]
+  },
+  "dependencies": {
+    "@dotlottie/dotlottie-js": "^1.6.3",
+    "fast-glob": "^3.3.3",
+    "fflate": "^0.8.3",
+    "puppeteer-core": "^25.1.0"
+  }
+}
