@@ -17,7 +17,7 @@ export class GovernanceAnalyzer {
     const start = Date.now();
     const threshold = this.config.overusedThreshold ?? 10;
 
-    const parsed = this.config.assets.filter(a => a.status === 'parsed');
+    const parsed = this.config.assets.filter((a) => a.status === 'parsed');
 
     // STEP A — Usage count per asset (batched concurrency)
     const usageCounts = new Map<string, number>();
@@ -26,8 +26,7 @@ export class GovernanceAnalyzer {
       const batch = parsed.slice(i, i + BATCH_SIZE);
       await Promise.all(
         batch.map(async (asset) => {
-          const scopePath =
-            this.config.scopeResolver?.(asset) ?? this.config.workspacePath;
+          const scopePath = this.config.scopeResolver?.(asset) ?? this.config.workspacePath;
           const scanner = new UsageScanner({
             workspacePath: this.config.workspacePath,
             asset,
@@ -79,7 +78,7 @@ export class GovernanceAnalyzer {
           duplicates.push({
             category: 'duplicate',
             asset,
-            duplicateOf: group.filter(a => a.path !== asset.path),
+            duplicateOf: group.filter((a) => a.path !== asset.path),
             referenceCount: refCount,
           });
         }

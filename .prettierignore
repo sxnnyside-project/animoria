@@ -1,0 +1,10 @@
+node_modules/
+dist/
+build/
+.turbo/
+.gradle/
+*.lock
+pnpm-lock.yaml
+packages/animoria-jetbrains/build/
+packages/animoria-jetbrains/.gradle/
+apps/animoria-sandbox/dist/

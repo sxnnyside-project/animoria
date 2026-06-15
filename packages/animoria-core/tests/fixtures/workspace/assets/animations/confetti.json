@@ -6,8 +6,6 @@
   "w": 512,
   "h": 512,
   "nm": "confetti",
-  "layers": [
-    { "ty": 4, "nm": "Shape Layer 1", "ip": 0, "op": 120 }
-  ],
+  "layers": [{ "ty": 4, "nm": "Shape Layer 1", "ip": 0, "op": 120 }],
   "markers": []
 }

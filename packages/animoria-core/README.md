@@ -1,74 +1,117 @@
 # @animoria/core
 
-Pure TypeScript library for scanning, parsing, usage analysis, governance, and thumbnail generation of animated assets. No IDE dependencies. Consumed by `animoria-vscode` and re-implemented natively by `animoria-jetbrains`.
+A zero-dependency, pure TypeScript library designed to orchestrate **Asset Governance, reference tracking, and workspace deduplication** for codebases with high densities of animated assets.
 
-## Modules
+This core package is completely decoupled from any IDE runtime (VS Code or JetBrains), making it ideal for integration into CI/CD pipelines, custom code quality scanners, build-time bundler plugins, and command-line interfaces (CLIs).
 
-| Module | Class | Responsibility |
-| :--- | :--- | :--- |
-| `scanner` | `FileScanner` | Globs `.json` and `.lottie` files from a workspace path; validates Lottie JSON structurally; returns `AnimoriaAsset[]` |
-| `parsers` | `LottieParser` | Validates and extracts metadata (fps, frames, duration, dimensions, layers, markers) from a Lottie JSON object |
-| `parsers` | `DotLottieParser` | Reads `.lottie` V2 ZIP archives; extracts metadata from the primary animation; lists all contained animations |
-| `parser` | `AssetParser` | Routes pending assets to the correct parser concurrently; produces parsed or errored assets |
-| `animoria` | `Animoria` | Facade that runs scan → parse in one call with progress callbacks |
-| `usage` | `UsageScanner` | Searches source files for references to an asset using semantic patterns; supports `scopePath` for monorepo isolation |
-| `thumbnails` | `ThumbnailGenerator` | Renders a PNG frame (first or middle) from a Lottie asset using headless Chromium via `puppeteer-core`; caches by path hash |
-| `governance` | `GovernanceAnalyzer` | Batch-concurrent classification of assets as Unused, Duplicate (MD5), or Overused; returns a typed `GovernanceReport` |
+---
 
-## Installation
+## Architecture & Modules
 
-This package is part of the Animoria monorepo. It is not published to npm independently.
+The library is structured into four main governance and analysis layers:
 
-```bash
-pnpm install
-pnpm build   # compiles TypeScript to dist/
-pnpm test    # runs Vitest test suite
-```
+| Module           | Core Class           | Role in Governance & Parsing                                                                                                                                            |
+| :--------------- | :------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`scanner`**    | `FileScanner`        | Scans directories recursively, performs fast-pass structural audits, and yields typed `AnimoriaAsset` objects.                                                          |
+| **`parsers`**    | `ParserRegistry`     | A Singleton strategy registry implementing the Épica 5 plugin architecture. Matches file extensions and magic bytes to structural parsers.                              |
+| **`usage`**      | `UsageScanner`       | Traces references of animated assets in source code files using pattern matches. Supports project boundary scoping for monorepos.                                       |
+| **`governance`** | `GovernanceAnalyzer` | Processes the workspace assets to classify them as **Unused** (0 references), **Duplicate** (matching MD5 checksums), or **Overused** (references exceeding threshold). |
 
-## Usage Example
+---
+
+## Programmatic Integration
+
+### 1. Initializing the Parser Pipeline (Strategy Pattern)
+
+The core routes files dynamically using registered strategy parsers that implement the `IAssetParser` interface. By default, it registers support for **Lottie**, **dotLottie**, **Rive**, **GIF**, **APNG**, and **Animated SVG**.
+
+You can retrieve the central registry, verify registered formats, or register custom parsers:
 
 ```typescript
-import { Animoria, UsageScanner, GovernanceAnalyzer } from '@animoria/core';
+import { ParserRegistry } from '@animoria/core/parsers';
 
-// Scan and parse all animated assets in a workspace
-const animoria = new Animoria({ workspacePath: '/path/to/project' });
-const result = await animoria.run();
-// result.assets — AnimoriaAsset[]
-// result.parsed  — number of successfully parsed assets
-// result.durationMs
+const registry = ParserRegistry.getInstance();
 
-// Find where an asset is used in source code
-const scanner = new UsageScanner({
-  workspacePath: '/path/to/project',
-  asset: result.assets[0],
-  strategy: 'pattern',
-  scopePath: '/path/to/project/apps/web',  // optional monorepo scope
+// Inspect currently supported formats
+const formats = registry.getRegisteredFormats();
+// -> ['lottie', 'dotlottie', 'rive', 'gif', 'apng', 'animated-svg']
+```
+
+### 2. Workspace Scanning and Parsing
+
+To audit a codebase, instantiating `Animoria` orchestrates the `FileScanner` and the `ParserRegistry` in a single pass:
+
+```typescript
+import { Animoria } from '@animoria/core';
+
+const engine = new Animoria({
+  workspacePath: '/Users/ti/IdeaProjects/Animoria',
+  onScanComplete: (count) => console.log(`Discovered ${count} candidate files`),
+  onAssetParsed: (asset, index, total) => {
+    console.log(`[${index + 1}/${total}] Audited: ${asset.name} (${asset.status})`);
+  },
 });
-const { references } = await scanner.search();
 
-// Run governance analysis
+const result = await engine.run();
+// result.assets   -> Array of AnimoriaAsset
+// result.parsed   -> Number of successfully parsed assets
+// result.duration -> Scan duration in milliseconds
+```
+
+### 3. Running Governance Analysis (Deduplication & References)
+
+The `GovernanceAnalyzer` aggregates results to produce a comprehensive technical debt report. It uses MD5 content hashing for byte-perfect duplicate checking and runs the reference tracer across assets:
+
+```typescript
+import { GovernanceAnalyzer } from '@animoria/core/governance';
+
 const analyzer = new GovernanceAnalyzer({
-  workspacePath: '/path/to/project',
+  workspacePath: '/Users/ti/IdeaProjects/Animoria',
   assets: result.assets,
-  overusedThreshold: 10,
+  overusedThreshold: 8, // Triggers warning if referenced in 8 or more locations
+  scopeResolver: (asset) => {
+    // Optional: Resolve local monorepo boundary (e.g., packages/animoria-vscode)
+    // to prevent cross-package reference pollution
+    return '/Users/ti/IdeaProjects/Animoria/packages/animoria-vscode';
+  },
 });
+
 const report = await analyzer.analyze();
-// report.unused / report.duplicates / report.overused
+
+console.log(`Unused assets (deletable): ${report.unused.length}`);
+console.log(`Duplicate files (identical MD5): ${report.duplicates.length}`);
+console.log(`Overused assets (refactoring candidates): ${report.overused.length}`);
+
+// Access details:
+report.duplicates.forEach((issue) => {
+  console.log(`Asset: ${issue.asset.path} is a byte-duplicate of:`);
+  issue.duplicateOf.forEach((dup) => console.log(`  - ${dup.path}`));
+});
 ```
 
-## Key Constraints
+### 4. Code Reference Tracing
 
-- Zero VS Code or JetBrains API imports.
-- All scanned paths are absolute (`fast-glob` runs with `absolute: true`).
-- `asset.path` is the single identity key for all caching and deduplication.
-- Lottie detection is structural (`v`, `fr`, `layers`), not extension-based.
-- Cache (`ThumbnailGenerator`) is keyed by MD5 hash of `asset.path` to prevent collisions across same-named files in different directories.
+To search for references to a specific asset in code files (supporting `.ts`, `.tsx`, `.js`, `.jsx`, `.swift`, `.kt`, `.dart`, etc.):
 
-## Tests
+```typescript
+import { UsageScanner } from '@animoria/core/usage';
 
-```bash
-pnpm test
-# 7 test suites, 97 tests
-# lottie-parser, dotlottie-parser, file-scanner,
-# asset-parser, usage-scanner, animoria, governance-analyzer
+const usageScanner = new UsageScanner({
+  workspacePath: '/Users/ti/IdeaProjects/Animoria',
+  asset: targetAsset,
+  strategy: 'pattern',
+  scopePath: '/Users/ti/IdeaProjects/Animoria/packages/animoria-vscode', // Scope to active workspace package
+});
+
+const searchResult = await usageScanner.search();
+// searchResult.references -> Array of { uri: string, line: number, preview: string }
+// searchResult.durationMs  -> Time taken to search code files
 ```
+
+---
+
+## Technical Constraints & Standards
+
+- **Absolute Paths Only**: The core performs all file-system actions (`fast-glob`, `readdir`) using absolute paths to avoid resolution ambiguity in complex directories.
+- **Magic Bytes Validation**: Asset formats are checked by magic byte signatures (e.g., Lottie JSON structures, APNG `acTL` control chunks, Rive bin signatures), preventing parser collisions on standard JSON or static images.
+- **Batched Concurrency**: Scopes and analyzers execute asynchronous file operations in parallel using batched queues to prevent resource/file-descriptor exhaustion in large workspaces.

@@ -1,9 +1,9 @@
 ---
 name: Feature Request
 about: A proposal for new functionality or an improvement
-title: "feat: "
+title: 'feat: '
 labels: enhancement
-assignees: ""
+assignees: ''
 ---
 
 ## What are you proposing?

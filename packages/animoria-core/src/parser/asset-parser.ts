@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
+import { extname } from 'path';
 import { performance } from 'perf_hooks';
-import { LottieParser } from '../parsers/lottie-parser.js';
-import { DotLottieParser } from '../parsers/dotlottie-parser.js';
+import { ParserRegistry } from '../parsers/parser-registry.js';
 import type { AnimoriaAsset } from '../types/index.js';
 
 export interface AssetParserConfig {
@@ -20,51 +20,6 @@ export interface AssetParserResult {
 }
 
 const DEFAULT_CONCURRENCY = 4;
-const lottieParser = new LottieParser();
-const dotLottieParser = new DotLottieParser();
-
-async function parseAsset(asset: AnimoriaAsset): Promise<void> {
-  if (asset.format === 'dotlottie') {
-    const result = await dotLottieParser.parseFile(asset.path);
-    if (result.success) {
-      asset.status = 'parsed';
-      asset.metadata = result.metadata;
-    } else {
-      asset.status = 'error';
-      asset.error = result.error;
-    }
-    return;
-  }
-
-  let raw: unknown;
-  try {
-    const content = await fs.readFile(asset.path, 'utf-8');
-    raw = JSON.parse(content);
-  } catch {
-    asset.status = 'error';
-    asset.error = 'Failed to read or parse file';
-    return;
-  }
-
-  if (asset.format === 'lottie') {
-    if (!lottieParser.validate(raw)) {
-      asset.status = 'error';
-      asset.error = 'Validation failed';
-      return;
-    }
-    const result = lottieParser.parse(raw);
-    if (!result.success) {
-      asset.status = 'error';
-      asset.error = result.error;
-      return;
-    }
-    asset.status = 'parsed';
-    asset.metadata = result.metadata;
-  } else {
-    asset.status = 'error';
-    asset.error = `Unsupported format: ${asset.format}`;
-  }
-}
 
 export class AssetParser {
   constructor(private config: AssetParserConfig = {}) {}
@@ -72,6 +27,28 @@ export class AssetParser {
   async parse(assets: AnimoriaAsset[]): Promise<AssetParserResult> {
     const start = performance.now();
     const concurrency = this.config.concurrency ?? DEFAULT_CONCURRENCY;
+    const registry = ParserRegistry.getInstance();
+
+    const parseAsset = async (asset: AnimoriaAsset): Promise<void> => {
+      try {
+        const buffer = await fs.readFile(asset.path);
+        const ext = extname(asset.name).toLowerCase();
+
+        const parser = registry.getParserFor(ext, buffer);
+        if (!parser) {
+          asset.status = 'error';
+          asset.error = `Unsupported format or signature: ${asset.format}`;
+          return;
+        }
+
+        const metadata = await parser.parse(asset.path, buffer);
+        asset.status = 'parsed';
+        asset.metadata = metadata;
+      } catch (err) {
+        asset.status = 'error';
+        asset.error = err instanceof Error ? err.message : String(err);
+      }
+    };
 
     for (let i = 0; i < assets.length; i += concurrency) {
       const batch = assets.slice(i, i + concurrency);

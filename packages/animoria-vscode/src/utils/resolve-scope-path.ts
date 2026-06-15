@@ -13,10 +13,7 @@ const PROJECT_MARKERS = [
   'pyproject.toml',
 ];
 
-export function resolveScopePath(
-  assetPath: string,
-  workspacePath: string
-): string {
+export function resolveScopePath(assetPath: string, workspacePath: string): string {
   const root = resolve(workspacePath);
   let current = dirname(resolve(assetPath));
 

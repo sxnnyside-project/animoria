@@ -1,0 +1,15 @@
+build:
+  maxIssues: 0
+  excludeCorrectable: false
+
+style:
+  active: true
+  MagicNumber:
+    active: false
+  WildcardImport:
+    active: false
+
+complexity:
+  active: true
+  TooManyFunctions:
+    active: false

@@ -60,7 +60,7 @@ describe('DotLottieParser', () => {
       expect(typeof data).toBe('object');
     });
     it('returned data has Lottie structure', async () => {
-      const data = await parser.extractAnimationData(FIXTURE) as Record<string, unknown>;
+      const data = (await parser.extractAnimationData(FIXTURE)) as Record<string, unknown>;
       expect(data).toHaveProperty('fr');
       expect(data).toHaveProperty('layers');
     });

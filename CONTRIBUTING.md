@@ -18,6 +18,7 @@ This document covers how to work with the project as a contributor.
 Open a GitHub Issue using the bug report template.
 
 Include:
+
 - What you expected to happen
 - What actually happened
 - Steps to reproduce
@@ -68,16 +69,16 @@ This project uses [Conventional Commits](https://www.conventionalcommits.org/). 
 
 Accepted types:
 
-| Type       | Use for                                          |
-|------------|--------------------------------------------------|
-| `feat`     | New functionality                                |
-| `fix`      | Bug fixes                                        |
-| `docs`     | Documentation only                               |
-| `style`    | Formatting, whitespace — no logic changes        |
-| `refactor` | Code restructure without behavior change         |
-| `test`     | Adding or updating tests                         |
-| `chore`    | Build process, tooling, dependencies             |
-| `perf`     | Performance improvements                         |
+| Type       | Use for                                   |
+| ---------- | ----------------------------------------- |
+| `feat`     | New functionality                         |
+| `fix`      | Bug fixes                                 |
+| `docs`     | Documentation only                        |
+| `style`    | Formatting, whitespace — no logic changes |
+| `refactor` | Code restructure without behavior change  |
+| `test`     | Adding or updating tests                  |
+| `chore`    | Build process, tooling, dependencies      |
+| `perf`     | Performance improvements                  |
 
 Examples:
 
@@ -108,4 +109,4 @@ If something in the codebase is unclear, open an issue with the `question` label
 
 ---
 
-*Animoria is a Sxnnyside Project Tool. Part of the Sxnnyside Project.*
+_Animoria is a Sxnnyside Project Tool. Part of the Sxnnyside Project._

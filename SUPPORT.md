@@ -21,4 +21,4 @@ For security vulnerabilities, see [SECURITY.md](SECURITY.md).
 
 ---
 
-*Animoria is a Sxnnyside Project Tool. Part of the Sxnnyside Project.*
+_Animoria is a Sxnnyside Project Tool. Part of the Sxnnyside Project._

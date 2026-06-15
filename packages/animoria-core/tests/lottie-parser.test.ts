@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { LottieParser } from '../src/parsers/lottie-parser';
 
 describe('LottieParser', () => {
-
   const parser = new LottieParser();
 
   // --- validate() ---

@@ -10,11 +10,7 @@ export default defineConfig({
     },
     rollupOptions: {
       // Externalize vscode + every Node.js built-in (with and without node: prefix)
-      external: [
-        'vscode',
-        ...builtinModules,
-        ...builtinModules.map(m => `node:${m}`),
-      ],
+      external: ['vscode', ...builtinModules, ...builtinModules.map((m) => `node:${m}`)],
     },
     outDir: 'dist',
     sourcemap: true,
@@ -22,10 +18,8 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@animoria/core': new URL(
-        '../../packages/animoria-core/src/index.ts',
-        import.meta.url
-      ).pathname,
+      '@animoria/core': new URL('../../packages/animoria-core/src/index.ts', import.meta.url)
+        .pathname,
     },
   },
 });

@@ -5,12 +5,8 @@
       "name": "Launch Animoria Extension",
       "type": "extensionHost",
       "request": "launch",
-      "args": [
-        "--extensionDevelopmentPath=${workspaceFolder}/packages/animoria-vscode"
-      ],
-      "outFiles": [
-        "${workspaceFolder}/packages/animoria-vscode/dist/**/*.js"
-      ],
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}/packages/animoria-vscode"],
+      "outFiles": ["${workspaceFolder}/packages/animoria-vscode/dist/**/*.js"],
       "preLaunchTask": "build-animoria-vscode"
     }
   ]

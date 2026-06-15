@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   release:
-    name: Publish Extension
+    name: Publish Extension and Plugin
     runs-on: ubuntu-latest
 
     steps:
@@ -21,6 +21,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
@@ -77,10 +83,27 @@ jobs:
         working-directory: packages/animoria-vscode
         run: ovsx publish animoria-${{ steps.version.outputs.VERSION }}.vsix -p ${{ secrets.OVSX_PAT }}
 
+      - name: Build JetBrains Plugin
+        run: |
+          mkdir -p packages/animoria-jetbrains/src/main/resources/assets
+          cp -r apps/animoria-sandbox/dist/* packages/animoria-jetbrains/src/main/resources/assets/
+          cd packages/animoria-jetbrains
+          chmod +x ./gradlew
+          ./gradlew buildPlugin
+
+      - name: Publish to JetBrains Marketplace
+        env:
+          JETBRAINS_PUBLISH_TOKEN: ${{ secrets.JETBRAINS_PUBLISH_TOKEN }}
+        run: |
+          cd packages/animoria-jetbrains
+          ./gradlew publishPlugin
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: packages/animoria-vscode/animoria-${{ steps.version.outputs.VERSION }}.vsix
+          files: |
+            packages/animoria-vscode/animoria-${{ steps.version.outputs.VERSION }}.vsix
+            packages/animoria-jetbrains/build/distributions/*.zip
           generate_release_notes: true
           body: |
             ## Animoria v${{ steps.version.outputs.VERSION }}
@@ -89,7 +112,7 @@ jobs:
 
             ### Install
             Search **Animoria** in the VS Code Extensions panel,
-            or download the `.vsix` from this release and install manually:
+            or download the `.vsix`/`.zip` from this release and install manually:
 
             ```
             code --install-extension animoria-${{ steps.version.outputs.VERSION }}.vsix

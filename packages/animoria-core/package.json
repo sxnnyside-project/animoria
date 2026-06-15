@@ -1,8 +1,25 @@
 {
   "name": "@animoria/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./i18n": {
+      "types": "./dist/i18n/locales.d.ts",
+      "import": "./dist/i18n/locales.js",
+      "default": "./dist/i18n/locales.js"
+    },
+    "./parsers": {
+      "types": "./dist/parsers/index.d.ts",
+      "import": "./dist/parsers/index.js",
+      "default": "./dist/parsers/index.js"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
@@ -12,9 +29,9 @@
   },
   "devDependencies": {
     "@types/node": "^25.9.2",
-    "@vitest/coverage-v8": "^4.1.8",
+    "@vitest/coverage-v8": "^3.2.6",
     "typescript": "^5.0.0",
-    "vitest": "^1.6.1"
+    "vitest": "^3.2.6"
   },
   "vitest": {
     "include": [

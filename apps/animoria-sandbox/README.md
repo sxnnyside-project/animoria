@@ -30,4 +30,4 @@ The dev server starts at `http://localhost:5173`.
 
 ---
 
-*Animoria is a Sxnnyside Project Tool. &copy; 2026 Sxnnyside Project.*
+_Animoria is a Sxnnyside Project Tool. &copy; 2026 Sxnnyside Project._

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import type { AnimoriaAsset } from '@animoria/core';
-import { Animoria, DotLottieParser, UsageScanner } from '@animoria/core';
+import { Animoria, DotLottieParser, UsageScanner, t } from '@animoria/core';
 import { resolveScopePath } from '../utils/resolve-scope-path';
 
 export class AnimoriaPreviewPanel {
@@ -19,7 +19,7 @@ export class AnimoriaPreviewPanel {
     extensionUri: vscode.Uri,
     asset: AnimoriaAsset,
     thumbnailPath?: string,
-    workspacePath?: string,
+    workspacePath?: string
   ): void {
     if (AnimoriaPreviewPanel.currentPanel) {
       if (AnimoriaPreviewPanel.currentPanel._assetPath === asset.path) {
@@ -50,7 +50,7 @@ export class AnimoriaPreviewPanel {
       extensionUri,
       asset,
       thumbnailPath,
-      workspacePath,
+      workspacePath
     );
   }
 
@@ -59,7 +59,7 @@ export class AnimoriaPreviewPanel {
     extensionUri: vscode.Uri,
     asset: AnimoriaAsset,
     thumbnailPath?: string,
-    workspacePath?: string,
+    workspacePath?: string
   ) {
     this._panel = panel;
     this._extensionUri = extensionUri;
@@ -80,12 +80,19 @@ export class AnimoriaPreviewPanel {
 
   private _update(): void {
     this._panel.title = this._asset.stem;
-    this._panel.webview.html = this._getHtmlContent();
+    const rawLanguage = vscode.env.language;
+    let locale = 'en';
+    if (rawLanguage) {
+      const norm = rawLanguage.toLowerCase();
+      if (norm.startsWith('es')) locale = 'es';
+      else if (norm.startsWith('ja')) locale = 'ja';
+      else if (norm.startsWith('fr')) locale = 'fr';
+      else if (norm.startsWith('zh')) locale = 'zh-CN';
+    }
+    this._panel.webview.html = this._getHtmlContent(locale);
 
     const thumbUri = this._thumbnailPath
-      ? this._panel.webview.asWebviewUri(
-          vscode.Uri.file(this._thumbnailPath)
-        ).toString()
+      ? this._panel.webview.asWebviewUri(vscode.Uri.file(this._thumbnailPath)).toString()
       : null;
 
     setTimeout(async () => {
@@ -184,16 +191,13 @@ export class AnimoriaPreviewPanel {
         break;
 
       case 'reveal-in-explorer':
-        vscode.commands.executeCommand(
-          'revealInExplorer',
-          vscode.Uri.file(this._asset.path)
-        );
+        vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(this._asset.path));
         break;
 
       case 'load-dotlottie-animation': {
         const { animationId } = message.payload as { animationId: string };
         const parser = new DotLottieParser();
-        parser.extractAnimationData(this._asset.path, animationId).then(data => {
+        parser.extractAnimationData(this._asset.path, animationId).then((data) => {
           if (data) {
             this._panel.webview.postMessage({
               type: 'reload-animation',
@@ -231,9 +235,42 @@ export class AnimoriaPreviewPanel {
     this._disposables = [];
   }
 
-  private _getHtmlContent(): string {
+  private _getHtmlContent(locale: string): string {
+    const loadingText = t('vscode.loading', locale);
+    const removedText = t('vscode.assetRemoved', locale);
+    const livePreviewTitle = t('vscode.livePreview', locale);
+    const playText = t('vscode.play', locale);
+    const pauseText = t('vscode.pause', locale);
+    const restartText = t('vscode.restart', locale);
+    const loopText = t('vscode.loop', locale);
+    const metadataTitle = t('vscode.metadata', locale);
+    const formatLabel = t('preview.format', locale);
+    const fpsLabel = t('preview.fps', locale);
+    const durationLabel = t('preview.duration', locale);
+    const framesLabel = t('vscode.frames', locale);
+    const dimensionsLabel = t('preview.dimensions', locale);
+    const layersLabel = t('vscode.layers', locale);
+    const markersLabel = t('preview.markers', locale);
+    const fileSizeLabel = t('vscode.fileSize', locale);
+    const usageTitle = t('vscode.usageReferences', locale);
+    const usageLoadingText = t('vscode.searchingCodebase', locale);
+    const noReferencesText = t('vscode.noReferences', locale);
+    const quickActionsTitle = t('vscode.quickActions', locale);
+    const copyPathText = t('vscode.copyPath', locale);
+    const copyNameText = t('vscode.copyName', locale);
+    const revealText = t('vscode.revealInExplorer', locale);
+
+    const i18nConfig = JSON.stringify({
+      notFoundIn: t('vscode.notFoundIn', locale),
+      foundIn: t('vscode.foundIn', locale),
+      loadError: t('vscode.loadError', locale),
+      hasImages: t('vscode.hasImages', locale),
+      animationsCount: t('vscode.animationsCount', locale),
+      none: t('vscode.none', locale),
+    });
+
     return /* html */ `<!DOCTYPE html>
-<html lang="en">
+<html lang="${locale}">
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
@@ -476,8 +513,8 @@ export class AnimoriaPreviewPanel {
 </head>
 <body>
 
-<div id="loading">Loading animation...</div>
-<div id="removed-notice">This asset has been deleted from the workspace.</div>
+<div id="loading">${loadingText}</div>
+<div id="removed-notice">${removedText}</div>
 
 <div id="content">
 
@@ -497,50 +534,50 @@ export class AnimoriaPreviewPanel {
 
   <!-- LIVE PREVIEW -->
   <div class="section preview-section">
-    <div class="section-title">Live Preview</div>
+    <div class="section-title">${livePreviewTitle}</div>
     <div id="lottie-container"></div>
     <div class="controls" id="controls">
-      <button class="btn primary" id="btn-play">▶ Play</button>
-      <button class="btn" id="btn-pause">⏸ Pause</button>
-      <button class="btn" id="btn-restart">↺ Restart</button>
-      <button class="btn active" id="btn-loop">∞ Loop</button>
+      <button class="btn primary" id="btn-play">▶ ${playText}</button>
+      <button class="btn" id="btn-pause">⏸ ${pauseText}</button>
+      <button class="btn" id="btn-restart">↺ ${restartText}</button>
+      <button class="btn active" id="btn-loop">∞ ${loopText}</button>
     </div>
   </div>
 
   <!-- METADATA -->
   <div class="section">
-    <div class="section-title">Metadata</div>
+    <div class="section-title">${metadataTitle}</div>
     <div class="meta-grid">
       <div class="meta-item">
-        <span class="meta-label">Format</span>
+        <span class="meta-label">${formatLabel}</span>
         <span class="meta-value" id="meta-format">—</span>
       </div>
       <div class="meta-item">
-        <span class="meta-label">FPS</span>
+        <span class="meta-label">${fpsLabel}</span>
         <span class="meta-value" id="meta-fps">—</span>
       </div>
       <div class="meta-item">
-        <span class="meta-label">Duration</span>
+        <span class="meta-label">${durationLabel}</span>
         <span class="meta-value" id="meta-duration">—</span>
       </div>
       <div class="meta-item">
-        <span class="meta-label">Frames</span>
+        <span class="meta-label">${framesLabel}</span>
         <span class="meta-value" id="meta-frames">—</span>
       </div>
       <div class="meta-item">
-        <span class="meta-label">Dimensions</span>
+        <span class="meta-label">${dimensionsLabel}</span>
         <span class="meta-value" id="meta-size">—</span>
       </div>
       <div class="meta-item">
-        <span class="meta-label">Layers</span>
+        <span class="meta-label">${layersLabel}</span>
         <span class="meta-value" id="meta-layers">—</span>
       </div>
       <div class="meta-item">
-        <span class="meta-label">Markers</span>
+        <span class="meta-label">${markersLabel}</span>
         <span class="meta-value" id="meta-markers">—</span>
       </div>
       <div class="meta-item">
-        <span class="meta-label">File Size</span>
+        <span class="meta-label">${fileSizeLabel}</span>
         <span class="meta-value" id="meta-filesize">—</span>
       </div>
     </div>
@@ -548,12 +585,12 @@ export class AnimoriaPreviewPanel {
 
   <!-- USAGE REFERENCES -->
   <div class="section">
-    <div class="section-title">Usage References</div>
-    <div id="usage-loading" class="usage-loading">Searching codebase...</div>
+    <div class="section-title">${usageTitle}</div>
+    <div id="usage-loading" class="usage-loading">${usageLoadingText}</div>
     <div id="usage-results" style="display:none">
       <div class="usage-count" id="usage-count"></div>
       <div id="usage-empty" class="usage-empty" style="display:none">
-        No references found in source files.
+        ${noReferencesText}
       </div>
       <div class="usage-list" id="usage-list"></div>
     </div>
@@ -561,11 +598,12 @@ export class AnimoriaPreviewPanel {
 
   <!-- QUICK ACTIONS -->
   <div class="section">
-    <div class="section-title">Quick Actions</div>
+    <div class="section-title">${quickActionsTitle}</div>
     <div class="actions">
-      <button class="btn" id="btn-copy-path">Copy Path</button>
-      <button class="btn" id="btn-copy-stem">Copy Name</button>
-      <button class="btn" id="btn-reveal">Reveal in Explorer</button>
+      <button class="btn" id="btn-copy-path">${copyPathText}</button>
+      <button class="btn" id="btn-copy-name" style="display:none;">Copy Name</button> <!-- Hidden legacy button to prevent layout shift -->
+      <button class="btn" id="btn-copy-stem">${copyNameText}</button>
+      <button class="btn" id="btn-reveal">${revealText}</button>
     </div>
   </div>
 
@@ -576,6 +614,7 @@ export class AnimoriaPreviewPanel {
   const vscode = acquireVsCodeApi();
   let animation = null;
   let loopEnabled = true;
+  const i18n = ${i18nConfig};
 
   function formatBytes(bytes) {
     if (bytes < 1024) return bytes + ' B';
@@ -614,9 +653,17 @@ export class AnimoriaPreviewPanel {
       // Summary line
       if (asset.metadata) {
         const m = asset.metadata;
-        document.getElementById('asset-summary').textContent =
-          m.fps + 'fps · ' + m.durationSeconds.toFixed(2) + 's · ' +
-          m.width + '×' + m.height;
+        let summaryText = '';
+        if (asset.format === 'lottie' || asset.format === 'dotlottie') {
+          summaryText = m.fps + 'fps · ' + m.durationSeconds.toFixed(2) + 's · ' + m.width + '×' + m.height;
+        } else if (asset.format === 'rive') {
+          summaryText = 'Rive · ' + (m.artboards ? m.artboards.length : 0) + ' artboards · ' + m.width + '×' + m.height;
+        } else if (asset.format === 'gif' || asset.format === 'apng') {
+          summaryText = 'Raster · ' + m.frameCount + ' frames · ' + m.width + '×' + m.height;
+        } else if (asset.format === 'animated-svg') {
+          summaryText = 'SVG · ' + m.animationType + ' · ' + m.width + '×' + m.height;
+        }
+        document.getElementById('asset-summary').textContent = summaryText;
       }
 
       // Metadata grid
@@ -624,15 +671,33 @@ export class AnimoriaPreviewPanel {
         const m = asset.metadata;
         document.getElementById('meta-format').textContent =
           asset.format.toUpperCase();
-        document.getElementById('meta-fps').textContent = m.fps;
         document.getElementById('meta-duration').textContent =
-          m.durationSeconds.toFixed(2) + 's';
-        document.getElementById('meta-frames').textContent = m.totalFrames;
+          m.durationSeconds ? m.durationSeconds.toFixed(2) + 's' : '—';
         document.getElementById('meta-size').textContent =
           m.width + ' × ' + m.height;
-        document.getElementById('meta-layers').textContent = m.layerCount;
-        document.getElementById('meta-markers').textContent =
-          m.markers && m.markers.length ? m.markers.length : 'None';
+
+        if (asset.format === 'lottie' || asset.format === 'dotlottie') {
+          document.getElementById('meta-fps').textContent = m.fps;
+          document.getElementById('meta-frames').textContent = m.totalFrames;
+          document.getElementById('meta-layers').textContent = m.layerCount;
+          document.getElementById('meta-markers').textContent =
+            m.markers && m.markers.length ? m.markers.length : i18n.none;
+        } else if (asset.format === 'rive') {
+          document.getElementById('meta-fps').textContent = '—';
+          document.getElementById('meta-frames').textContent = m.animations ? m.animations.length + ' animations' : '—';
+          document.getElementById('meta-layers').textContent = m.stateMachines ? m.stateMachines.length : '—';
+          document.getElementById('meta-markers').textContent = m.artboards ? m.artboards.length : '—';
+        } else if (asset.format === 'gif' || asset.format === 'apng') {
+          document.getElementById('meta-fps').textContent = '—';
+          document.getElementById('meta-frames').textContent = m.frameCount;
+          document.getElementById('meta-layers').textContent = '—';
+          document.getElementById('meta-markers').textContent = m.loopCount === 0 ? 'infinite' : m.loopCount;
+        } else if (asset.format === 'animated-svg') {
+          document.getElementById('meta-fps').textContent = '—';
+          document.getElementById('meta-frames').textContent = m.elementCount + ' elements';
+          document.getElementById('meta-layers').textContent = '—';
+          document.getElementById('meta-markers').textContent = m.animationType;
+        }
       }
       document.getElementById('meta-filesize').textContent =
         formatBytes(asset.sizeBytes);
@@ -643,14 +708,14 @@ export class AnimoriaPreviewPanel {
 
         document.getElementById('format-badge').textContent =
           dl.animations.length > 1
-            ? 'DOTLOTTIE · ' + dl.animations.length + ' animations'
+            ? 'DOTLOTTIE · ' + dl.animations.length + ' ' + i18n.animationsCount
             : 'DOTLOTTIE';
 
         if (dl.hasImages) {
           const badge = document.createElement('span');
           badge.className = 'badge';
           badge.style.background = 'var(--vscode-charts-orange, #d18616)';
-          badge.textContent = 'HAS IMAGES';
+          badge.textContent = i18n.hasImages;
           document.querySelector('.asset-badges').appendChild(badge);
         }
 
@@ -716,7 +781,7 @@ export class AnimoriaPreviewPanel {
     // ── load-error ──
     if (type === 'load-error') {
       document.getElementById('loading').textContent =
-        '⚠ ' + ((payload && payload.error) ? payload.error : 'Failed to load animation.');
+        '⚠ ' + ((payload && payload.error) ? payload.error : i18n.loadError);
     }
 
     // ── load-thumbnail ──
@@ -742,10 +807,8 @@ export class AnimoriaPreviewPanel {
       const count = references.length;
       document.getElementById('usage-count').textContent =
         count === 0
-          ? 'Not found in ' + searchedFiles + ' source files'
-          : 'Found in ' + count + ' location' + (count === 1 ? '' : 's') +
-            ' · ' + searchedFiles + ' files searched · ' +
-            durationMs + 'ms';
+          ? i18n.notFoundIn.replace('{files}', searchedFiles)
+          : i18n.foundIn.replace('{count}', count).replace('{files}', searchedFiles).replace('{ms}', durationMs);
 
       if (count === 0) {
         document.getElementById('usage-empty').style.display = 'block';

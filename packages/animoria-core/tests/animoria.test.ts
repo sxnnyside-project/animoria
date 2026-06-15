@@ -5,7 +5,6 @@ import { Animoria } from '../src/animoria';
 const WORKSPACE = resolve(__dirname, './fixtures/workspace');
 
 describe('Animoria facade', () => {
-
   describe('run()', () => {
     it('returns an AnimoriaResult object', async () => {
       const animoria = new Animoria({ workspacePath: WORKSPACE });
@@ -27,13 +26,13 @@ describe('Animoria facade', () => {
     it('all assets have status parsed', async () => {
       const animoria = new Animoria({ workspacePath: WORKSPACE });
       const result = await animoria.run();
-      expect(result.assets.every(a => a.status === 'parsed')).toBe(true);
+      expect(result.assets.every((a) => a.status === 'parsed')).toBe(true);
     });
 
     it('all assets have metadata populated', async () => {
       const animoria = new Animoria({ workspacePath: WORKSPACE });
       const result = await animoria.run();
-      expect(result.assets.every(a => a.metadata !== undefined)).toBe(true);
+      expect(result.assets.every((a) => a.metadata !== undefined)).toBe(true);
     });
 
     it('durationMs covers the full scan + parse time', async () => {
@@ -96,7 +95,7 @@ describe('Animoria facade', () => {
       await animoria.run();
       const assets = animoria.getAssets();
       expect(assets).toHaveLength(3);
-      expect(assets.every(a => a.status === 'parsed')).toBe(true);
+      expect(assets.every((a) => a.status === 'parsed')).toBe(true);
     });
 
     it('returns the same reference as result.assets', async () => {

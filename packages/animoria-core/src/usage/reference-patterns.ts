@@ -8,7 +8,7 @@ export const REFERENCE_PATTERNS: RegExp[] = [
   /\bsetAnimation\s*\(\s*['"`][^'"`]*\bSTEM\b[^'"`]*['"`]/,
 
   // source={{ uri: 'success.json' }} / source={require('./success.json')}
-  /\bsource\s*=\s*[\{(]?\s*(?:require\s*\()?['"`][^'"`]*\bSTEM\b/,
+  /\bsource\s*=\s*[{(]?\s*(?:require\s*\()?['"`][^'"`]*\bSTEM\b/,
 
   // Android / Kotlin / Java
   // LottieCompositionSpec.RawRes(R.raw.success)
@@ -37,11 +37,8 @@ function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-export function buildPatternsForAsset(
-  filename: string,
-  stem: string
-): RegExp[] {
-  return REFERENCE_PATTERNS.map(pattern => {
+export function buildPatternsForAsset(filename: string, stem: string): RegExp[] {
+  return REFERENCE_PATTERNS.map((pattern) => {
     const source = pattern.source
       .replace(/FILENAME/g, escapeRegex(filename))
       .replace(/STEM/g, escapeRegex(stem));

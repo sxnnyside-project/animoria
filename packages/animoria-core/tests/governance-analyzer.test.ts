@@ -11,7 +11,7 @@ async function getParsedAssets() {
   const scanResult = await scanner.scan();
   const parser = new AssetParser();
   const parseResult = await parser.parse(scanResult.assets);
-  return parseResult.assets.filter(a => a.status === 'parsed');
+  return parseResult.assets.filter((a) => a.status === 'parsed');
 }
 
 describe('GovernanceAnalyzer', () => {
@@ -57,7 +57,7 @@ describe('GovernanceAnalyzer', () => {
       const analyzer = new GovernanceAnalyzer({ workspacePath: WORKSPACE, assets });
       const report = await analyzer.analyze();
       // orphan.json has no references in any fixture source file
-      const unusedStems = report.unused.map(i => i.asset.stem);
+      const unusedStems = report.unused.map((i) => i.asset.stem);
       expect(unusedStems).toContain('orphan');
     });
 
@@ -65,14 +65,14 @@ describe('GovernanceAnalyzer', () => {
       const assets = await getParsedAssets();
       const analyzer = new GovernanceAnalyzer({ workspacePath: WORKSPACE, assets });
       const report = await analyzer.analyze();
-      expect(report.unused.every(i => i.referenceCount === 0)).toBe(true);
+      expect(report.unused.every((i) => i.referenceCount === 0)).toBe(true);
     });
 
     it('does not flag referenced assets as unused', async () => {
       const assets = await getParsedAssets();
       const analyzer = new GovernanceAnalyzer({ workspacePath: WORKSPACE, assets });
       const report = await analyzer.analyze();
-      const unusedStems = report.unused.map(i => i.asset.stem);
+      const unusedStems = report.unused.map((i) => i.asset.stem);
       expect(unusedStems).not.toContain('success');
     });
   });
@@ -83,7 +83,7 @@ describe('GovernanceAnalyzer', () => {
       const analyzer = new GovernanceAnalyzer({ workspacePath: WORKSPACE, assets });
       const report = await analyzer.analyze();
       // success.json and success-copy.json have identical content
-      const dupStems = report.duplicates.map(i => i.asset.stem);
+      const dupStems = report.duplicates.map((i) => i.asset.stem);
       expect(dupStems).toContain('success');
       expect(dupStems).toContain('success-copy');
     });
@@ -93,16 +93,14 @@ describe('GovernanceAnalyzer', () => {
       const analyzer = new GovernanceAnalyzer({ workspacePath: WORKSPACE, assets });
       const report = await analyzer.analyze();
       // All duplicate issues must have duplicateOf populated
-      expect(
-        report.duplicates.every(i => i.duplicateOf && i.duplicateOf.length > 0)
-      ).toBe(true);
+      expect(report.duplicates.every((i) => i.duplicateOf && i.duplicateOf.length > 0)).toBe(true);
     });
 
     it('duplicate issues have correct category', async () => {
       const assets = await getParsedAssets();
       const analyzer = new GovernanceAnalyzer({ workspacePath: WORKSPACE, assets });
       const report = await analyzer.analyze();
-      expect(report.duplicates.every(i => i.category === 'duplicate')).toBe(true);
+      expect(report.duplicates.every((i) => i.category === 'duplicate')).toBe(true);
     });
   });
 
@@ -127,7 +125,7 @@ describe('GovernanceAnalyzer', () => {
         overusedThreshold: 1,
       });
       const report = await analyzer.analyze();
-      const counts = report.overused.map(i => i.referenceCount);
+      const counts = report.overused.map((i) => i.referenceCount);
       const sorted = [...counts].sort((a, b) => b - a);
       expect(counts).toEqual(sorted);
     });
@@ -149,9 +147,7 @@ describe('GovernanceAnalyzer', () => {
         overusedThreshold: threshold,
       });
       const report = await analyzer.analyze();
-      expect(
-        report.overused.every(i => i.referenceCount >= threshold)
-      ).toBe(true);
+      expect(report.overused.every((i) => i.referenceCount >= threshold)).toBe(true);
     });
   });
 

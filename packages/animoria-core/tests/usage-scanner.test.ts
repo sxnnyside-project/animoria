@@ -6,11 +6,10 @@ import { FileScanner } from '../src/scanner/file-scanner';
 const WORKSPACE = resolve(__dirname, './fixtures/workspace');
 
 describe('UsageScanner', () => {
-
   async function getAsset(stem: string) {
     const scanner = new FileScanner({ workspacePath: WORKSPACE });
     const result = await scanner.scan();
-    const asset = result.assets.find(a => a.stem === stem);
+    const asset = result.assets.find((a) => a.stem === stem);
     if (!asset) throw new Error(`Asset ${stem} not found in fixtures`);
     return asset;
   }
@@ -37,8 +36,8 @@ describe('UsageScanner', () => {
         strategy: 'filename',
       });
       const result = await scanner.search();
-      const files = result.references.map(r => r.file);
-      expect(files.some(f => f.includes('PaymentScreen.tsx'))).toBe(true);
+      const files = result.references.map((r) => r.file);
+      expect(files.some((f) => f.includes('PaymentScreen.tsx'))).toBe(true);
     });
 
     it('reference includes correct line number and content', async () => {
@@ -49,9 +48,7 @@ describe('UsageScanner', () => {
         strategy: 'filename',
       });
       const result = await scanner.search();
-      const ref = result.references.find(r =>
-        r.file.includes('PaymentScreen.tsx')
-      );
+      const ref = result.references.find((r) => r.file.includes('PaymentScreen.tsx'));
       expect(ref?.line).toBe(1);
       expect(ref?.content).toContain('success.json');
     });
@@ -64,8 +61,8 @@ describe('UsageScanner', () => {
         strategy: 'both',
       });
       const result = await scanner.search();
-      const files = result.references.map(r => r.file);
-      expect(files.some(f => f.includes('LoadingOverlay.tsx'))).toBe(true);
+      const files = result.references.map((r) => r.file);
+      expect(files.some((f) => f.includes('LoadingOverlay.tsx'))).toBe(true);
     });
 
     it('returns empty references for an asset with no usages', async () => {
@@ -112,9 +109,7 @@ describe('UsageScanner', () => {
         strategy: 'stem',
       });
       const result = await scanner.search();
-      expect(result.references.some(r =>
-        r.content.includes('loading')
-      )).toBe(true);
+      expect(result.references.some((r) => r.content.includes('loading'))).toBe(true);
     });
 
     it('filename strategy does not match stem-only references', async () => {
@@ -127,9 +122,7 @@ describe('UsageScanner', () => {
         strategy: 'filename',
       });
       const result = await scanner.search();
-      expect(result.references.some(r =>
-        r.file.includes('LoadingOverlay.tsx')
-      )).toBe(true);
+      expect(result.references.some((r) => r.file.includes('LoadingOverlay.tsx'))).toBe(true);
     });
   });
 
@@ -138,9 +131,7 @@ describe('UsageScanner', () => {
       const asset = await getAsset('success');
       const scanner = new UsageScanner({ workspacePath: WORKSPACE, asset });
       const result = await scanner.search();
-      expect(result.references.every(r =>
-        !r.file.includes('node_modules')
-      )).toBe(true);
+      expect(result.references.every((r) => !r.file.includes('node_modules'))).toBe(true);
     });
   });
 
@@ -162,45 +153,46 @@ describe('UsageScanner', () => {
       });
       const result = await scanner.search();
       // AvatarComponent.tsx has many "avatar" mentions but none are Lottie refs
-      expect(result.references.every(r =>
-        !r.file.includes('AvatarComponent')
-      )).toBe(true);
+      expect(result.references.every((r) => !r.file.includes('AvatarComponent'))).toBe(true);
     });
 
     it('pattern strategy finds fewer or equal results than stem strategy', async () => {
       const asset = await getAsset('loading');
       const patternScanner = new UsageScanner({
-        workspacePath: WORKSPACE, asset, strategy: 'pattern',
+        workspacePath: WORKSPACE,
+        asset,
+        strategy: 'pattern',
       });
       const stemScanner = new UsageScanner({
-        workspacePath: WORKSPACE, asset, strategy: 'stem',
+        workspacePath: WORKSPACE,
+        asset,
+        strategy: 'stem',
       });
       const patternResult = await patternScanner.search();
       const stemResult = await stemScanner.search();
-      expect(patternResult.references.length)
-        .toBeLessThanOrEqual(stemResult.references.length);
+      expect(patternResult.references.length).toBeLessThanOrEqual(stemResult.references.length);
     });
 
     it('pattern strategy finds genuine Lottie import in LottiePlayer.tsx', async () => {
       const asset = await getAsset('loading');
       const scanner = new UsageScanner({
-        workspacePath: WORKSPACE, asset, strategy: 'pattern',
+        workspacePath: WORKSPACE,
+        asset,
+        strategy: 'pattern',
       });
       const result = await scanner.search();
-      expect(result.references.some(r =>
-        r.file.includes('LottiePlayer.tsx')
-      )).toBe(true);
+      expect(result.references.some((r) => r.file.includes('LottiePlayer.tsx'))).toBe(true);
     });
 
     it('pattern strategy finds confetti reference via path string', async () => {
       const asset = await getAsset('confetti');
       const scanner = new UsageScanner({
-        workspacePath: WORKSPACE, asset, strategy: 'pattern',
+        workspacePath: WORKSPACE,
+        asset,
+        strategy: 'pattern',
       });
       const result = await scanner.search();
-      expect(result.references.some(r =>
-        r.file.includes('LottiePlayer.tsx')
-      )).toBe(true);
+      expect(result.references.some((r) => r.file.includes('LottiePlayer.tsx'))).toBe(true);
     });
   });
 });

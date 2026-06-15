@@ -13,10 +13,14 @@ let treeProvider: AnimoriaTreeProvider;
 let fileWatcher: AnimoriaFileWatcher | undefined;
 let lastGovernanceReport: GovernanceReport | undefined;
 
+const activeGenerators = new Set<{
+  generator: ThumbnailGenerator;
+  abortController: AbortController;
+}>();
+
 export async function activate(context: vscode.ExtensionContext) {
   // 1. Instantiate tree provider
-  const initialWorkspacePath =
-    vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+  const initialWorkspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
   treeProvider = new AnimoriaTreeProvider(initialWorkspacePath);
 
   // 2. Register tree view
@@ -27,9 +31,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // 3. Register commands
 
-  const refreshCommand = vscode.commands.registerCommand(
-    'animoria.refresh',
-    () => runScan(context)
+  const refreshCommand = vscode.commands.registerCommand('animoria.refresh', () =>
+    runScan(context)
   );
 
   const openPreviewCommand = vscode.commands.registerCommand(
@@ -39,12 +42,7 @@ export async function activate(context: vscode.ExtensionContext) {
       const workspaceFolders = vscode.workspace.workspaceFolders;
       const workspacePath = workspaceFolders?.[0]?.uri.fsPath;
       const thumbPath = treeProvider.getThumbnail(asset.path);
-      AnimoriaPreviewPanel.render(
-        context.extensionUri,
-        asset,
-        thumbPath,
-        workspacePath,
-      );
+      AnimoriaPreviewPanel.render(context.extensionUri, asset, thumbPath, workspacePath);
     }
   );
 
@@ -57,37 +55,32 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   );
 
-  const searchCommand = vscode.commands.registerCommand(
-    'animoria.search',
-    () => {
-      const quickPick = vscode.window.createQuickPick();
-      quickPick.placeholder = 'Search animations...';
-      quickPick.items = treeProvider.getAssets().map(a => ({
-        label: a.stem,
-        description: a.metadata
-          ? `${a.metadata.fps}fps · ${a.metadata.durationSeconds}s`
-          : a.status,
-        detail: a.path,
-      }));
-      quickPick.onDidChangeValue(query => {
-        treeProvider.setQuery(query);
-      });
-      quickPick.onDidHide(() => {
-        treeProvider.setQuery('');
-        quickPick.dispose();
-      });
-      quickPick.show();
-    }
+  const searchCommand = vscode.commands.registerCommand('animoria.search', () => {
+    const quickPick = vscode.window.createQuickPick();
+    quickPick.placeholder = 'Search animations...';
+    quickPick.items = treeProvider.getAssets().map((a) => ({
+      label: a.stem,
+      description: a.metadata
+        ? `${'fps' in a.metadata ? a.metadata.fps + 'fps · ' : ''}${a.metadata.durationSeconds}s`
+        : a.status,
+      detail: a.path,
+    }));
+    quickPick.onDidChangeValue((query) => {
+      treeProvider.setQuery(query);
+    });
+    quickPick.onDidHide(() => {
+      treeProvider.setQuery('');
+      quickPick.dispose();
+    });
+    quickPick.show();
+  });
+
+  const governanceCommand = vscode.commands.registerCommand('animoria.runGovernance', () =>
+    runGovernance()
   );
 
-  const governanceCommand = vscode.commands.registerCommand(
-    'animoria.runGovernance',
-    () => runGovernance()
-  );
-
-  const exportCommand = vscode.commands.registerCommand(
-    'animoria.exportGovernanceReport',
-    () => exportGovernanceReport()
+  const exportCommand = vscode.commands.registerCommand('animoria.exportGovernanceReport', () =>
+    exportGovernanceReport()
   );
 
   const deleteCommand = vscode.commands.registerCommand(
@@ -115,7 +108,7 @@ export async function activate(context: vscode.ExtensionContext) {
     searchCommand,
     governanceCommand,
     exportCommand,
-    deleteCommand,
+    deleteCommand
   );
 
   // 4. Run initial scan
@@ -197,26 +190,23 @@ async function runScan(_context: vscode.ExtensionContext) {
         const chromiumPath = resolveChromiumPath();
 
         if (!chromiumPath) {
-          vscode.window.showWarningMessage(
-            'Animoria: Chrome not found. Thumbnails disabled. ' +
-            'Set animoria.chromiumPath in settings to enable.',
-            'Open Settings'
-          ).then(selection => {
-            if (selection === 'Open Settings') {
-              vscode.commands.executeCommand(
-                'workbench.action.openSettings',
-                'animoria.chromiumPath'
-              );
-            }
-          });
+          vscode.window
+            .showWarningMessage(
+              'Animoria: Chrome not found. Thumbnails disabled. ' +
+                'Set animoria.chromiumPath in settings to enable.',
+              'Open Settings'
+            )
+            .then((selection) => {
+              if (selection === 'Open Settings') {
+                vscode.commands.executeCommand(
+                  'workbench.action.openSettings',
+                  'animoria.chromiumPath'
+                );
+              }
+            });
         } else {
           // Fire-and-forget — gallery is immediately usable
-          generateThumbnailsInBackground(
-            result.assets,
-            workspacePath,
-            chromiumPath,
-            treeProvider
-          );
+          generateThumbnailsInBackground(result.assets, workspacePath, chromiumPath, treeProvider);
         }
       }
     }
@@ -227,8 +217,9 @@ async function generateThumbnailsInBackground(
   assets: AnimoriaAsset[],
   workspacePath: string,
   chromiumPath: string,
-  provider: AnimoriaTreeProvider,
+  provider: AnimoriaTreeProvider
 ): Promise<void> {
+  const abortController = new AbortController();
   const generator = new ThumbnailGenerator({
     workspacePath,
     chromiumPath,
@@ -236,8 +227,11 @@ async function generateThumbnailsInBackground(
     concurrency: 4,
   });
 
+  const entry = { generator, abortController };
+  activeGenerators.add(entry);
+
   try {
-    const batch = await generator.generateBatch(assets);
+    const batch = await generator.generateBatch(assets, abortController.signal);
 
     for (const r of batch.results) {
       if (r.thumbnailPath) {
@@ -247,12 +241,17 @@ async function generateThumbnailsInBackground(
 
     vscode.window.setStatusBarMessage(
       `Animoria: ${batch.generated} thumbnails generated · ` +
-      `${batch.fromCache} cached · ${batch.failed} failed`,
+        `${batch.fromCache} cached · ${batch.failed} failed`,
       5000
     );
   } catch (err) {
-    console.error('Animoria thumbnail generation failed:', err);
+    if (abortController.signal.aborted) {
+      console.log('Animoria: Thumbnail generation aborted successfully.');
+    } else {
+      console.error('Animoria thumbnail generation failed:', err);
+    }
   } finally {
+    activeGenerators.delete(entry);
     await generator.dispose();
   }
 }
@@ -265,9 +264,7 @@ async function runGovernance(): Promise<void> {
   const assets = treeProvider.getAssets();
 
   if (assets.length === 0) {
-    vscode.window.showInformationMessage(
-      'Animoria: No assets found. Run a scan first.'
-    );
+    vscode.window.showInformationMessage('Animoria: No assets found. Run a scan first.');
     return;
   }
 
@@ -293,26 +290,30 @@ async function runGovernance(): Promise<void> {
       lastGovernanceReport = report;
       treeProvider.setGovernanceReport(report);
 
-      const total =
-        report.unused.length + report.duplicates.length + report.overused.length;
+      const total = report.unused.length + report.duplicates.length + report.overused.length;
 
-      const summary = total === 0
-        ? 'No governance issues found.'
-        : [
-            report.unused.length > 0 ? `${report.unused.length} unused` : '',
-            report.duplicates.length > 0 ? `${report.duplicates.length} duplicate` : '',
-            report.overused.length > 0 ? `${report.overused.length} overused` : '',
-          ].filter(Boolean).join(' · ');
+      const summary =
+        total === 0
+          ? 'No governance issues found.'
+          : [
+              report.unused.length > 0 ? `${report.unused.length} unused` : '',
+              report.duplicates.length > 0 ? `${report.duplicates.length} duplicate` : '',
+              report.overused.length > 0 ? `${report.overused.length} overused` : '',
+            ]
+              .filter(Boolean)
+              .join(' · ');
 
       vscode.window.setStatusBarMessage(`Animoria Governance: ${summary}`, 8000);
 
       if (total > 0) {
-        vscode.window.showInformationMessage(
-          `Animoria found ${total} governance issue(s): ${summary}`,
-          'Export Report'
-        ).then(selection => {
-          if (selection === 'Export Report') exportGovernanceReport();
-        });
+        vscode.window
+          .showInformationMessage(
+            `Animoria found ${total} governance issue(s): ${summary}`,
+            'Export Report'
+          )
+          .then((selection) => {
+            if (selection === 'Export Report') exportGovernanceReport();
+          });
       }
     }
   );
@@ -337,7 +338,7 @@ async function exportGovernanceReport(): Promise<void> {
 
   const saveUri = await vscode.window.showSaveDialog({
     defaultUri,
-    filters: { 'Markdown': ['md'], 'JSON': ['json'] },
+    filters: { Markdown: ['md'], JSON: ['json'] },
     title: 'Export Governance Report',
   });
 
@@ -392,7 +393,7 @@ function buildMarkdownReport(report: GovernanceReport): string {
     lines.push('| Asset | Identical To | Path |');
     lines.push('| :--- | :--- | :--- |');
     for (const issue of report.duplicates) {
-      const others = issue.duplicateOf?.map(a => `\`${a.name}\``).join(', ') ?? '—';
+      const others = issue.duplicateOf?.map((a) => `\`${a.name}\``).join(', ') ?? '—';
       lines.push(`| \`${issue.asset.name}\` | ${others} | ${issue.asset.path} |`);
     }
     lines.push('');
@@ -416,6 +417,24 @@ function buildMarkdownReport(report: GovernanceReport): string {
   return lines.join('\n');
 }
 
-export function deactivate() {
+export async function deactivate(): Promise<void> {
   fileWatcher?.dispose();
+
+  if (activeGenerators.size > 0) {
+    const disposePromises = Array.from(activeGenerators).map(async (entry) => {
+      entry.abortController.abort();
+      try {
+        await entry.generator.dispose();
+      } catch {
+        // ignore errors during shutdown
+      }
+    });
+
+    // Wait at most 1500ms for clean shutdown of all generators
+    await Promise.race([
+      Promise.all(disposePromises),
+      new Promise<void>((resolve) => setTimeout(resolve, 1500)),
+    ]);
+    activeGenerators.clear();
+  }
 }

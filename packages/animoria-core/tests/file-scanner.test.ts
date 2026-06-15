@@ -5,7 +5,6 @@ import { FileScanner } from '../src/scanner/file-scanner';
 const WORKSPACE = resolve(__dirname, './fixtures/workspace');
 
 describe('FileScanner', () => {
-
   // --- scan() basic ---
 
   describe('scan() — basic detection', () => {
@@ -40,7 +39,7 @@ describe('FileScanner', () => {
     it('asset name includes extension', async () => {
       const scanner = new FileScanner({ workspacePath: WORKSPACE });
       const result = await scanner.scan();
-      const names = result.assets.map(a => a.name);
+      const names = result.assets.map((a) => a.name);
       expect(names).toContain('success.json');
       expect(names).toContain('loading.json');
       expect(names).toContain('confetti.json');
@@ -49,7 +48,7 @@ describe('FileScanner', () => {
     it('asset stem does not include extension', async () => {
       const scanner = new FileScanner({ workspacePath: WORKSPACE });
       const result = await scanner.scan();
-      const stems = result.assets.map(a => a.stem);
+      const stems = result.assets.map((a) => a.stem);
       expect(stems).toContain('success');
       expect(stems).toContain('loading');
       expect(stems).toContain('confetti');
@@ -75,15 +74,15 @@ describe('FileScanner', () => {
     it('excludes node_modules by default', async () => {
       const scanner = new FileScanner({ workspacePath: WORKSPACE });
       const result = await scanner.scan();
-      const paths = result.assets.map(a => a.path);
-      expect(paths.every(p => !p.includes('node_modules'))).toBe(true);
+      const paths = result.assets.map((a) => a.path);
+      expect(paths.every((p) => !p.includes('node_modules'))).toBe(true);
     });
 
     it('excludes dist by default', async () => {
       const scanner = new FileScanner({ workspacePath: WORKSPACE });
       const result = await scanner.scan();
-      const paths = result.assets.map(a => a.path);
-      expect(paths.every(p => !p.includes('/dist/'))).toBe(true);
+      const paths = result.assets.map((a) => a.path);
+      expect(paths.every((p) => !p.includes('/dist/'))).toBe(true);
     });
   });
 
@@ -115,14 +114,14 @@ describe('FileScanner', () => {
     it('does not include non-Lottie JSON files (arrow.json)', async () => {
       const scanner = new FileScanner({ workspacePath: WORKSPACE });
       const result = await scanner.scan();
-      const names = result.assets.map(a => a.name);
+      const names = result.assets.map((a) => a.name);
       expect(names).not.toContain('arrow.json');
     });
 
     it('does not include workspace package.json', async () => {
       const scanner = new FileScanner({ workspacePath: WORKSPACE });
       const result = await scanner.scan();
-      const names = result.assets.map(a => a.name);
+      const names = result.assets.map((a) => a.name);
       expect(names).not.toContain('package.json');
     });
   });

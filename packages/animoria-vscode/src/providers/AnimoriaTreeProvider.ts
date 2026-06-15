@@ -1,6 +1,12 @@
 import * as vscode from 'vscode';
 import { basename } from 'path';
-import type { AnimoriaAsset, UsageReference, GovernanceIssue, GovernanceReport, GovernanceCategory } from '@animoria/core';
+import type {
+  AnimoriaAsset,
+  UsageReference,
+  GovernanceIssue,
+  GovernanceReport,
+  GovernanceCategory,
+} from '@animoria/core';
 import { UsageScanner } from '@animoria/core';
 import { AnimoriaPreviewPanel } from '../panels/AnimoriaPreviewPanel';
 import { resolveScopePath } from '../utils/resolve-scope-path';
@@ -12,9 +18,7 @@ export class AnimoriaUsageItem extends vscode.TreeItem {
     const label = `${basename(ref.file)}:${ref.line}`;
     super(label, vscode.TreeItemCollapsibleState.None);
 
-    this.description = ref.content.length > 60
-      ? ref.content.slice(0, 60) + '…'
-      : ref.content;
+    this.description = ref.content.length > 60 ? ref.content.slice(0, 60) + '…' : ref.content;
     this.tooltip = `${ref.file}\n${ref.content}`;
     this.iconPath = new vscode.ThemeIcon('references');
     this.contextValue = 'animoriaUsage';
@@ -50,7 +54,7 @@ export class AnimoriaTreeItem extends vscode.TreeItem {
 
     if (asset.status === 'parsed' && asset.metadata) {
       const m = asset.metadata;
-      this.description = `${m.fps}fps · ${m.durationSeconds}s · ${m.width}×${m.height}`;
+      this.description = `${'fps' in m ? m.fps + 'fps · ' : ''}${m.durationSeconds}s · ${m.width}×${m.height}`;
       this.iconPath = thumbnailPath
         ? vscode.Uri.file(thumbnailPath)
         : new vscode.ThemeIcon('play-circle');
@@ -77,14 +81,12 @@ export class AnimoriaGovernanceSectionItem extends vscode.TreeItem {
     label: string,
     count: number,
     public readonly category: GovernanceCategory,
-    collapsibleState: vscode.TreeItemCollapsibleState,
+    collapsibleState: vscode.TreeItemCollapsibleState
   ) {
     super(`${label} (${count})`, collapsibleState);
 
     const iconName =
-      category === 'unused'     ? 'circle-slash'
-      : category === 'duplicate' ? 'copy'
-      : 'flame';
+      category === 'unused' ? 'circle-slash' : category === 'duplicate' ? 'copy' : 'flame';
 
     this.iconPath = new vscode.ThemeIcon(iconName);
     this.contextValue = 'animoriaGovernanceSection';
@@ -130,9 +132,7 @@ type AnyTreeElement =
   | AnimoriaGovernanceSectionItem
   | AnimoriaGovernanceIssueItem;
 
-export class AnimoriaTreeProvider
-  implements vscode.TreeDataProvider<AnyTreeElement>
-{
+export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElement> {
   private _assets: AnimoriaAsset[] = [];
   private _workspacePath: string;
   private _query: string = '';
@@ -142,8 +142,7 @@ export class AnimoriaTreeProvider
   private _governanceReport: GovernanceReport | null = null;
   private _governanceSections: AnimoriaGovernanceSectionItem[] = [];
 
-  private _onDidChangeTreeData =
-    new vscode.EventEmitter<AnyTreeElement | undefined | void>();
+  private _onDidChangeTreeData = new vscode.EventEmitter<AnyTreeElement | undefined | void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   constructor(workspacePath: string = '') {
@@ -159,13 +158,13 @@ export class AnimoriaTreeProvider
     if (!element) {
       const assets = this._query
         ? this._assets.filter(
-            a =>
+            (a) =>
               a.name.toLowerCase().includes(this._query.toLowerCase()) ||
               a.stem.toLowerCase().includes(this._query.toLowerCase())
           )
         : this._assets;
 
-      const assetItems: AnimoriaTreeItem[] = assets.map(a => {
+      const assetItems: AnimoriaTreeItem[] = assets.map((a) => {
         const thumb = this._thumbnails.get(a.path);
         const item = new AnimoriaTreeItem(a, thumb);
         // Restore cached usage refs and description if available
@@ -174,7 +173,7 @@ export class AnimoriaTreeProvider
           item.usageRefs = cached;
           if (a.status === 'parsed' && a.metadata) {
             const m = a.metadata;
-            item.description = `${m.fps}fps · ${m.durationSeconds}s · ${cached.length} refs`;
+            item.description = `${'fps' in m ? m.fps + 'fps · ' : ''}${m.durationSeconds}s · ${cached.length} refs`;
           }
         }
         this._itemMap.set(a.path, item);
@@ -188,10 +187,12 @@ export class AnimoriaTreeProvider
     if (element instanceof AnimoriaGovernanceSectionItem) {
       if (!this._governanceReport) return [];
       const issues =
-        element.category === 'unused'     ? this._governanceReport.unused
-        : element.category === 'duplicate' ? this._governanceReport.duplicates
-        : this._governanceReport.overused;
-      return issues.map(i => new AnimoriaGovernanceIssueItem(i));
+        element.category === 'unused'
+          ? this._governanceReport.unused
+          : element.category === 'duplicate'
+            ? this._governanceReport.duplicates
+            : this._governanceReport.overused;
+      return issues.map((i) => new AnimoriaGovernanceIssueItem(i));
     }
 
     // Asset level — return usage references (lazy load)
@@ -222,7 +223,9 @@ export class AnimoriaTreeProvider
     if (r.unused.length > 0) {
       this._governanceSections.push(
         new AnimoriaGovernanceSectionItem(
-          'Unused Assets', r.unused.length, 'unused',
+          'Unused Assets',
+          r.unused.length,
+          'unused',
           vscode.TreeItemCollapsibleState.Collapsed
         )
       );
@@ -230,7 +233,9 @@ export class AnimoriaTreeProvider
     if (r.duplicates.length > 0) {
       this._governanceSections.push(
         new AnimoriaGovernanceSectionItem(
-          'Duplicates', r.duplicates.length, 'duplicate',
+          'Duplicates',
+          r.duplicates.length,
+          'duplicate',
           vscode.TreeItemCollapsibleState.Collapsed
         )
       );
@@ -238,7 +243,9 @@ export class AnimoriaTreeProvider
     if (r.overused.length > 0) {
       this._governanceSections.push(
         new AnimoriaGovernanceSectionItem(
-          'Overused Assets', r.overused.length, 'overused',
+          'Overused Assets',
+          r.overused.length,
+          'overused',
           vscode.TreeItemCollapsibleState.Collapsed
         )
       );
@@ -257,7 +264,7 @@ export class AnimoriaTreeProvider
     });
 
     const result = await scanner.search();
-    const usageItems = result.references.map(r => new AnimoriaUsageItem(r));
+    const usageItems = result.references.map((r) => new AnimoriaUsageItem(r));
 
     this._usageCache.set(item.asset.path, usageItems);
     item.usageRefs = usageItems;
@@ -265,7 +272,7 @@ export class AnimoriaTreeProvider
     // Update description on the live item
     if (item.asset.status === 'parsed' && item.asset.metadata) {
       const m = item.asset.metadata;
-      item.description = `${m.fps}fps · ${m.durationSeconds}s · ${usageItems.length} refs`;
+      item.description = `${'fps' in m ? m.fps + 'fps · ' : ''}${m.durationSeconds}s · ${usageItems.length} refs`;
     } else {
       item.description = `${usageItems.length} refs`;
     }
@@ -313,7 +320,7 @@ export class AnimoriaTreeProvider
   }
 
   addAsset(asset: AnimoriaAsset): void {
-    const existing = this._assets.findIndex(a => a.path === asset.path);
+    const existing = this._assets.findIndex((a) => a.path === asset.path);
     if (existing !== -1) {
       this.updateAsset(asset);
       return;
@@ -323,7 +330,7 @@ export class AnimoriaTreeProvider
   }
 
   updateAsset(asset: AnimoriaAsset): void {
-    const index = this._assets.findIndex(a => a.path === asset.path);
+    const index = this._assets.findIndex((a) => a.path === asset.path);
     if (index === -1) {
       this.addAsset(asset);
       return;
@@ -336,7 +343,7 @@ export class AnimoriaTreeProvider
   }
 
   removeAsset(path: string): void {
-    this._assets = this._assets.filter(a => a.path !== path);
+    this._assets = this._assets.filter((a) => a.path !== path);
     this._usageCache.delete(path);
     this._itemMap.delete(path);
     this._onDidChangeTreeData.fire();

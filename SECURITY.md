@@ -49,4 +49,4 @@ For ecosystem-wide security concerns, use the email above.
 
 ---
 
-*Animoria is a Sxnnyside Project Tool. Part of the Sxnnyside Project.*
+_Animoria is a Sxnnyside Project Tool. Part of the Sxnnyside Project._

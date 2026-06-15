@@ -6,7 +6,6 @@ import { AssetParser } from '../src/parser/asset-parser';
 const WORKSPACE = resolve(__dirname, './fixtures/workspace');
 
 describe('AssetParser', () => {
-
   describe('parse() — basic flow', () => {
     it('returns an AssetParserResult object', async () => {
       const scanner = new FileScanner({ workspacePath: WORKSPACE });
@@ -33,7 +32,7 @@ describe('AssetParser', () => {
       const scanResult = await scanner.scan();
       const parser = new AssetParser();
       const result = await parser.parse(scanResult.assets);
-      expect(result.assets.every(a => a.status === 'parsed')).toBe(true);
+      expect(result.assets.every((a) => a.status === 'parsed')).toBe(true);
     });
 
     it('populates metadata on each asset', async () => {

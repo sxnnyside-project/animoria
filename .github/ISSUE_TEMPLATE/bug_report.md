@@ -1,9 +1,9 @@
 ---
 name: Bug Report
 about: Something isn't working as expected
-title: "fix: "
+title: 'fix: '
 labels: bug
-assignees: ""
+assignees: ''
 ---
 
 ## What happened?
@@ -12,16 +12,16 @@ assignees: ""
 
 ## Steps to reproduce
 
-1. 
-2. 
-3. 
+1.
+2.
+3.
 
 ## Environment
 
-- OS: 
-- Animoria version: 
-- VS Code version: 
-- Node.js version: 
+- OS:
+- Animoria version:
+- VS Code version:
+- Node.js version:
 
 ## Additional context
 

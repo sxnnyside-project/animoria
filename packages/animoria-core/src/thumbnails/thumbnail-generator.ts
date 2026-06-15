@@ -1,6 +1,6 @@
 import puppeteer from 'puppeteer-core';
 import type { Browser } from 'puppeteer-core';
-import { mkdir, writeFile, access } from 'fs/promises';
+import { mkdir, writeFile, access, readFile } from 'fs/promises';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { createHash } from 'crypto';
@@ -16,6 +16,7 @@ export class ThumbnailGenerator {
   private _config: ThumbnailConfig;
   private _browser: Browser | null = null;
   private _thumbnailDir: string;
+  private _isDisposed = false;
 
   static readonly DEFAULT_WIDTH = 256;
   static readonly DEFAULT_HEIGHT = 256;
@@ -25,12 +26,19 @@ export class ThumbnailGenerator {
     this._thumbnailDir = join(config.workspacePath, '.animoria', 'thumbnails');
   }
 
-  async generateBatch(assets: AnimoriaAsset[]): Promise<ThumbnailBatchResult> {
+  async generateBatch(
+    assets: AnimoriaAsset[],
+    signal?: AbortSignal
+  ): Promise<ThumbnailBatchResult> {
     const start = performance.now();
     const concurrency = this._config.concurrency ?? 4;
 
+    if (signal?.aborted || this._isDisposed) {
+      throw new Error('Thumbnail generation aborted before starting.');
+    }
+
     // Only process successfully parsed assets
-    const parsed = assets.filter(a => a.status === 'parsed');
+    const parsed = assets.filter((a) => a.status === 'parsed');
 
     await mkdir(this._thumbnailDir, { recursive: true });
 
@@ -49,19 +57,31 @@ export class ThumbnailGenerator {
 
     const generatedResults: ThumbnailResult[] = [];
 
-    if (toGenerate.length > 0) {
-      this._browser = await puppeteer.launch({
-        executablePath: this._config.chromiumPath,
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-web-security'],
-      });
+    const onAbort = () => {
+      this.dispose().catch(() => {});
+    };
 
-      try {
+    if (signal) {
+      signal.addEventListener('abort', onAbort);
+    }
+
+    try {
+      if (toGenerate.length > 0 && !this._isDisposed) {
+        this._browser = await puppeteer.launch({
+          executablePath: this._config.chromiumPath,
+          headless: true,
+          handleSIGINT: true,
+          handleSIGTERM: true,
+          handleSIGHUP: true,
+          args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-web-security'],
+        });
+
         for (let i = 0; i < toGenerate.length; i += concurrency) {
+          if (signal?.aborted || this._isDisposed) {
+            break;
+          }
           const batch = toGenerate.slice(i, i + concurrency);
-          const settled = await Promise.allSettled(
-            batch.map(asset => this._generateOne(asset))
-          );
+          const settled = await Promise.allSettled(batch.map((asset) => this._generateOne(asset)));
           for (const outcome of settled) {
             if (outcome.status === 'fulfilled') {
               generatedResults.push(outcome.value);
@@ -76,21 +96,23 @@ export class ThumbnailGenerator {
             }
           }
         }
-      } finally {
-        await this._browser.close();
-        this._browser = null;
       }
+    } finally {
+      if (signal) {
+        signal.removeEventListener('abort', onAbort);
+      }
+      await this.dispose();
     }
 
-    const cachedResults: ThumbnailResult[] = cached.map(asset => ({
+    const cachedResults: ThumbnailResult[] = cached.map((asset) => ({
       asset,
       thumbnailPath: this._thumbnailPath(asset),
       fromCache: true,
     }));
 
     const allResults = [...cachedResults, ...generatedResults];
-    const generated = generatedResults.filter(r => r.thumbnailPath !== null).length;
-    const failed = generatedResults.filter(r => r.thumbnailPath === null).length;
+    const generated = generatedResults.filter((r) => r.thumbnailPath !== null).length;
+    const failed = generatedResults.filter((r) => r.thumbnailPath === null).length;
 
     return {
       results: allResults,
@@ -114,14 +136,49 @@ export class ThumbnailGenerator {
       return { asset, thumbnailPath: targetPath, fromCache: true };
     }
 
+    // Para formatos planos rasterizados (GIF/APNG), copiamos directamente el archivo en la caché
+    if (asset.format === 'gif' || asset.format === 'apng') {
+      try {
+        const content = await readFile(asset.path);
+        await writeFile(targetPath, content);
+        return { asset, thumbnailPath: targetPath, fromCache: false };
+      } catch (err) {
+        return {
+          asset,
+          thumbnailPath: null,
+          fromCache: false,
+          error: `Failed to copy raster file: ${err}`,
+        };
+      }
+    }
+
+    if (this._isDisposed || !this._browser) {
+      return {
+        asset,
+        thumbnailPath: null,
+        fromCache: false,
+        error: 'Thumbnail generator has been disposed',
+      };
+    }
+
     const width = this._config.width ?? ThumbnailGenerator.DEFAULT_WIDTH;
     const height = this._config.height ?? ThumbnailGenerator.DEFAULT_HEIGHT;
 
     try {
-      const page = await this._browser!.newPage();
+      const page = await this._browser.newPage();
       try {
         await page.setViewport({ width, height });
-        await page.setContent(this._getLottieHtml(asset), {
+
+        let htmlContent = '';
+        if (asset.format === 'rive') {
+          htmlContent = this._getRiveHtml(asset);
+        } else if (asset.format === 'animated-svg') {
+          htmlContent = this._getSvgHtml(asset);
+        } else {
+          htmlContent = this._getLottieHtml(asset);
+        }
+
+        await page.setContent(htmlContent, {
           waitUntil: 'domcontentloaded',
         });
         await page.waitForSelector('#ready', { timeout: 5000 });
@@ -142,14 +199,90 @@ export class ThumbnailGenerator {
     }
   }
 
+  private _getSvgHtml(asset: AnimoriaAsset): string {
+    const raw = readFileSync(asset.path, 'utf-8');
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8"/>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; display: flex; align-items: center; justify-content: center; }
+    svg { max-width: 100%; max-height: 100%; }
+  </style>
+</head>
+<body>
+  ${raw}
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        const ready = document.createElement('div');
+        ready.id = 'ready';
+        document.body.appendChild(ready);
+      }, 200);
+    });
+  </script>
+</body>
+</html>`;
+  }
+
+  private _getRiveHtml(asset: AnimoriaAsset): string {
+    const raw = readFileSync(asset.path);
+    const base64 = raw.toString('base64');
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8"/>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
+    canvas { width: 100%; height: 100%; display: block; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <script src="https://unpkg.com/@rive-app/canvas@2.7.0" integrity="sha384-/eeUnIO+LtJFuHxtEY5yYVsmKsTCTjuvu2z8iuhGBPdGjwNjS9K7AItr+MyUr+Zh" crossorigin="anonymous"></script>
+  <script>
+    const base64Data = "${base64}";
+    const binaryString = atob(base64Data);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    
+    rive.Rive.load({
+      buffer: bytes.buffer,
+      canvas: document.getElementById('canvas'),
+      autoplay: true,
+      onLoad: () => {
+        setTimeout(() => {
+          const ready = document.createElement('div');
+          ready.id = 'ready';
+          document.body.appendChild(ready);
+        }, 500);
+      },
+      onLoadError: () => {
+        const ready = document.createElement('div');
+        ready.id = 'ready';
+        document.body.appendChild(ready);
+      }
+    });
+  </script>
+</body>
+</html>`;
+  }
+
   private _getLottieHtml(asset: AnimoriaAsset): string {
     const frameStrategy = this._config.frame ?? 'first';
-    const totalFrames = asset.metadata?.totalFrames ?? 0;
-    const targetFrame = frameStrategy === 'middle'
-      ? Math.floor(totalFrames / 2)
-      : 0;
+    const totalFrames =
+      asset.metadata &&
+      (asset.metadata.format === 'lottie' || asset.metadata.format === 'dotlottie')
+        ? asset.metadata.totalFrames
+        : 0;
+    const targetFrame = frameStrategy === 'middle' ? Math.floor(totalFrames / 2) : 0;
 
-    // Embed raw JSON directly — it's already valid JSON, no stringify needed
     const raw = readFileSync(asset.path, 'utf-8');
 
     return `<!DOCTYPE html>
@@ -164,7 +297,7 @@ export class ThumbnailGenerator {
 </head>
 <body>
   <div id="container"></div>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.12.2/lottie.min.js" integrity="sha384-J8C0MvgX4WP58J4N2W99vCKd2J6z99ynOJ5bEfE6jeP7kVTW1drYtv/jzrxM5jbm" crossorigin="anonymous"></script>
   <script>
     window.__ANIM_DATA__ = ${raw};
 
@@ -188,9 +321,15 @@ export class ThumbnailGenerator {
   }
 
   async dispose(): Promise<void> {
+    this._isDisposed = true;
     if (this._browser) {
-      await this._browser.close();
-      this._browser = null;
+      try {
+        await this._browser.close();
+      } catch {
+        // ignore already closed error
+      } finally {
+        this._browser = null;
+      }
     }
   }
 }

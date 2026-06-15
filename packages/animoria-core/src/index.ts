@@ -6,3 +6,4 @@ export * from './animoria.js';
 export * from './usage/index.js';
 export * from './thumbnails/index.js';
 export * from './governance/index.js';
+export * from './i18n/locales.js';

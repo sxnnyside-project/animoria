@@ -54,6 +54,7 @@ This is the first public release of Animoria — Visual Asset Memory for Develop
 #### Added
 
 **Gallery Sidebar**
+
 - Auto-scans workspace for Lottie `.json` animation files on activation and on workspace change
 - Collapsible tree view with per-asset usage references as child nodes
 - Inline quick-pick search to filter assets by name
@@ -61,6 +62,7 @@ This is the first public release of Animoria — Visual Asset Memory for Develop
 - Status bar progress during scan and thumbnail generation
 
 **Enhanced Preview Panel**
+
 - Thumbnail header — static PNG identity image, asset name, format badge, and FPS/duration/dimension summary
 - Live Lottie player with Play, Pause, Restart, and Loop toggle controls
 - Metadata grid — 8 fields: Format, FPS, Duration, Frames, Dimensions, Layers, Markers, File Size
@@ -69,11 +71,13 @@ This is the first public release of Animoria — Visual Asset Memory for Develop
 - "Searching codebase…" loading state while usage scan runs; results appear progressively
 
 **Usage Scanner (`@animoria/core`)**
+
 - Pattern-based search across `.ts`, `.tsx`, `.js`, `.jsx`, `.vue`, `.swift`, `.kt`, `.dart`, `.py`, `.cs`, `.svelte`
 - Batch file processing with configurable concurrency
 - Returns file path, line number, and matched line content
 
 **Thumbnail Generator (`@animoria/core`)**
+
 - Headless Chrome renders a PNG from the middle frame of each animation
 - Disk cache keyed by content hash — unchanged files skip re-render
 - Background non-blocking generation; gallery is immediately usable while thumbnails load
@@ -81,10 +85,12 @@ This is the first public release of Animoria — Visual Asset Memory for Develop
 - Manual override via `animoria.chromiumPath` setting
 
 **File Watcher**
+
 - Real-time monitoring for added, changed, and removed animation files
 - Panel notifies user when the currently previewed asset is deleted
 
 **Settings**
+
 - `animoria.enableThumbnails` — toggle thumbnail generation
 - `animoria.chromiumPath` — manual Chromium path override
 

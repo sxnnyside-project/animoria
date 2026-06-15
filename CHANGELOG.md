@@ -20,6 +20,25 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.2.0] — 2026-06-15
+
+### Added
+
+- **animoria-core**: Parser Modular Pipeline architecture implementing the Strategy pattern (`AssetParser` interface and `ParserRegistry`) to dynamically register and load custom format parsers.
+- **animoria-core**: Multiformat support:
+  - `RiveParser` parses `.riv` files, detects Rive magic bytes/binary headers, and extracts metadata including active artboards, state machines, and animations.
+  - `RasterAnimatedParser` parses `.gif` and `.apng` files, checks signatures and APNG `acTL` chunks to estimate frames and extract canvas dimensions.
+  - `SvgAnimatedParser` parses `.svg` files using XML parsing, scanning elements like `<animate>`, `<animateTransform>`, and CSS animation classes to detect animated status.
+- **animoria-core**: Pentalingual localization engine (`locales.ts`) supporting English (`en`), Spanish (`es`), Japanese (`ja`), French (`fr`), and Simplified Chinese (`zh-CN`) translations.
+- **animoria-core**: Security Hardening:
+  - Input sanitization logic (`sanitizeMetadataString`) protecting UI renderers (VS Code Webviews/JetBrains JCEF) from script injection vectors in asset metadata.
+  - SRI hash (`sha384`) verification for CDN-loaded libraries inside the headless Chromium thumbnail generator context.
+- **animoria-vscode**: Governance config and UI integration. Restricts `chromiumPath` to user-level configuration settings, warning users and bypassing insecure workspace-level overrides.
+- **animoria-vscode**: Multi-IDE telemetry sync and visual loading progress indicators. Added neon interactive Cyberpunk progress bars and intermediate scanning status updates.
+- **animoria-jetbrains**: Reimplemented parser logic in native Kotlin and embedded JCEF browser environment reusing Lit Web Component assets compiled from Vite monorepo.
+
+---
+
 ## [0.1.0] — 2026-06-08
 
 ### Added
@@ -45,5 +64,6 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/sxnnyside-project/animoria/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/sxnnyside-project/animoria/releases/tag/v0.1.0

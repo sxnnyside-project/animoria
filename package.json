@@ -6,9 +6,23 @@
     "build": "turbo build",
     "test": "turbo test",
     "lint": "turbo lint",
-    "dev": "turbo dev"
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
+    "audit": "pnpm audit",
+    "dev": "turbo dev",
+    "sandbox": "turbo run dev --filter=animoria-sandbox",
+    "package:vscode": "pnpm --filter animoria-vscode package",
+    "package:jetbrains": "pnpm --filter animoria-sandbox build && mkdir -p packages/animoria-jetbrains/src/main/resources/assets && cp -r apps/animoria-sandbox/dist/* packages/animoria-jetbrains/src/main/resources/assets/ && cd packages/animoria-jetbrains && ./gradlew buildPlugin",
+    "package:all": "pnpm package:vscode && pnpm package:jetbrains"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@typescript-eslint/eslint-plugin": "^8.61.0",
+    "@typescript-eslint/parser": "^8.61.0",
+    "eslint": "^10.5.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.6.0",
+    "prettier": "^3.8.4",
     "turbo": "latest",
     "typescript": "^5.0.0"
   }

@@ -2,16 +2,21 @@ import { readFile } from 'fs/promises';
 import { performance } from 'perf_hooks';
 import { resolve } from 'path';
 import fg from 'fast-glob';
-import type {
-  UsageSearchConfig,
-  UsageSearchResult,
-  UsageReference,
-} from '../types/asset.js';
+import type { UsageSearchConfig, UsageSearchResult, UsageReference } from '../types/asset.js';
 import { buildPatternsForAsset } from './reference-patterns.js';
 
 const DEFAULT_EXTENSIONS = [
-  '.ts', '.tsx', '.js', '.jsx',
-  '.swift', '.kt', '.dart', '.vue', '.svelte', '.py', '.cs',
+  '.ts',
+  '.tsx',
+  '.js',
+  '.jsx',
+  '.swift',
+  '.kt',
+  '.dart',
+  '.vue',
+  '.svelte',
+  '.py',
+  '.cs',
 ];
 
 const DEFAULT_EXCLUDE = [
@@ -28,16 +33,11 @@ function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function lineMatchesAsset(
-  line: string,
-  filename: string,
-  stem: string,
-  strategy: string
-): boolean {
+function lineMatchesAsset(line: string, filename: string, stem: string, strategy: string): boolean {
   switch (strategy) {
     case 'pattern': {
       const patterns = buildPatternsForAsset(filename, stem);
-      return patterns.some(p => p.test(line));
+      return patterns.some((p) => p.test(line));
     }
     case 'filename': {
       return line.includes(filename);
@@ -69,7 +69,7 @@ export class UsageScanner {
       scopePath,
     } = this.config;
 
-    const extList = extensions.map(e => e.replace(/^\./, '')).join(',');
+    const extList = extensions.map((e) => e.replace(/^\./, '')).join(',');
     const pattern = `**/*.{${extList}}`;
     const ignorePatterns = [...DEFAULT_EXCLUDE, ...exclude];
 
@@ -84,7 +84,7 @@ export class UsageScanner {
     for (let i = 0; i < files.length; i += BATCH_SIZE) {
       const batch = files.slice(i, i + BATCH_SIZE);
       const batchResults = await Promise.all(
-        batch.map(file => this._searchFile(file, asset.name, asset.stem, strategy))
+        batch.map((file) => this._searchFile(file, asset.name, asset.stem, strategy))
       );
       for (const refs of batchResults) {
         references.push(...refs);
@@ -93,7 +93,7 @@ export class UsageScanner {
 
     if (scopePath) {
       const scope = resolve(scopePath);
-      references = references.filter(r => r.file.startsWith(scope));
+      references = references.filter((r) => r.file.startsWith(scope));
     }
 
     return {

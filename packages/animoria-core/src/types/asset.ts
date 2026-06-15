@@ -1,12 +1,6 @@
 import type { AnimoriaMetadata } from './metadata.js';
 
-export type AnimatedFormat =
-  | 'lottie'
-  | 'dotlottie'
-  | 'rive'
-  | 'gif'
-  | 'apng'
-  | 'animated-svg';
+export type AnimatedFormat = 'lottie' | 'dotlottie' | 'rive' | 'gif' | 'apng' | 'animated-svg';
 
 export type AssetStatus = 'pending' | 'parsed' | 'error';
 
@@ -29,6 +23,8 @@ export interface AnimoriaAsset {
   metadata?: AnimoriaMetadata;
   /** Error message if status is 'error' */
   error?: string;
+  /** Absolute path to the generated thumbnail on disk */
+  thumbnailPath?: string;
 }
 
 export interface UsageReference {

@@ -2,7 +2,7 @@
 
 ![Animoria Banner](https://raw.githubusercontent.com/sxnnyside-project/animoria/main/docs/banner.png)
 
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![Version](https://img.shields.io/badge/version-0.2.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![CI](https://github.com/sxnnyside-project/animoria/actions)
 
@@ -24,15 +24,19 @@
 
 ## About
 
-**Animoria** is an IDE extension for visual discovery and exploration of animated assets — Lottie, dotLottie, Rive, GIF, APNG, and Animated SVG — directly inside your editor's sidebar.
+**Animoria** is a developer tool for asset governance, tracking, and workspace deduplication across animation-heavy codebases. It serves as a visual asset memory that automates the discovery, structural audit, and reference tracing of animations (Lottie, dotLottie, Rive, GIF, APNG, and Animated SVG) directly from your editor.
 
-Developers working with animated assets face a routine problem: after a project accumulates dozens of animation files, no one can tell which file contains which animation without opening each one individually. There is no equivalent of an image thumbnail browser for animated assets in any mainstream IDE. The standard File Explorer shows filenames; it shows nothing about content.
+As codebases and monorepos scale, managing animated assets can become a source of silent technical debt:
 
-Animoria scans your workspace automatically, validates each file structurally, extracts metadata (frame rate, duration, dimensions, layer count, markers), and renders the results as a browsable gallery with inline thumbnails. Every asset is linked to where it is referenced in source code. Assets that are unused, duplicated, or referenced in an unexpected number of places are surfaced automatically through the Governance analyzer.
+1. **Production Bloat**: Duplicate animation files checked into multiple directories, inflating the final bundle size.
+2. **Orphan Assets**: Legacy animation files remaining in the workspace after design iterations, cluttering the codebase.
+3. **No Reference Traceability**: Developers cannot determine which code files reference which assets, making refactoring or deprecation dangerous and manual.
+
+Animoria scans your workspace automatically, validates each file structurally (checking magic bytes and structure, not just file extensions), extracts metadata (FPS, duration, dimensions, layers, markers), and traces usage references. Unused, duplicate, or overused files are automatically flagged by the local Governance engine to keep your codebase clean, clean of debt, and optimized without compromising design speed.
 
 ### Philosophy
 
-> *"Remember motion."*
+> _"Remember motion."_
 
 Animoria is a Sxnnyside Project tool, built as part of the developer tooling initiative.
 
@@ -49,17 +53,17 @@ Animoria is a Sxnnyside Project tool, built as part of the developer tooling ini
 
 ## Comparison
 
-| Capability | Animoria | LottieFiles for VS Code | Standard IDE Explorer |
-| :--- | :---: | :---: | :---: |
-| Workspace Auto-Scanning | ✅ | ✅ | — |
-| Inline Thumbnails | ✅ | ✅ | — |
-| Code Usage Tracking | ✅ | — | — |
-| Asset Governance | ✅ | — | — |
-| dotLottie Support | ✅ | — | — |
-| Multi-Format | 🔜 | Lottie only | — |
-| Offline-First | ✅ | — | ✅ |
-| Multi-IDE | 🔜 | VS Code only | ✅ |
-| Open Source Core | ✅ | — | — |
+| Capability              | Animoria | LottieFiles for VS Code | Standard IDE Explorer |
+| :---------------------- | :------: | :---------------------: | :-------------------: |
+| Workspace Auto-Scanning |    ✅    |           ✅            |           —           |
+| Inline Thumbnails       |    ✅    |           ✅            |           —           |
+| Code Usage Tracking     |    ✅    |            —            |           —           |
+| Asset Governance        |    ✅    |            —            |           —           |
+| dotLottie Support       |    ✅    |            —            |           —           |
+| Multi-Format            |    ✅    |       Lottie only       |           —           |
+| Offline-First           |    ✅    |            —            |          ✅           |
+| Multi-IDE               |    ✅    |      VS Code only       |          ✅           |
+| Open Source Core        |    ✅    |            —            |           —           |
 
 ## Installation
 

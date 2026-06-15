@@ -1,0 +1,114 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+
+/* ==========================================================================
+   1. MAPEO POR DEFECTO: VS Code Webview Context
+   ========================================================================== */
+:root {
+  --animoria-font-family: var(--vscode-font-family, 'Outfit', 'Inter', system-ui, -apple-system, sans-serif);
+  
+  /* Fondos y Bordes */
+  --animoria-bg-primary: var(--vscode-sideBar-background, #1e1e1e);
+  --animoria-bg-secondary: var(--vscode-editor-background, #252526);
+  --animoria-border-color: var(--vscode-widget-border, #3e3e42);
+  --animoria-hover-bg: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05));
+  
+  /* Textos */
+  --animoria-text-primary: var(--vscode-foreground, #cccccc);
+  --animoria-text-muted: var(--vscode-descriptionForeground, #858585);
+  --animoria-error-text: var(--vscode-errorForeground, #f48771);
+  
+  /* Botones y Acentos */
+  --animoria-accent: var(--vscode-button-background, #0e639c);
+  --animoria-accent-hover: var(--vscode-button-hoverBackground, #1177bb);
+  --animoria-accent-text: var(--vscode-button-foreground, #ffffff);
+  
+  /* Componentes Específicos */
+  --animoria-badge-bg: var(--vscode-badge-background, #2d2d2d);
+  --animoria-scroll-thumb: var(--vscode-scrollbarSlider-background, #424242);
+  --animoria-scroll-thumb-hover: var(--vscode-scrollbarSlider-activeBackground, #4f4f4f);
+}
+
+/* ==========================================================================
+   2. CONTEXTO INTELLIJ: Darcula / Dark Theme
+   ========================================================================== */
+body.theme-intellij-dark {
+  --animoria-font-family: 'Outfit', 'Segoe UI', system-ui, sans-serif;
+  
+  --animoria-bg-primary: #3c3f41;
+  --animoria-bg-secondary: #2b2b2b;
+  --animoria-border-color: #323232;
+  --animoria-hover-bg: #4b4d4d;
+  
+  --animoria-text-primary: #bbbbbb;
+  --animoria-text-muted: #787878;
+  --animoria-error-text: #ff6b68;
+  
+  --animoria-accent: #2f65ca;
+  --animoria-accent-hover: #3b72e6;
+  --animoria-accent-text: #feffff;
+  
+  --animoria-badge-bg: #4e5254;
+  --animoria-scroll-thumb: #545454;
+  --animoria-scroll-thumb-hover: #606060;
+}
+
+/* ==========================================================================
+   3. CONTEXTO INTELLIJ: Light Theme
+   ========================================================================== */
+body.theme-intellij-light {
+  --animoria-font-family: 'Outfit', 'Segoe UI', system-ui, sans-serif;
+  
+  --animoria-bg-primary: #f2f2f2;
+  --animoria-bg-secondary: #ffffff;
+  --animoria-border-color: #d1d1d1;
+  --animoria-hover-bg: #dfe3eb;
+  
+  --animoria-text-primary: #1d1d1d;
+  --animoria-text-muted: #808080;
+  --animoria-error-text: #cf1c1c;
+  
+  --animoria-accent: #389fd6;
+  --animoria-accent-hover: #4fb3e8;
+  --animoria-accent-text: #ffffff;
+  
+  --animoria-badge-bg: #e1e1e1;
+  --animoria-scroll-thumb: #c1c1c1;
+  --animoria-scroll-thumb-hover: #a8a8a8;
+}
+
+/* ==========================================================================
+   4. CONTEXTO STANDALONE: Sandbox Cyberpunk/Dreamcore Premium
+   ========================================================================== */
+body.theme-sandbox-standalone, body:not(.theme-intellij-light):not(.theme-intellij-dark) {
+  --animoria-font-family: 'Outfit', system-ui, sans-serif;
+  
+  /* Fondos con gradación premium profunda */
+  --animoria-bg-primary: #0a0b10;
+  --animoria-bg-secondary: #12131c;
+  
+  /* Bordes semi-translúcidos Cyberpunk */
+  --animoria-border-color: rgba(99, 102, 241, 0.15);
+  --animoria-hover-bg: rgba(99, 102, 241, 0.08);
+  
+  /* Textos de alta legibilidad */
+  --animoria-text-primary: #f1f5f9;
+  --animoria-text-muted: #64748b;
+  --animoria-error-text: #f43f5e;
+  
+  /* Acentos de Neón Indigo-Fucsia */
+  --animoria-accent: #6366f1;
+  --animoria-accent-hover: #818cf8;
+  --animoria-accent-text: #ffffff;
+  
+  --animoria-badge-bg: rgba(99, 102, 241, 0.2);
+  --animoria-scroll-thumb: rgba(99, 102, 241, 0.3);
+  --animoria-scroll-thumb-hover: rgba(99, 102, 241, 0.5);
+  
+  background-color: var(--animoria-bg-primary);
+  color: var(--animoria-text-primary);
+  font-family: var(--animoria-font-family);
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}

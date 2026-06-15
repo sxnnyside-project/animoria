@@ -27,14 +27,14 @@ export class AnimoriaFileWatcher {
       new vscode.RelativePattern(workspacePath, '**/*.json')
     );
 
-    this._watcher.onDidCreate(uri => this._handleCreate(uri));
-    this._watcher.onDidChange(uri => this._handleChange(uri));
-    this._watcher.onDidDelete(uri => this._handleDelete(uri));
+    this._watcher.onDidCreate((uri) => this._handleCreate(uri));
+    this._watcher.onDidChange((uri) => this._handleChange(uri));
+    this._watcher.onDidDelete((uri) => this._handleDelete(uri));
   }
 
   dispose(): void {
     this._watcher?.dispose();
-    this._debounceMap.forEach(timer => clearTimeout(timer));
+    this._debounceMap.forEach((timer) => clearTimeout(timer));
     this._debounceMap.clear();
   }
 
