@@ -143,12 +143,20 @@ class CoreProcessManager(private val project: Project) {
 
         // 2. Check production plugin installation path
         try {
-            val plugin = com.intellij.ide.plugins.PluginManagerCore.getPlugin(
-                com.intellij.openapi.extensions.PluginId.getId("com.sxnnyside.animoria")
-            )
-            val path = plugin?.pluginPath?.resolve("classes/cli.js")?.toFile()
-            if (path != null && path.exists()) {
-                return path.absolutePath
+            val jarPath = com.intellij.openapi.application.PathManager.getJarPathForClass(CoreProcessManager::class.java)
+            if (jarPath != null) {
+                val jarFile = File(jarPath)
+                val pluginDir = if (jarFile.isFile) {
+                    jarFile.parentFile?.parentFile
+                } else {
+                    jarFile.parentFile?.parentFile?.parentFile?.parentFile
+                }
+                if (pluginDir != null) {
+                    val path = File(pluginDir, "classes/cli.js")
+                    if (path.exists()) {
+                        return path.absolutePath
+                    }
+                }
             }
         } catch (e: Exception) {
             // ignore loading error
