@@ -125,7 +125,16 @@ export const MOCK_ASSETS_RICH: AnimoriaAsset[] = [
 
 export class MockExtensionHost {
   constructor() {
-    // Escucha solicitudes salientes del frontend
+    // Only intercept messages if running in the standalone browser sandbox (http/https)
+    // Avoid running inside local file-based environments (like JCEF webview jar/file protocol)
+    const isSandbox = typeof window !== 'undefined' && 
+      (window.location.protocol === 'http:' || window.location.protocol === 'https:');
+    if (!isSandbox) {
+      console.log('[Animoria Host] Running in native IDE environment. Mock host disabled.');
+      return;
+    }
+
+    // Listen for outgoing messages from the frontend
     window.addEventListener('message', (e) => {
       if (e.data && e.data.target === 'extension') {
         this._handleFrontendMessage(e.data);
@@ -146,17 +155,17 @@ export class MockExtensionHost {
   private _handleFrontendMessage(message: any) {
     if (!message || !message.command) return;
 
-    console.log(`[Mock Extension Host] Recibido: ${message.command}`, message);
+    console.log(`[Mock Extension Host] Received: ${message.command}`, message);
 
     switch (message.command) {
       case 'scan':
         this._simulateScan();
         break;
       case 'openPreview':
-        console.log(`[Mock Host] Abriendo preview de: ${message.asset.name}`);
+        console.log(`[Mock Host] Opening preview for: ${message.asset.name}`);
         break;
       case 'deleteAsset':
-        console.log(`[Mock Host] Eliminando asset: ${message.path}`);
+        console.log(`[Mock Host] Deleting asset: ${message.path}`);
         this._postToFrontend('assetDeleted', { path: message.path });
         break;
       case 'injectDemo':
@@ -186,7 +195,7 @@ export class MockExtensionHost {
 
   private _simulateScan() {
     this._postToFrontend('scanProgress', {
-      message: 'Iniciando crawler recursivo de directorios...',
+      message: 'Starting recursive directory crawler...',
       index: 0,
       total: 3,
       assets: [],
@@ -194,7 +203,7 @@ export class MockExtensionHost {
 
     setTimeout(() => {
       this._postToFrontend('scanProgress', {
-        message: 'Buscando llaves "v" y "layers" en primer bloque (1KB)...',
+        message: 'Searching for "v" and "layers" keys in the first chunk (1KB)...',
         index: 1,
         total: 3,
         assets: MOCK_ASSETS_RICH.slice(0, 2),
@@ -203,7 +212,7 @@ export class MockExtensionHost {
 
     setTimeout(() => {
       this._postToFrontend('scanProgress', {
-        message: 'Generando metadatos para la cola de assets...',
+        message: 'Generating metadata for asset queue...',
         index: 2,
         total: 3,
         assets: MOCK_ASSETS_RICH.slice(0, 5),

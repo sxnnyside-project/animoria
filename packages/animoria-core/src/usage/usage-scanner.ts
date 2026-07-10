@@ -55,9 +55,19 @@ function lineMatchesAsset(line: string, filename: string, stem: string, strategy
   }
 }
 
+/**
+ * Traces file references in code files recursively.
+ * Uses strategy patterns to detect asset references based on file stem or filename.
+ */
 export class UsageScanner {
   constructor(private config: UsageSearchConfig) {}
 
+  /**
+   * Searches the workspace files for occurrences/imports matching the asset signature.
+   * Leverages fast-glob and read-streaming in batched parallel queries.
+   * 
+   * @returns A promise resolving to the list of discovered usage references.
+   */
   async search(): Promise<UsageSearchResult> {
     const start = performance.now();
     const {

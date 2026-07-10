@@ -15,23 +15,23 @@ const DEFAULT_EXCLUDE = [
 
 const DEFAULT_MAX_FILE_SIZE = 10_485_760; // 10 MB
 
-// Extensiones de archivos de assets animados soportados por el ecosistema Animoria
+// Supported animated asset file extensions in the Animoria ecosystem
 const SUPPORTED_EXTENSIONS = new Set(['.json', '.lottie', '.rive', '.gif', '.apng', '.svg']);
 
 /**
- * Convierte un patrón glob simple en una RegExp
+ * Converts a simple glob pattern to a RegExp.
  */
 function globToRegex(pattern: string): RegExp {
   const p = pattern
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&') // escapar caracteres especiales de regex
-    .replace(/\*\*\//g, '(?:.*/)?') // **/ coincide con cualquier subdirectorio
-    .replace(/\*\*/g, '.*') // ** coincide con cualquier cosa
-    .replace(/\*/g, '[^/]*'); // * coincide con caracteres sin barra
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&') // escape special regex characters
+    .replace(/\*\*\//g, '(?:.*/)?') // **/ matches any subdirectory
+    .replace(/\*\*/g, '.*') // ** matches anything
+    .replace(/\*/g, '[^/]*'); // * matches non-slash characters
   return new RegExp(`^${p}$`);
 }
 
 /**
- * Lee el primer fragmento de bytes de un archivo de manera segura y no bloqueante.
+ * Reads the first chunk of bytes from a file safely and asynchronously.
  */
 async function readFirstChunk(filePath: string, chunkSize = 1024): Promise<Buffer | null> {
   let fileHandle;
@@ -58,7 +58,7 @@ export class FileScanner {
     const ignorePatterns = [...DEFAULT_EXCLUDE, ...exclude];
     const excludeRegexes = ignorePatterns.map(globToRegex);
 
-    // Directorios de exclusión por defecto para corte rápido
+    // Default directory exclusions for fast short-circuiting
     const defaultExcludes = new Set([
       'node_modules',
       '.git',
@@ -77,21 +77,21 @@ export class FileScanner {
       try {
         entries = await fs.readdir(dir, { withFileTypes: true });
       } catch {
-        return; // Salta directorios sin permisos de lectura
+        return; // Skip directories without read permissions
       }
 
       for (const entry of entries) {
         const fullPath = join(dir, entry.name);
-        const relPath = relative(workspacePath, fullPath);
+        const relPath = relative(workspacePath, fullPath).replace(/\\/g, '/');
         const testPath = entry.isDirectory() ? relPath + '/' : relPath;
 
-        // Comprobación de exclusión usando expresiones regulares glob
+        // Verify exclusion patterns using glob regexes
         if (excludeRegexes.some((rx) => rx.test(testPath))) {
           continue;
         }
 
         if (entry.isDirectory()) {
-          // Cortocircuito directo y estricto para evitar descender
+          // Direct short-circuit to avoid descending into default excludes
           if (defaultExcludes.has(entry.name)) {
             continue;
           }
@@ -126,7 +126,7 @@ export class FileScanner {
                 });
               }
             } catch {
-              continue; // Salta en caso de error leyendo el stat o el primer chunk
+              continue; // Skip on error reading stat or first chunk
             }
           }
         }

@@ -1,7 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import type { AnimoriaAsset } from '@animoria/core';
-import { t } from '@animoria/core';
+import { t } from '@animoria/core/i18n';
 import './animoria-gallery.js';
 import './sandbox-control-panel.js';
 import './animoria-preview-panel.js';

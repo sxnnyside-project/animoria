@@ -85,6 +85,8 @@ pnpm build
 
 To launch the VS Code extension in development, open the repo in VS Code and press `F5`. This starts the Extension Development Host with the extension loaded.
 
+To launch the JetBrains IntelliJ plugin in development, navigate to `packages/animoria-jetbrains` and run `./gradlew runIde`. This starts a sandbox instance of IntelliJ with the local plugin loaded.
+
 ## Usage
 
 ```bash

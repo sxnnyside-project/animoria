@@ -40,6 +40,16 @@ export class ThumbnailGenerator {
     // Only process successfully parsed assets
     const parsed = assets.filter((a) => a.status === 'parsed');
 
+    if (parsed.length === 0) {
+      return {
+        results: [],
+        generated: 0,
+        fromCache: 0,
+        failed: 0,
+        durationMs: performance.now() - start,
+      };
+    }
+
     await mkdir(this._thumbnailDir, { recursive: true });
 
     // Separate cached from work needed

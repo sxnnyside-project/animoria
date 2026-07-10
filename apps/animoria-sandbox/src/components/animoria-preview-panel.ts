@@ -1,7 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import type { AnimoriaAsset } from '@animoria/core';
-import { t } from '@animoria/core';
+import { t } from '@animoria/core/i18n';
 
 @customElement('animoria-preview-panel')
 export class AnimoriaPreviewPanel extends LitElement {

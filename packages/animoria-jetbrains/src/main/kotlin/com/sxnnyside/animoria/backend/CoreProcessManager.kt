@@ -43,16 +43,28 @@ data class JetBrainsAsset(
     val thumbnailPath: String? = null
 )
 
+/**
+ * Project-level service managing the background Node.js CLI daemon process.
+ * Responsible for starting/stopping the process, pipe communication, and
+ * routing events to the registered callbacks.
+ */
 @Service(Service.Level.PROJECT)
 class CoreProcessManager(private val project: Project) {
     private val logger = Logger.getInstance(CoreProcessManager::class.java)
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var process: Process? = null
 
+    /** Callback triggered during scanning to report progress percentage and status message */
     var onScanProgress: ((Int, String) -> Unit)? = null
+    /** Callback triggered when a workspace scan finishes, carrying the serialized assets list JSON */
     var onScanComplete: ((String) -> Unit)? = null
+    /** Callback triggered on filesystem watcher actions, carrying watcher event JSON data */
     var onWatcherEvent: ((String) -> Unit)? = null
 
+    /**
+     * Spawns the background Node.js CLI daemon process for the current project.
+     * Starts listening to stdout lines and parsing them as JSON events.
+     */
     fun start() {
         val workspacePath = project.basePath ?: return
         scope.launch {
@@ -118,18 +130,45 @@ class CoreProcessManager(private val project: Project) {
     }
 
     private fun findNodeExecutable(): String {
-        val paths = listOf(
-            "/opt/homebrew/bin/node",
-            "/usr/local/bin/node",
-            "/usr/bin/node"
-        )
+        val isWindows = System.getProperty("os.name").lowercase().contains("win")
+        val nodeName = if (isWindows) "node.exe" else "node"
+
+        // 1. Search in PATH environment variable
+        val pathEnv = System.getenv("PATH") ?: System.getenv("Path")
+        if (!pathEnv.isNullOrEmpty()) {
+            val separator = File.pathSeparator
+            val dirs = pathEnv.split(separator)
+            for (dir in dirs) {
+                if (dir.trim().isEmpty()) continue
+                val file = File(dir, nodeName)
+                if (file.exists() && file.canExecute()) {
+                    return file.absolutePath
+                }
+            }
+        }
+
+        // 2. Search common fallback paths
+        val paths = if (isWindows) {
+            listOf(
+                "C:\\Program Files\\nodejs\\node.exe",
+                "C:\\Program Files (x86)\\nodejs\\node.exe"
+            )
+        } else {
+            listOf(
+                "/opt/homebrew/bin/node",
+                "/usr/local/bin/node",
+                "/usr/bin/node"
+            )
+        }
+
         for (path in paths) {
             val file = File(path)
             if (file.exists() && file.canExecute()) {
                 return path
             }
         }
-        return "node"
+
+        return nodeName
     }
 
     private fun findCliScriptPath(): String? {
@@ -165,6 +204,9 @@ class CoreProcessManager(private val project: Project) {
         return null
     }
 
+    /**
+     * Termines the background daemon process and cancels the coroutine scope.
+     */
     fun stop() {
         process?.destroy()
         process = null

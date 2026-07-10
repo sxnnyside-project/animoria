@@ -6,3 +6,13 @@ dist
 
 # Animoria generated artifacts
 .animoria/
+
+# Gradle, Java, and IDEs
+.gradle/
+**/build/
+**/bin/
+**/out/
+.idea/
+*.class
+*.log
+.DS_Store

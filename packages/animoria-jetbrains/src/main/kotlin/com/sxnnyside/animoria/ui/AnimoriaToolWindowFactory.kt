@@ -23,7 +23,21 @@ data class ScanProgressJsPayload(
     val message: String
 )
 
+/**
+ * Factory class registered in plugin.xml responsible for creating the
+ * Animoria Tool Window in the JetBrains IDE.
+ * Integrates the JCEF JBCefBrowser component and coordinates message communication
+ * with the background Node process daemon.
+ */
 class AnimoriaToolWindowFactory : ToolWindowFactory {
+    /**
+     * Initializes the tool window content.
+     * Hooks up daemon listeners to WebView javascript callbacks, sets look-and-feel classes,
+     * registers theme changes, launches the Node daemon, and mounts the panel UI.
+     *
+     * @param project The active project instance.
+     * @param toolWindow The tool window instance created by the IntelliJ Platform.
+     */
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val browser = JBCefBrowser()
         val processManager = project.getService(CoreProcessManager::class.java)

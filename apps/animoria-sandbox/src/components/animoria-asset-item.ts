@@ -1,7 +1,7 @@
 import { LitElement, html, css } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import type { AnimoriaAsset } from '@animoria/core';
-import { t } from '@animoria/core';
+import { t } from '@animoria/core/i18n';
 import './animoria-thumbnail-fallback.js';
 
 @customElement('animoria-asset-item')
