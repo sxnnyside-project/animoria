@@ -98,7 +98,7 @@ export class ThumbnailGenerator {
             } else {
               // Should not reach here — _generateOne catches internally
               generatedResults.push({
-                asset: toGenerate[i],
+                asset: toGenerate[i]!,
                 thumbnailPath: null,
                 fromCache: false,
                 error: String(outcome.reason),

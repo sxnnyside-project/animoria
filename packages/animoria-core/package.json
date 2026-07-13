@@ -22,10 +22,12 @@
   },
   "scripts": {
     "build": "tsc",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "clean": "rm -rf dist"
   },
   "devDependencies": {
     "@types/node": "^25.9.2",

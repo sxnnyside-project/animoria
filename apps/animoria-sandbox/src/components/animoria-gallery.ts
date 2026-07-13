@@ -15,7 +15,7 @@ export class AnimoriaGallery extends LitElement {
 
   @state() private _query = '';
 
-  static styles = css`
+  static override styles = css`
     :host {
       display: flex;
       flex-direction: column;
@@ -197,7 +197,7 @@ export class AnimoriaGallery extends LitElement {
     window.postMessage({ command: 'injectDemo', target: 'extension' }, '*');
   }
 
-  render() {
+  override render() {
     const filtered = this.filteredAssets;
 
     return html`

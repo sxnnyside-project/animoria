@@ -18,7 +18,7 @@
 - [ ] Builds without errors (`pnpm build`)
 - [ ] Tests pass (`pnpm test`)
 - [ ] `CHANGELOG.md` updated under `[Unreleased]`
-- [ ] Commits follow Conventional Commits
+- [ ] Commits follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
 - [ ] No VS Code API added to `packages/animoria-core`
 - [ ] Tests added or updated where applicable
 

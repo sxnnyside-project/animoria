@@ -8,7 +8,7 @@ export class AnimoriaPreviewPanel extends LitElement {
   @property({ type: Object }) asset: AnimoriaAsset | null = null;
   @property({ type: String }) locale = 'en';
 
-  static styles = css`
+  static override styles = css`
     :host {
       display: block;
       width: 340px;
@@ -342,7 +342,7 @@ export class AnimoriaPreviewPanel extends LitElement {
     }
   }
 
-  render() {
+  override render() {
     const { asset } = this;
     if (!asset) {
       return html`

@@ -127,7 +127,8 @@ export class MockExtensionHost {
   constructor() {
     // Only intercept messages if running in the standalone browser sandbox (http/https)
     // Avoid running inside local file-based environments (like JCEF webview jar/file protocol)
-    const isSandbox = typeof window !== 'undefined' && 
+    const isSandbox =
+      typeof window !== 'undefined' &&
       (window.location.protocol === 'http:' || window.location.protocol === 'https:');
     if (!isSandbox) {
       console.log('[Animoria Host] Running in native IDE environment. Mock host disabled.');
@@ -168,7 +169,7 @@ export class MockExtensionHost {
         console.log(`[Mock Host] Deleting asset: ${message.path}`);
         this._postToFrontend('assetDeleted', { path: message.path });
         break;
-      case 'injectDemo':
+      case 'injectDemo': {
         console.log('[Mock Host] Injecting demo asset...');
         const demoAsset: AnimoriaAsset = {
           path: '/workspace/assets/animations/brand-logo.rive',
@@ -190,6 +191,7 @@ export class MockExtensionHost {
         };
         this._postToFrontend('watcherEvent', { type: 'added', asset: demoAsset });
         break;
+      }
     }
   }
 

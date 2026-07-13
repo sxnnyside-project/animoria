@@ -16,3 +16,7 @@ dist
 *.class
 *.log
 .DS_Store
+
+# JetBrains plugin assets bundle — regenerated from animoria-sandbox/dist
+# by `pnpm package:jetbrains` (see package.json)
+packages/animoria-jetbrains/src/main/resources/assets/

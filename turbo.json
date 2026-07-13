@@ -9,8 +9,15 @@
       "dependsOn": ["^build"],
       "outputs": []
     },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
     "lint": {
       "outputs": []
+    },
+    "clean": {
+      "cache": false
     },
     "dev": {
       "cache": false,

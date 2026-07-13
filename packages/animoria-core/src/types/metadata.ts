@@ -4,7 +4,7 @@ export interface DotLottieManifestEntry {
   /** Animation ID from manifest.json */
   id: string;
   /** Display name if present */
-  name?: string;
+  name?: string | undefined;
   /** Loop setting from manifest */
   loop?: boolean;
   /** Speed multiplier from manifest */

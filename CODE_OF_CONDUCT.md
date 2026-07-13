@@ -47,4 +47,4 @@ This Code of Conduct applies to all project spaces: issues, pull requests, commi
 
 ---
 
-_Animoria is a Sxnnyside Project Tool. Part of the Sxnnyside Project._
+_Animoria is a Sxnnyside Project Tool. Part of the [Sxnnyside Project](https://sxnnysideproject.com)._

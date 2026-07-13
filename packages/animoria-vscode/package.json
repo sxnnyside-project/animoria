@@ -164,8 +164,10 @@
   },
   "scripts": {
     "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
     "dev": "vite build --watch",
     "lint": "eslint src",
+    "clean": "rm -rf dist",
     "package": "vsce package --no-dependencies",
     "publish": "vsce publish --no-dependencies"
   },

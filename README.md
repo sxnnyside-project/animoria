@@ -4,7 +4,7 @@
 
 ![Version](https://img.shields.io/badge/version-0.2.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![CI](https://github.com/sxnnyside-project/animoria/actions)
+[![CI](https://github.com/sxnnyside-project/animoria/workflows/CI/badge.svg)](https://github.com/sxnnyside-project/animoria/actions)
 
 <p align="center">
   <strong>Workspace-aware ✦ Governance-ready ✦ Offline-first</strong><br>
@@ -69,8 +69,8 @@ Animoria is a Sxnnyside Project tool, built as part of the developer tooling ini
 
 ### Prerequisites
 
-- Node.js 18 or later
-- pnpm 9 or later
+- Node.js 22 or later
+- pnpm 11 or later
 - Chrome or Chromium (for thumbnail generation only)
 
 ### From Source
@@ -98,6 +98,19 @@ pnpm build
 
 # Run the full test suite
 pnpm test
+
+# Type-check all packages
+pnpm typecheck
+
+# Lint all packages
+pnpm lint
+
+# Check formatting / format all files
+pnpm format:check
+pnpm format
+
+# Run every quality gate (format, lint, typecheck, test, build)
+pnpm check
 
 # Start the Lit component sandbox
 pnpm dev

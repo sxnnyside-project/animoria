@@ -9,7 +9,7 @@ export class AssetItem extends LitElement {
   @property({ type: Object }) asset!: AnimoriaAsset;
   @property({ type: String }) locale = 'en';
 
-  static styles = css`
+  static override styles = css`
     :host {
       display: block;
     }
@@ -96,7 +96,7 @@ export class AssetItem extends LitElement {
     );
   }
 
-  render() {
+  override render() {
     const { asset } = this;
     if (!asset) return html``;
 

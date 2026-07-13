@@ -20,11 +20,11 @@ export interface AnimoriaAsset {
   /** Parse status */
   status: AssetStatus;
   /** Populated after parsing */
-  metadata?: AnimoriaMetadata;
+  metadata?: AnimoriaMetadata | undefined;
   /** Error message if status is 'error' */
-  error?: string;
+  error?: string | undefined;
   /** Absolute path to the generated thumbnail on disk */
-  thumbnailPath?: string;
+  thumbnailPath?: string | undefined;
 }
 
 export interface UsageReference {

@@ -42,6 +42,11 @@ Phase 3: GIF, APNG, Animated SVG
 pnpm install — install all dependencies
 pnpm build — build all packages
 pnpm test — run all tests
+pnpm typecheck — type-check all packages
+pnpm lint — lint all packages
+pnpm format / pnpm format:check — format / verify formatting
+pnpm check — run format:check, lint, typecheck, test, and build
+pnpm clean — remove build outputs
 pnpm dev — run sandbox dev server
 
 ## UI Layer — Lit + Web Components

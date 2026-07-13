@@ -84,7 +84,7 @@ export class RiveParser implements IAssetParser {
     const strings: string[] = [];
     let current = '';
     for (let i = 0; i < buffer.length; i++) {
-      const char = buffer[i];
+      const char = buffer[i]!;
       if (char >= 32 && char <= 126) {
         current += String.fromCharCode(char);
       } else {

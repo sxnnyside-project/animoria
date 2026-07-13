@@ -13,8 +13,10 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@animoria/core/i18n': new URL('../../packages/animoria-core/src/i18n/locales.ts', import.meta.url)
-        .pathname,
+      '@animoria/core/i18n': new URL(
+        '../../packages/animoria-core/src/i18n/locales.ts',
+        import.meta.url
+      ).pathname,
       '@animoria/core': new URL('../../packages/animoria-core/src/index.ts', import.meta.url)
         .pathname,
     },

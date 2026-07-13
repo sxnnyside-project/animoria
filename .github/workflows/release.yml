@@ -93,7 +93,7 @@ jobs:
 
       - name: Publish to JetBrains Marketplace
         continue-on-error: true
-        
+
         env:
           JETBRAINS_PUBLISH_TOKEN: ${{ secrets.JETBRAINS_PUBLISH_TOKEN }}
         run: |

@@ -7,4 +7,5 @@ build/
 pnpm-lock.yaml
 packages/animoria-jetbrains/build/
 packages/animoria-jetbrains/.gradle/
+packages/animoria-jetbrains/src/main/resources/assets/
 apps/animoria-sandbox/dist/

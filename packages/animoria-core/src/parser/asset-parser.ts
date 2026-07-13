@@ -9,7 +9,7 @@ import type { AnimoriaAsset } from '../types/index.js';
  */
 export interface AssetParserConfig {
   /** Maximum number of files parsed concurrently (default: 4) */
-  concurrency?: number;
+  concurrency?: number | undefined;
 }
 
 /**
@@ -39,7 +39,7 @@ export class AssetParser {
   /**
    * Parses an array of discovered AnimoriaAsset records.
    * Maps matching parsers dynamically and reads/validates contents concurrently.
-   * 
+   *
    * @param assets Collection of candidate assets to process.
    * @returns A promise resolving to the final parse result metrics.
    */

@@ -23,7 +23,7 @@ export class DotLottieParser {
         return { success: false, error: 'No animations found in .lottie archive' };
       }
 
-      const primary = animations[0];
+      const primary = animations[0]!;
       const animData = (await primary.toJSON()) as unknown as Record<string, unknown>;
 
       const fps = animData['fr'] as number;

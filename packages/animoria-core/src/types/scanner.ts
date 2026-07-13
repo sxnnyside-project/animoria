@@ -4,9 +4,9 @@ export interface ScannerConfig {
   /** Absolute path to workspace root */
   workspacePath: string;
   /** Folders to exclude from scanning */
-  exclude?: string[];
+  exclude?: string[] | undefined;
   /** Max file size to process in bytes (default: 10MB) */
-  maxFileSizeBytes?: number;
+  maxFileSizeBytes?: number | undefined;
 }
 
 export interface ScannerResult {

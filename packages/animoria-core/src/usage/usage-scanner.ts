@@ -65,7 +65,7 @@ export class UsageScanner {
   /**
    * Searches the workspace files for occurrences/imports matching the asset signature.
    * Leverages fast-glob and read-streaming in batched parallel queries.
-   * 
+   *
    * @returns A promise resolving to the list of discovered usage references.
    */
   async search(): Promise<UsageSearchResult> {
@@ -126,11 +126,12 @@ export class UsageScanner {
       const refs: UsageReference[] = [];
 
       for (let i = 0; i < lines.length; i++) {
-        if (lineMatchesAsset(lines[i], filename, stem, strategy)) {
+        const line = lines[i]!;
+        if (lineMatchesAsset(line, filename, stem, strategy)) {
           refs.push({
             file,
             line: i + 1,
-            content: lines[i].trim(),
+            content: line.trim(),
           });
         }
       }

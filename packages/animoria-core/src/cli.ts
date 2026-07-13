@@ -5,13 +5,14 @@ import { Animoria } from './animoria.js';
 import { ParserRegistry } from './parsers/parser-registry.js';
 import type { AnimoriaAsset } from './types/index.js';
 
-const workspacePath = process.argv[2];
-if (!workspacePath) {
+const rawWorkspacePath = process.argv[2];
+if (!rawWorkspacePath) {
   console.error(
     JSON.stringify({ event: 'error', data: { message: 'No workspace path provided' } })
   );
   process.exit(1);
 }
+const workspacePath: string = rawWorkspacePath;
 
 const SUPPORTED_EXTENSIONS = new Set(['.json', '.lottie', '.rive', '.gif', '.apng', '.svg']);
 const EXCLUDE_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.turbo', '.animoria']);

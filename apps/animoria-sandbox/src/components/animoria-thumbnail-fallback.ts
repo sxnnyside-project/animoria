@@ -6,7 +6,7 @@ export class AnimoriaThumbnailFallback extends LitElement {
   @property({ type: String }) name = '';
   @property({ type: String }) format = '';
 
-  static styles = css`
+  static override styles = css`
     :host {
       display: block;
       width: 44px;
@@ -111,7 +111,7 @@ export class AnimoriaThumbnailFallback extends LitElement {
     return `linear-gradient(135deg, hsl(${hueA}, 65%, 45%), hsl(${hueB}, 60%, 35%))`;
   }
 
-  render() {
+  override render() {
     const gradient = this._getDeterministicGradient(this.name);
     const shortFormat = this.format ? this.format.substring(0, 3) : 'LOTT';
 

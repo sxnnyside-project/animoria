@@ -16,7 +16,7 @@ export class AnimoriaApp extends LitElement {
   @state() private _selectedAsset: AnimoriaAsset | null = null;
   @state() private _locale = 'en';
 
-  static styles = css`
+  static override styles = css`
     :host {
       display: flex;
       flex-direction: row;
@@ -41,13 +41,13 @@ export class AnimoriaApp extends LitElement {
     }
   `;
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     window.addEventListener('message', this._handleMessage);
     this._triggerScan();
   }
 
-  disconnectedCallback() {
+  override disconnectedCallback() {
     super.disconnectedCallback();
     window.removeEventListener('message', this._handleMessage);
   }
@@ -131,7 +131,7 @@ export class AnimoriaApp extends LitElement {
     }
   }
 
-  render() {
+  override render() {
     return html`
       <animoria-gallery
         .assets="${this._assets}"

@@ -8,7 +8,7 @@ If you find a security vulnerability in **Animoria**, report it privately before
 Email — `legal.sxnnyside@sxnnysideproject.com`
 
 **Alternative:**  
-GitHub Private Security Advisory
+[GitHub Private Security Advisory](https://github.com/sxnnyside-project/animoria/security/advisories/new)
 
 ---
 
@@ -49,4 +49,4 @@ For ecosystem-wide security concerns, use the email above.
 
 ---
 
-_Animoria is a Sxnnyside Project Tool. Part of the Sxnnyside Project._
+_Animoria is a Sxnnyside Project Tool. Part of the [Sxnnyside Project](https://sxnnysideproject.com)._

@@ -7,15 +7,15 @@ This document covers how to work with the project as a contributor.
 
 ## Before You Start
 
-- Search existing issues before opening a new one.
+- Search [existing issues](https://github.com/sxnnyside-project/animoria/issues) before opening a new one.
 - For significant changes, open an issue first to discuss the direction before writing code.
-- Read the Code of Conduct. It applies to all interactions in this project.
+- Read the [Code of Conduct](CODE_OF_CONDUCT.md). It applies to all interactions in this project.
 
 ---
 
 ## Reporting a Bug
 
-Open a GitHub Issue using the bug report template.
+Open a [GitHub Issue](https://github.com/sxnnyside-project/animoria/issues/new/choose) using the bug report template.
 
 Include:
 
@@ -28,7 +28,7 @@ Include:
 
 ## Proposing a Feature
 
-Open a GitHub Issue using the feature request template, or submit a PR directly if the change is small and self-contained.
+Open a [GitHub Issue](https://github.com/sxnnyside-project/animoria/issues/new/choose) using the feature request template, or submit a PR directly if the change is small and self-contained.
 
 For larger features, an issue discussion first avoids wasted effort on both sides.
 
@@ -47,8 +47,7 @@ For larger features, an issue discussion first avoids wasted effort on both side
 
 Before submitting:
 
-- [ ] The project builds without errors (`pnpm build`)
-- [ ] All tests pass (`pnpm test`)
+- [ ] All quality gates pass (`pnpm check`) — formatting, lint, typecheck, tests, and build
 - [ ] Changes are described in `CHANGELOG.md` under `[Unreleased]`
 - [ ] The PR description explains what changed and why
 - [ ] New behavior is covered by tests where applicable
@@ -97,13 +96,17 @@ Commits that don't follow this format will be flagged during review.
 ## Running & Debugging in Development
 
 ### VS Code Extension
+
 To run the VS Code extension in development:
+
 1. Open the workspace root directory in VS Code.
 2. Press `F5` (or go to Run and Debug → **Launch VS Code Extension**).
 3. This opens a new Extension Development Host window with the local extension loaded.
 
 ### JetBrains Plugin (IntelliJ / Android Studio)
+
 To run and debug the JetBrains plugin in a sandbox instance:
+
 1. Navigate to the plugin directory:
    ```bash
    cd packages/animoria-jetbrains
@@ -132,4 +135,4 @@ If something in the codebase is unclear, open an issue with the `question` label
 
 ---
 
-_Animoria is a Sxnnyside Project Tool. Part of the Sxnnyside Project._
+_Animoria is a Sxnnyside Project Tool. Part of the [Sxnnyside Project](https://sxnnysideproject.com)._

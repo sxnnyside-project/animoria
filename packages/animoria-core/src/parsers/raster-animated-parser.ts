@@ -22,8 +22,8 @@ export class GifParser implements IAssetParser {
       let loopCount = 0; // 0 = loop infinito por defecto
       let pos = 10;
 
-      const hasGCT = (buffer[10] & 0x80) !== 0;
-      const gctSize = 3 * 2 ** ((buffer[10] & 0x07) + 1);
+      const hasGCT = (buffer[10]! & 0x80) !== 0;
+      const gctSize = 3 * 2 ** ((buffer[10]! & 0x07) + 1);
       pos = 13 + (hasGCT ? gctSize : 0);
 
       while (pos < buffer.length) {
@@ -37,7 +37,7 @@ export class GifParser implements IAssetParser {
           }
           pos += 2;
           while (pos < buffer.length) {
-            const blockSize = buffer[pos];
+            const blockSize = buffer[pos]!;
             if (blockSize === 0) {
               pos++;
               break;
@@ -46,13 +46,13 @@ export class GifParser implements IAssetParser {
           }
         } else if (blockType === 0x2c) {
           // Image Descriptor
-          const hasLCT = (buffer[pos + 9] & 0x80) !== 0;
-          const lctSize = 3 * 2 ** ((buffer[pos + 9] & 0x07) + 1);
+          const hasLCT = (buffer[pos + 9]! & 0x80) !== 0;
+          const lctSize = 3 * 2 ** ((buffer[pos + 9]! & 0x07) + 1);
           pos += 10 + (hasLCT ? lctSize : 0);
 
           pos++; // LZW minimum code size
           while (pos < buffer.length) {
-            const blockSize = buffer[pos];
+            const blockSize = buffer[pos]!;
             if (blockSize === 0) {
               pos++;
               break;

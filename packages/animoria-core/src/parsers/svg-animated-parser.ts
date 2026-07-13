@@ -25,20 +25,20 @@ export class SvgAnimatedParser implements IAssetParser {
       let height = 400;
 
       if (svgTagMatch) {
-        const svgAttributes = svgTagMatch[1];
+        const svgAttributes = svgTagMatch[1]!;
 
         const wMatch = svgAttributes.match(/width=["']([^"']+)["']/);
         const hMatch = svgAttributes.match(/height=["']([^"']+)["']/);
         const vbMatch = svgAttributes.match(/viewBox=["']([^"']+)["']/);
 
         if (wMatch && hMatch) {
-          width = parseFloat(wMatch[1]) || 400;
-          height = parseFloat(hMatch[1]) || 400;
+          width = parseFloat(wMatch[1]!) || 400;
+          height = parseFloat(hMatch[1]!) || 400;
         } else if (vbMatch) {
-          const parts = vbMatch[1].trim().split(/\s+/);
+          const parts = vbMatch[1]!.trim().split(/\s+/);
           if (parts.length === 4) {
-            width = parseFloat(parts[2]) || 400;
-            height = parseFloat(parts[3]) || 400;
+            width = parseFloat(parts[2]!) || 400;
+            height = parseFloat(parts[3]!) || 400;
           }
         }
       }

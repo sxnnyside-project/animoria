@@ -1,1 +1,0 @@
-throw Error(`Could not resolve "proxy-agent" imported by "@puppeteer/browsers". Is it installed?`);

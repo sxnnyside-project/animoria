@@ -117,7 +117,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // 5. Start file watcher
   const workspaceFolders = vscode.workspace.workspaceFolders;
   if (workspaceFolders && workspaceFolders.length > 0) {
-    const workspacePath = workspaceFolders[0].uri.fsPath;
+    const workspacePath = workspaceFolders[0]!.uri.fsPath;
 
     fileWatcher = new AnimoriaFileWatcher({
       onAssetAdded: (asset) => {
@@ -154,7 +154,7 @@ async function runScan(_context: vscode.ExtensionContext) {
     return;
   }
 
-  const workspacePath = workspaceFolders[0].uri.fsPath;
+  const workspacePath = workspaceFolders[0]!.uri.fsPath;
 
   await vscode.window.withProgress(
     {
@@ -260,7 +260,7 @@ async function runGovernance(): Promise<void> {
   const workspaceFolders = vscode.workspace.workspaceFolders;
   if (!workspaceFolders || workspaceFolders.length === 0) return;
 
-  const workspacePath = workspaceFolders[0].uri.fsPath;
+  const workspacePath = workspaceFolders[0]!.uri.fsPath;
   const assets = treeProvider.getAssets();
 
   if (assets.length === 0) {
@@ -328,12 +328,12 @@ async function exportGovernanceReport(): Promise<void> {
   }
 
   const workspaceFolders = vscode.workspace.workspaceFolders;
-  if (!workspaceFolders) return;
+  if (!workspaceFolders || workspaceFolders.length === 0) return;
 
   const report = lastGovernanceReport;
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const defaultUri = vscode.Uri.file(
-    join(workspaceFolders[0].uri.fsPath, `animoria-governance-${timestamp}.md`)
+    join(workspaceFolders[0]!.uri.fsPath, `animoria-governance-${timestamp}.md`)
   );
 
   const saveUri = await vscode.window.showSaveDialog({

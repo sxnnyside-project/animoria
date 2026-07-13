@@ -18,14 +18,15 @@ graph TD
         vscode[animoria-vscode]
         jetbrains[animoria-jetbrains]
     end
-    
+
     sandbox -->|Imports (Browser)| core
     vscode -->|Imports (Node)| core
     jetbrains -->|Runs Daemon| core
 ```
 
 ### Module Boundaries
-- **`@animoria/core`**: 
+
+- **`@animoria/core`**:
   - Pure TypeScript, zero IDE-specific dependencies (no VS Code or IntelliJ APIs).
   - Handles parsing, scanning, references search, and asset governance logic.
   - Divided into browser-safe parts (types, locales) and node-specific processes (puppeteer, fs, child_process).
@@ -41,20 +42,24 @@ graph TD
 ## 2. Core API Surface
 
 ### Animoria Runner
+
 The central orchestrator for scans:
+
 ```typescript
 import { Animoria } from '@animoria/core';
 
 const engine = new Animoria({
   workspacePath: '/path/to/project',
   onScanComplete: (count) => {},
-  onAssetParsed: (asset, index, total) => {}
+  onAssetParsed: (asset, index, total) => {},
 });
 const result = await engine.run();
 ```
 
 ### Usage References Scanner
+
 Searches source files for references to a given animation:
+
 ```typescript
 import { UsageScanner } from '@animoria/core/usage';
 
@@ -62,20 +67,22 @@ const usageScanner = new UsageScanner({
   workspacePath: '/path/to/project',
   asset: assetInstance,
   strategy: 'pattern',
-  scopePath: '/path/to/project/package' // Scoping limit for monorepos
+  scopePath: '/path/to/project/package', // Scoping limit for monorepos
 });
 const result = await usageScanner.search();
 ```
 
 ### Governance Analyzer
+
 Audits technical debt (unused, duplicate, and overused files):
+
 ```typescript
 import { GovernanceAnalyzer } from '@animoria/core/governance';
 
 const analyzer = new GovernanceAnalyzer({
   workspacePath: '/path/to/project',
   assets: parsedAssetsArray,
-  overusedThreshold: 10
+  overusedThreshold: 10,
 });
 const report = await analyzer.analyze();
 ```
@@ -88,19 +95,21 @@ The web application UI component running inside JCEF or IDE WebViews communicate
 
 ### Outgoing Messages (WebView to Host)
 
-| Message Command | Payload Schema | Description |
-| :--- | :--- | :--- |
-| `scan` | `{ target: 'extension' }` | Triggers the parent host to start a filesystem recursive scan. |
-| `deleteAsset` | `{ path: string }` | Requests the host to permanently delete an asset from disk. |
-| `open-usage-file` | `{ file: string, line: number }` | Asks the host editor to open a source file at the specified line number. |
-| `copy-path` | *None* | Requests the parent host to copy the active asset absolute path to the system clipboard. |
-| `copy-stem` | *None* | Requests the parent host to copy the asset filename stem to the system clipboard. |
-| `reveal-in-explorer` | *None* | Requests the host to reveal the asset path in the IDE filesystem view. |
+| Message Command      | Payload Schema                   | Description                                                                              |
+| :------------------- | :------------------------------- | :--------------------------------------------------------------------------------------- |
+| `scan`               | `{ target: 'extension' }`        | Triggers the parent host to start a filesystem recursive scan.                           |
+| `deleteAsset`        | `{ path: string }`               | Requests the host to permanently delete an asset from disk.                              |
+| `open-usage-file`    | `{ file: string, line: number }` | Asks the host editor to open a source file at the specified line number.                 |
+| `copy-path`          | _None_                           | Requests the parent host to copy the active asset absolute path to the system clipboard. |
+| `copy-stem`          | _None_                           | Requests the parent host to copy the asset filename stem to the system clipboard.        |
+| `reveal-in-explorer` | _None_                           | Requests the host to reveal the asset path in the IDE filesystem view.                   |
 
 ### Incoming Messages (Host to WebView)
 
 #### `scanProgress`
+
 Sent by the host process to report progress:
+
 ```json
 {
   "command": "scanProgress",
@@ -112,7 +121,9 @@ Sent by the host process to report progress:
 ```
 
 #### `scanComplete`
+
 Sent when a workspace scan finishes:
+
 ```json
 {
   "command": "scanComplete",
@@ -121,7 +132,9 @@ Sent when a workspace scan finishes:
 ```
 
 #### `watcherEvent`
+
 Dispatched when files are created, modified, or deleted in the workspace:
+
 ```json
 {
   "command": "watcherEvent",
@@ -138,7 +151,9 @@ Dispatched when files are created, modified, or deleted in the workspace:
 ```
 
 #### `assetDeleted`
+
 Sent after an asset has been successfully deleted from disk:
+
 ```json
 {
   "command": "assetDeleted",

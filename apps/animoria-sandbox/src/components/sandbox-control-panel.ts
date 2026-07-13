@@ -8,7 +8,7 @@ export class SandboxControlPanel extends LitElement {
   @property({ type: String }) locale = 'en';
   @state() private _currentTheme = 'theme-sandbox-standalone';
 
-  static styles = css`
+  static override styles = css`
     :host {
       display: block;
       width: 280px;
@@ -105,7 +105,7 @@ export class SandboxControlPanel extends LitElement {
     }
   `;
 
-  connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     this._setTheme(this._currentTheme);
   }
@@ -220,7 +220,7 @@ export class SandboxControlPanel extends LitElement {
     this._emitWatcherEvent('removed', asset);
   }
 
-  render() {
+  override render() {
     return html`
       <h3>${this.t('control.title')}</h3>
 

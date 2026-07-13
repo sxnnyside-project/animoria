@@ -2,14 +2,21 @@
   "name": "animoria",
   "private": true,
   "packageManager": "pnpm@11.5.2",
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=11"
+  },
   "scripts": {
+    "dev": "turbo dev",
     "build": "turbo build",
     "test": "turbo test",
+    "typecheck": "turbo typecheck",
     "lint": "turbo lint",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "clean": "turbo clean",
     "audit": "pnpm audit",
-    "dev": "turbo dev",
     "sandbox": "turbo run dev --filter=animoria-sandbox",
     "package:vscode": "pnpm --filter animoria-vscode package",
     "package:jetbrains": "pnpm --filter animoria-sandbox build && mkdir -p packages/animoria-jetbrains/src/main/resources/assets && cp -r apps/animoria-sandbox/dist/* packages/animoria-jetbrains/src/main/resources/assets/ && cd packages/animoria-jetbrains && ./gradlew buildPlugin",

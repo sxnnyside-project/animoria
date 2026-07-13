@@ -53,7 +53,7 @@ export class Animoria {
    * Executes the full workspace scanning and asset parsing flow.
    * Walks directories, filters files by configuration, resolves appropriate parsers,
    * extracts metadata, and compiles results.
-   * 
+   *
    * @returns A promise resolving to the final consolidated run result.
    */
   async run(): Promise<AnimoriaResult> {
@@ -99,7 +99,7 @@ export class Animoria {
   /**
    * Reads and extracts the raw JSON animation payload for Lottie/dotLottie assets.
    * Useful for web player rendering and preview injection.
-   * 
+   *
    * @param asset The AnimoriaAsset to parse.
    * @returns A promise resolving to the JSON data object, or null if loading/parsing fails.
    */
