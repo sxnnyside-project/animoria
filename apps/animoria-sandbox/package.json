@@ -6,13 +6,16 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src",
+    "lint": "biome lint src",
     "clean": "rm -rf dist",
     "preview": "vite preview"
   },
   "dependencies": {
     "@animoria/core": "workspace:*",
-    "lit": "^3.3.3"
+    "@iconify-json/mingcute": "^1.2.7",
+    "iconify-icon": "^3.0.2",
+    "lit": "^3.3.3",
+    "lottie-web": "^5.12.2"
   },
   "devDependencies": {
     "@types/node": "^25.9.2",

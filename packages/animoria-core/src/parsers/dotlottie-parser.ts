@@ -1,5 +1,6 @@
-import { DotLottie } from '@dotlottie/dotlottie-js';
-import { readFile } from 'fs/promises';
+import { readFile } from 'node:fs/promises';
+import { DotLottie, type LottieAnimationCommon } from '@dotlottie/dotlottie-js';
+import { logDebug } from '../logging/logger.js';
 import type { ParserResult } from '../types/index.js';
 import type { DotLottieManifestEntry } from '../types/metadata.js';
 import { sanitizeMetadataString } from './sanitizer.js';
@@ -26,14 +27,16 @@ export class DotLottieParser {
       const primary = animations[0]!;
       const animData = (await primary.toJSON()) as unknown as Record<string, unknown>;
 
-      const fps = animData['fr'] as number;
-      const ip = typeof animData['ip'] === 'number' ? (animData['ip'] as number) : 0;
-      const totalFrames = (animData['op'] as number) - ip;
-      const durationSeconds = parseFloat((totalFrames / fps).toFixed(4));
+      const fps = animData.fr as number;
+      const ip = typeof animData.ip === 'number' ? (animData.ip as number) : 0;
+      const totalFrames = (animData.op as number) - ip;
+      const durationSeconds = Number.parseFloat((totalFrames / fps).toFixed(4));
 
-      const layers = Array.isArray(animData['layers']) ? (animData['layers'] as unknown[]) : [];
+      const layers = Array.isArray(animData.layers) ? (animData.layers as unknown[]) : [];
 
-      const rawMarkers = Array.isArray(animData['markers']) ? (animData['markers'] as any[]) : [];
+      const rawMarkers = Array.isArray(animData.markers)
+        ? (animData.markers as Record<string, unknown>[])
+        : [];
       const markers = rawMarkers.map((m) => ({
         name: sanitizeMetadataString(m.cm as string),
         frame: m.tm as number,
@@ -54,8 +57,8 @@ export class DotLottieParser {
           fps,
           totalFrames,
           durationSeconds,
-          width: animData['w'] as number,
-          height: animData['h'] as number,
+          width: animData.w as number,
+          height: animData.h as number,
           layerCount: layers.length,
           markers,
           dotLottie: {
@@ -80,7 +83,7 @@ export class DotLottieParser {
       ) as ArrayBuffer;
       const dotLottie = await new DotLottie().fromArrayBuffer(arrayBuffer);
 
-      let animation;
+      let animation: LottieAnimationCommon | undefined;
       if (animationId) {
         animation = await dotLottie.getAnimation(animationId);
       } else {
@@ -89,7 +92,18 @@ export class DotLottieParser {
 
       if (!animation) return null;
       return await animation.toJSON();
-    } catch {
+    } catch (err) {
+      logDebug(
+        'asset-parse',
+        'DotLottieParser',
+        'Could not extract animation data from .lottie archive',
+        {
+          assetPath: filePath,
+          reason: 'archive unreadable or requested animation missing',
+          error: err,
+          recovery: 'returned null',
+        }
+      );
       return null;
     }
   }

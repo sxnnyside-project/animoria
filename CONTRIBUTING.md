@@ -95,27 +95,9 @@ Commits that don't follow this format will be flagged during review.
 
 ## Running & Debugging in Development
 
-### VS Code Extension
-
-To run the VS Code extension in development:
-
-1. Open the workspace root directory in VS Code.
-2. Press `F5` (or go to Run and Debug → **Launch VS Code Extension**).
-3. This opens a new Extension Development Host window with the local extension loaded.
-
-### JetBrains Plugin (IntelliJ / Android Studio)
-
-To run and debug the JetBrains plugin in a sandbox instance:
-
-1. Navigate to the plugin directory:
-   ```bash
-   cd packages/animoria-jetbrains
-   ```
-2. Run the Gradle IntelliJ sandbox task:
-   ```bash
-   ./gradlew runIde
-   ```
-3. This will launch a sandbox IntelliJ IDEA instance with the Animoria plugin installed. You can set breakpoints inside your Kotlin source files directly in your main IDE window.
+- **VS Code extension**: open the workspace root in VS Code and press `F5` to launch an Extension Development Host with the local build loaded.
+- **JetBrains plugin**: run `./gradlew runIde` from `packages/animoria-jetbrains` to launch a sandbox IDE instance with the local plugin installed.
+- **Component sandbox**: run `just dev` to start the Vite dev server for iterating on shared Lit components without launching an IDE.
 
 ---
 
@@ -124,7 +106,7 @@ To run and debug the JetBrains plugin in a sandbox instance:
 `packages/animoria-core` is pure TypeScript with zero IDE dependencies. This constraint is intentional and must be preserved:
 
 - Do not import `vscode` or any VS Code API into `animoria-core`.
-- Do not spawn Node.js subprocesses from the JetBrains plugin.
+- Do not reimplement governance or parsing logic natively in Kotlin — the JetBrains plugin consumes `@animoria/core` as a background Node.js CLI daemon and stays a presentation layer.
 - All changes to `animoria-core` must be additive — existing tests must continue to pass.
 
 ---

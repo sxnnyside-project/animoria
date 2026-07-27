@@ -1,14 +1,19 @@
 import type { AnimatedFormat } from '../types/index.js';
 import type { IAssetParser } from './base-parser.js';
-import { LottieParserAdapter } from './lottie-parser-adapter.js';
 import { DotLottieParserAdapter } from './dotlottie-parser-adapter.js';
+import { LottieParserAdapter } from './lottie-parser-adapter.js';
+import { ApngParser, GifParser } from './raster-animated-parser.js';
 import { RiveParser } from './rive-parser.js';
-import { GifParser, ApngParser } from './raster-animated-parser.js';
 import { SvgAnimatedParser } from './svg-animated-parser.js';
 
 /**
- * Registro central y factoría (Singleton) que administra y provee
- * los parsers para cada formato animado de forma dinámica.
+ * Singleton catalog of every `IAssetParser` Animoria ships, keyed by the
+ * format each one handles.
+ *
+ * `FileScanner` and `AssetParser` both resolve parsers through this
+ * registry rather than holding their own instances, so a new format is
+ * introduced by adding one parser class and one `registerParser` call
+ * here — never a change to scanning or parsing logic.
  */
 export class ParserRegistry {
   private static _instance: ParserRegistry | null = null;
@@ -18,9 +23,7 @@ export class ParserRegistry {
     this.initializeDefaults();
   }
 
-  /**
-   * Obtiene la instancia única del registro de parsers.
-   */
+  /** Returns the shared registry instance, creating it on first use. */
   static getInstance(): ParserRegistry {
     if (!ParserRegistry._instance) {
       ParserRegistry._instance = new ParserRegistry();
@@ -28,18 +31,17 @@ export class ParserRegistry {
     return ParserRegistry._instance;
   }
 
-  /**
-   * Registra dinámicamente un nuevo parser en el ecosistema.
-   */
+  /** Registers a parser under its own reported format, replacing any previous parser for that format. */
   registerParser(parser: IAssetParser): void {
     this._parsers.set(parser.getFormat(), parser);
   }
 
   /**
-   * Busca un parser registrado que sea compatible con la extensión y firma de bytes dadas.
+   * Finds the registered parser that claims support for the given
+   * extension and byte signature, or `null` if none does.
    *
-   * @param ext Extensión en minúsculas del archivo analizado
-   * @param chunk Fragmento inicial de bytes del archivo en memoria
+   * @param ext Lowercased extension of the file being resolved.
+   * @param chunk Leading bytes of the file, already read into memory.
    */
   getParserFor(ext: string, chunk: Buffer): IAssetParser | null {
     for (const parser of this._parsers.values()) {
@@ -50,9 +52,7 @@ export class ParserRegistry {
     return null;
   }
 
-  /**
-   * Registra los parsers de formatos por defecto.
-   */
+  /** Registers Animoria's built-in parsers. Called once, by the constructor. */
   initializeDefaults(): void {
     this.registerParser(new LottieParserAdapter());
     this.registerParser(new DotLottieParserAdapter());
@@ -62,16 +62,12 @@ export class ParserRegistry {
     this.registerParser(new SvgAnimatedParser());
   }
 
-  /**
-   * Retorna una lista con todos los formatos actualmente registrados.
-   */
+  /** Every format with a currently registered parser. */
   getRegisteredFormats(): AnimatedFormat[] {
     return Array.from(this._parsers.keys());
   }
 
-  /**
-   * Limpia los parsers registrados (útil para pruebas unitarias).
-   */
+  /** Removes every registered parser. Intended for test isolation. */
   clear(): void {
     this._parsers.clear();
   }

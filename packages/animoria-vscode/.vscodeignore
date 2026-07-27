@@ -10,12 +10,11 @@ node_modules/
 *.tgz
 
 # Test and lint artefacts
+tests/
 *.test.ts
 *.spec.ts
 **/__tests__/
-.eslintrc*
-.eslintignore
-jest.config.*
+vitest.config.ts
 
 # Build intermediates and maps
 dist/**/*.map

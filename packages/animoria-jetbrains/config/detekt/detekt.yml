@@ -8,8 +8,21 @@ style:
     active: false
   WildcardImport:
     active: false
+  MaxLineLength:
+    active: false
+  ReturnCount:
+    active: false
 
 complexity:
   active: true
   TooManyFunctions:
+    active: false
+  NestedBlockDepth:
+    active: false
+
+exceptions:
+  active: true
+  TooGenericExceptionCaught:
+    active: false
+  SwallowedException:
     active: false

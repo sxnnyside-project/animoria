@@ -1,8 +1,8 @@
 {
   "name": "animoria-vscode",
   "displayName": "Animoria",
-  "description": "Visual Asset Memory for Developers — browse, preview, and trace Lottie animations directly inside VS Code.",
-  "version": "0.2.0",
+  "description": "Visual Asset Governance for developers — discover, preview, trace, and clean up animated (Lottie, dotLottie, Rive, GIF, APNG, SVG) and static (SVG, PNG, JPEG, WebP, AVIF) assets directly inside VS Code.",
+  "version": "1.0.0",
   "publisher": "SxnnysideProject",
   "author": {
     "name": "Sxnnyside Project",
@@ -24,29 +24,27 @@
     "theme": "dark"
   },
   "keywords": [
+    "asset governance",
+    "duplicate detection",
+    "static assets",
     "lottie",
+    "dotlottie",
+    "rive",
     "animation",
     "bodymovin",
     "preview",
-    "asset",
     "after effects",
-    "json animation",
     "motion",
     "design",
-    "gallery"
+    "gallery",
+    "cleanup"
   ],
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": [
-    "Visualization",
-    "Other"
-  ],
+  "categories": ["Linters", "Visualization", "Other"],
   "qna": "marketplace",
-  "activationEvents": [
-    "workspaceContains:**/*.json",
-    "onStartupFinished"
-  ],
+  "activationEvents": ["workspaceContains:**/*.json", "onStartupFinished"],
   "main": "./dist/extension.js",
   "contributes": {
     "viewsContainers": {
@@ -67,6 +65,12 @@
         }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "animoria.gallery",
+        "contents": "No visual assets found in this workspace yet.\n\nAnimoria automatically discovers animated (Lottie, dotLottie, Rive, GIF, APNG, animated SVG) and static (SVG, PNG, JPEG, WebP, AVIF) files as you add them — no configuration needed.\n\nJust added some? Indexing runs in the background and the Gallery updates on its own.\n\n[Refresh Gallery](command:animoria.refresh)"
+      }
+    ],
     "commands": [
       {
         "command": "animoria.refresh",
@@ -92,13 +96,37 @@
         "icon": "$(shield)"
       },
       {
+        "command": "animoria.viewGovernanceReport",
+        "title": "Animoria: View Governance Report"
+      },
+      {
         "command": "animoria.exportGovernanceReport",
-        "title": "Animoria: Export Governance Report"
+        "title": "Animoria: Export Governance Report to File"
       },
       {
         "command": "animoria.deleteAsset",
         "title": "Animoria: Delete Asset",
         "icon": "$(trash)"
+      },
+      {
+        "command": "animoria.startCleanupReview",
+        "title": "Animoria: Review Cleanup Opportunities",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "animoria.resolveDuplicates",
+        "title": "Animoria: Resolve Duplicates",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "animoria.generateSnippet",
+        "title": "Animoria: Generate Code Snippet",
+        "icon": "$(code)"
+      },
+      {
+        "command": "animoria.toggleViewMode",
+        "title": "Animoria: Toggle Directory Tree / Flat View",
+        "icon": "$(list-tree)"
       }
     ],
     "menus": {
@@ -117,22 +145,45 @@
           "command": "animoria.runGovernance",
           "when": "view == animoria.gallery",
           "group": "navigation"
+        },
+        {
+          "command": "animoria.startCleanupReview",
+          "when": "view == animoria.gallery",
+          "group": "navigation"
+        },
+        {
+          "command": "animoria.toggleViewMode",
+          "when": "view == animoria.gallery",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
         {
           "command": "animoria.openPreview",
-          "when": "view == animoria.gallery",
+          "when": "view == animoria.gallery && viewItem != animoriaFolder && viewItem != animoriaHealthScore && viewItem != animoriaAnimatedAssetsSection && viewItem != animoriaStaticAssetsSection && viewItem != animoriaGovernanceSection",
           "group": "inline"
         },
         {
           "command": "animoria.revealInExplorer",
-          "when": "view == animoria.gallery"
+          "when": "view == animoria.gallery && viewItem != animoriaFolder && viewItem != animoriaHealthScore && viewItem != animoriaAnimatedAssetsSection && viewItem != animoriaStaticAssetsSection && viewItem != animoriaGovernanceSection"
         },
         {
           "command": "animoria.deleteAsset",
           "when": "view == animoria.gallery && viewItem == animoriaGovernanceIssue",
           "group": "inline"
+        },
+        {
+          "command": "animoria.resolveDuplicates",
+          "when": "view == animoria.gallery && viewItem == animoriaGovernanceIssueDuplicate",
+          "group": "inline"
+        },
+        {
+          "command": "animoria.generateSnippet",
+          "when": "view == animoria.gallery && (viewItem == animoriaAsset || viewItem == animoriaGovernanceIssue || viewItem == animoriaGovernanceIssueDuplicate)"
+        },
+        {
+          "command": "animoria.viewGovernanceReport",
+          "when": "view == animoria.gallery && viewItem == animoriaGovernanceSection"
         },
         {
           "command": "animoria.exportGovernanceReport",
@@ -143,15 +194,10 @@
     "configuration": {
       "title": "Animoria",
       "properties": {
-        "animoria.chromiumPath": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "Path to a Chrome or Chromium executable used for thumbnail generation. Leave empty for auto-detection. Example: `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`"
-        },
         "animoria.enableThumbnails": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Generate static thumbnail previews for animated assets in the gallery sidebar. Requires Chrome/Chromium."
+          "markdownDescription": "Generate static thumbnail previews for animated assets in the gallery sidebar. Rendered natively — no Chrome/Chromium installation required."
         },
         "animoria.governance.overusedThreshold": {
           "type": "number",
@@ -165,8 +211,10 @@
   "scripts": {
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "dev": "vite build --watch",
-    "lint": "eslint src",
+    "lint": "biome lint src",
     "clean": "rm -rf dist",
     "package": "vsce package --no-dependencies",
     "publish": "vsce publish --no-dependencies"
@@ -175,10 +223,12 @@
     "@animoria/core": "workspace:*"
   },
   "devDependencies": {
+    "lottie-web": "5.12.2",
     "@types/node": "^25.9.2",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.9.2",
     "typescript": "^5.9.3",
-    "vite": "^8.0.16"
+    "vite": "^8.0.16",
+    "vitest": "^3.2.6"
   }
 }

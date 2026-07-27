@@ -9,9 +9,51 @@ permissions:
   contents: write
 
 jobs:
+  build-native-daemon:
+    name: Build native daemon (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 11
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build @animoria/core
+        run: pnpm --filter @animoria/core build
+
+      - name: Build self-contained native executable
+        run: pnpm --filter @animoria/core build:sea
+
+      - name: Upload native daemon artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-daemon-${{ matrix.os }}
+          # An explicit directory (not a glob) preserves its immediate
+          # children — darwin-arm64/, linux-x64/, win32-x64/ — as the
+          # artifact's own top-level entries, so merge-multiple below
+          # can combine all three platforms' output without collisions.
+          path: packages/animoria-core/sea
+          if-no-files-found: error
+
   release:
     name: Publish Extension and Plugin
     runs-on: ubuntu-latest
+    needs: build-native-daemon
 
     steps:
       - name: Checkout
@@ -82,6 +124,20 @@ jobs:
       - name: Publish to Open VSX Registry
         working-directory: packages/animoria-vscode
         run: ovsx publish animoria-${{ steps.version.outputs.VERSION }}.vsix -p ${{ secrets.OVSX_PAT }}
+
+      - name: Download native daemon artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: native-daemon-*
+          path: packages/animoria-jetbrains/src/main/resources/native
+          merge-multiple: true
+
+      - name: Restore native daemon executable permissions
+        # GitHub Actions artifact upload/download does not preserve the
+        # executable bit on non-Windows binaries.
+        run: |
+          find packages/animoria-jetbrains/src/main/resources/native \
+            -type f -name 'animoria-core' -exec chmod +x {} \;
 
       - name: Build JetBrains Plugin
         run: |

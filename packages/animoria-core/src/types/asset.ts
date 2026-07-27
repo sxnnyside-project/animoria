@@ -73,31 +73,49 @@ export interface UsageSearchResult {
   durationMs: number;
 }
 
-export interface ThumbnailConfig {
+export interface ThumbnailEngineConfig {
   /** Absolute path to workspace root — thumbnails go in {workspacePath}/.animoria/thumbnails/ */
   workspacePath: string;
-  /** Absolute path to Chromium/Chrome executable */
-  chromiumPath: string;
-  /** Thumbnail width in pixels (default: 256) */
-  width?: number;
-  /** Thumbnail height in pixels (default: 256) */
-  height?: number;
+  /** Thumbnail width and height in pixels (square output; default: 256) */
+  size?: number;
   /**
-   * Which frame to capture:
+   * Which frame to approximate when a source format is keyframe-animated:
    * 'first'  — frame 0 (default)
    * 'middle' — middle frame (totalFrames / 2)
+   *
+   * The vector renderer approximates keyframed properties using their
+   * first keyframe regardless of this setting (see
+   * {@link ../thumbnails/lottie-vector-renderer.js} for why); this
+   * option only affects which frame index is recorded, an input a
+   * future, richer renderer can consume.
    */
   frame?: 'first' | 'middle';
-  /** Max concurrent pages in the headless browser (default: 4) */
-  concurrency?: number;
 }
+
+/**
+ * Identifies which rendering tier produced a given thumbnail, in order of
+ * fidelity. Exposed so downstream consumers (Hover Preview, Preview Panel,
+ * Health Score) can decide whether to trust the thumbnail as a true visual
+ * preview or treat it as a placeholder.
+ */
+export type ThumbnailKind =
+  /** A vector frame rendered directly from parsed asset content. */
+  | 'vector'
+  /** A raster image extracted from the animation's own embedded asset data (e.g. a Lottie image layer's base64 payload), used when the vector tier cannot represent the document. */
+  | 'embedded-image'
+  /** The original file bytes, reused as-is (e.g. GIF/APNG/static SVG). */
+  | 'source-copy'
+  /** A deterministic format badge — no asset content was rendered. */
+  | 'badge';
 
 export interface ThumbnailResult {
   asset: AnimoriaAsset;
-  /** Absolute path to generated .png file, or null if generation failed */
+  /** Absolute path to the generated thumbnail file, or null if generation failed */
   thumbnailPath: string | null;
   /** Whether this thumbnail was loaded from cache (true) or generated fresh (false) */
   fromCache: boolean;
+  /** Which rendering tier produced this thumbnail; absent when generation failed */
+  kind?: ThumbnailKind;
   error?: string;
 }
 

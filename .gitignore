@@ -20,3 +20,14 @@ dist
 # JetBrains plugin assets bundle — regenerated from animoria-sandbox/dist
 # by `pnpm package:jetbrains` (see package.json)
 packages/animoria-jetbrains/src/main/resources/assets/
+
+# Self-contained native CLI binaries — regenerated per-platform by
+# `pnpm --filter @animoria/core build:sea` (see scripts/build-sea.mjs)
+packages/animoria-core/sea/
+packages/animoria-jetbrains/src/main/resources/native/
+
+# Editor — personal settings, not project config
+.vscode/settings.json
+
+# Claude Code — local AI agent workspace state
+.claude/

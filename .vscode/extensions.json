@@ -1,0 +1,21 @@
+{
+  "recommendations": [
+    // TypeScript & JavaScript
+    "ms-vscode.vscode-typescript-next",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+
+    // Monorepo / pnpm
+    "zyrong.node-modules-explorer",
+
+    // VS Code Extension Development
+    "ms-vscode.extension-test-runner",
+    "ms-vscode.vscode-js-profile-flame",
+
+    // JSON & config
+    "redhat.vscode-yaml",
+
+    // Git
+    "eamodio.gitlens"
+  ]
+}

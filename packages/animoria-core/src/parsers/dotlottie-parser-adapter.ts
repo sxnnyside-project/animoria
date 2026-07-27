@@ -2,10 +2,7 @@ import type { AnimatedFormat, AnimoriaMetadata } from '../types/index.js';
 import type { IAssetParser } from './base-parser.js';
 import { DotLottieParser } from './dotlottie-parser.js';
 
-/**
- * Adaptador para el parser dotLottie por defecto para integrarlo en
- * el nuevo pipeline modular de parsers.
- */
+/** Adapts `DotLottieParser` to the `IAssetParser` contract for `ParserRegistry`. */
 export class DotLottieParserAdapter implements IAssetParser {
   private _parser = new DotLottieParser();
 

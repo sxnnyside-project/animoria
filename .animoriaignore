@@ -1,0 +1,3 @@
+# Synthetic test fixtures — not real production assets, excluded from governance.
+# See packages/animoria-core/tests/fixtures/README.md.
+packages/animoria-core/tests/fixtures/

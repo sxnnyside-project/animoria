@@ -1,6 +1,6 @@
-import { promises as fs } from 'fs';
-import { extname } from 'path';
-import { performance } from 'perf_hooks';
+import { promises as fs } from 'node:fs';
+import { extname } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { ParserRegistry } from '../parsers/parser-registry.js';
 import type { AnimoriaAsset } from '../types/index.js';
 

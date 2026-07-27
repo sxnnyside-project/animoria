@@ -1,8 +1,9 @@
-import { performance } from 'perf_hooks';
-import { readFile } from 'fs/promises';
-import { FileScanner } from './scanner/file-scanner.js';
+import { readFile } from 'node:fs/promises';
+import { performance } from 'node:perf_hooks';
+import { logDebug } from './logging/logger.js';
 import { AssetParser } from './parser/asset-parser.js';
 import { DotLottieParser } from './parsers/dotlottie-parser.js';
+import { FileScanner } from './scanner/file-scanner.js';
 import type { AnimoriaAsset } from './types/index.js';
 
 /**
@@ -108,7 +109,13 @@ export class Animoria {
       try {
         const raw = await readFile(asset.path, 'utf-8');
         return JSON.parse(raw);
-      } catch {
+      } catch (err) {
+        logDebug('asset-parse', 'Animoria', 'Could not read or parse Lottie JSON for preview', {
+          assetPath: asset.path,
+          reason: 'file unreadable or invalid JSON',
+          error: err,
+          recovery: 'returned null',
+        });
         return null;
       }
     }

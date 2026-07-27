@@ -1,11 +1,9 @@
+import { logDebug } from '../logging/logger.js';
 import type { AnimatedFormat, AnimoriaMetadata } from '../types/index.js';
 import type { IAssetParser } from './base-parser.js';
 import { LottieParser } from './lottie-parser.js';
 
-/**
- * Adaptador para el parser Lottie por defecto para integrarlo en
- * el nuevo pipeline modular de parsers.
- */
+/** Adapts `LottieParser` to the `IAssetParser` contract for `ParserRegistry`. */
 export class LottieParserAdapter implements IAssetParser {
   private _parser = new LottieParser();
 
@@ -15,12 +13,22 @@ export class LottieParserAdapter implements IAssetParser {
       const chunkStr = bufferChunk.toString('utf8').trim();
       if (!chunkStr.startsWith('{')) return false;
 
-      // Estructura mínima Lottie
+      // Minimal structural signature of a Lottie document.
       const hasVersion = chunkStr.includes('"v"') || chunkStr.includes("'v'");
       const hasLayers = chunkStr.includes('"layers"') || chunkStr.includes("'layers'");
 
       return hasVersion && hasLayers;
-    } catch {
+    } catch (err) {
+      logDebug(
+        'asset-parse',
+        'LottieParserAdapter',
+        'Could not inspect candidate file chunk for Lottie signature',
+        {
+          reason: 'buffer decode failed',
+          error: err,
+          recovery: 'treated as not a Lottie file',
+        }
+      );
       return false;
     }
   }

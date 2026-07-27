@@ -12,14 +12,14 @@ packages/animoria-core — Pure TypeScript. All scanning, parsing, metadata extr
 
 packages/animoria-vscode — VS Code extension. Consumes @animoria/core. Implements the IDE-specific UI: TreeView, WebView panels, commands.
 
-packages/animoria-jetbrains — IntelliJ Platform plugin (Kotlin). Implements its own parser in Kotlin. Does NOT call Node.js as a subprocess — the parser is reimplemented natively to avoid Node dependency issues on end-user machines.
+packages/animoria-jetbrains — IntelliJ Platform plugin (Kotlin). Kotlin cannot import `@animoria/core` directly, so the plugin spawns it as a background Node.js CLI daemon (`CoreProcessManager`) and communicates over an NDJSON stdin/stdout protocol. All governance, parsing, and indexing logic stays in `@animoria/core`; Kotlin is a presentation layer only.
 
 apps/animoria-sandbox — Local Vite + Lit app. Used to develop and test animoria-core features without launching an IDE.
 
 ## Key Decisions
 
 - animoria-core has zero IDE dependencies
-- JetBrains plugin does NOT spawn Node processes
+- JetBrains plugin spawns @animoria/core as a Node.js CLI daemon (NDJSON over stdin/stdout) since Kotlin cannot import it directly; no governance/parsing logic is reimplemented in Kotlin
 - Lottie detection is structural validation (checking for v, fr, layers keys), NOT file signature/magic bytes
 - Cache is introduced AFTER the core flow works and performance is measured
 - Usage References (where an asset is used in code) is the highest-priority post-MVP feature
@@ -34,20 +34,22 @@ Phase 3: GIF, APNG, Animated SVG
 
 - Do not add VS Code API imports to animoria-core
 - Do not implement caching before the scanner and parser are tested
-- Do not use child_process to call Node from JetBrains
+- Do not reimplement governance/parsing logic natively in Kotlin — the JetBrains plugin must stay a presentation layer over the @animoria/core daemon
 - Do not add AI description features (low priority, deferred indefinitely)
 
 ## Commands
 
-pnpm install — install all dependencies
-pnpm build — build all packages
-pnpm test — run all tests
-pnpm typecheck — type-check all packages
-pnpm lint — lint all packages
-pnpm format / pnpm format:check — format / verify formatting
-pnpm check — run format:check, lint, typecheck, test, and build
-pnpm clean — remove build outputs
-pnpm dev — run sandbox dev server
+All tasks should be run through the task runner (`just`):
+
+just install    — bootstrap all packages and dependencies (runs pnpm install)
+just dev        — run local dev sandbox workflow
+just build      — compile and build all packages (JS packages and Kotlin plugin)
+just test       — run the test suite
+just typecheck  — run TypeScript compiler correctness checks
+just lint       — run static analysis (Biome for TS, detekt + ktlint for Kotlin)
+just format     — apply formatting (Biome for TS, ktlintFormat for Kotlin)
+just check      — run full quality gate (format, lint, typecheck, test, build)
+just clean      — remove build artifacts and caches
 
 ## UI Layer — Lit + Web Components
 

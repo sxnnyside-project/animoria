@@ -2,6 +2,8 @@
 
 Local Vite + Lit development app for building and testing animated asset preview components without launching an IDE.
 
+This is an internal development tool for contributors — it is not shipped to end users and is not a distribution target.
+
 ## Purpose
 
 The sandbox exists because iterating on WebView UI inside a VS Code Extension Development Host is slow — every change requires a rebuild and a reload of the Extension Development Host. The sandbox gives an instant browser dev server with HMR for the same Lit components that ship inside the VS Code WebView and JetBrains JCEF panel.

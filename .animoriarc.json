@@ -1,0 +1,8 @@
+{
+  "rules": {
+    "no-gif": "warning",
+    "max-file-size-kb": ["warning", 512],
+    "no-duplicate-names": "error",
+    "no-unreferenced-assets": "warning"
+  }
+}

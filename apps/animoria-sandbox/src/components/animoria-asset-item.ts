@@ -1,7 +1,7 @@
-import { LitElement, html, css } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
 import type { AnimoriaAsset } from '@animoria/core';
 import { t } from '@animoria/core/i18n';
+import { LitElement, css, html } from 'lit';
+import { customElement, property } from 'lit/decorators.js';
 import './animoria-thumbnail-fallback.js';
 
 @customElement('animoria-asset-item')
@@ -102,28 +102,32 @@ export class AssetItem extends LitElement {
 
     return html`
       <div class="item" @click="${this._onClick}">
-        ${asset.thumbnailPath
-          ? html` <img class="thumbnail" src="${asset.thumbnailPath}" alt="${asset.name}" /> `
-          : html`
+        ${
+          asset.thumbnailPath
+            ? html` <img class="thumbnail" src="${asset.thumbnailPath}" alt="${asset.name}" /> `
+            : html`
               <animoria-thumbnail-fallback
                 .name="${asset.name}"
                 .format="${asset.format}"
               ></animoria-thumbnail-fallback>
-            `}
+            `
+        }
 
         <div class="info">
           <span class="stem">${asset.stem}</span>
-          ${asset.status === 'parsed' && asset.metadata
-            ? html`
+          ${
+            asset.status === 'parsed' && asset.metadata
+              ? html`
                 <span class="meta">
                   ${'fps' in asset.metadata ? html`${asset.metadata.fps}fps &middot; ` : ''}
                   ${asset.metadata.durationSeconds}s &middot;
                   ${asset.metadata.width}&times;${asset.metadata.height}
                 </span>
               `
-            : asset.status === 'error'
-              ? html` <span class="error">${asset.error ?? this.t('asset.unknownError')}</span> `
-              : html` <span class="pending">${this.t('asset.parsing')}&hellip;</span> `}
+              : asset.status === 'error'
+                ? html` <span class="error">${asset.error ?? this.t('asset.unknownError')}</span> `
+                : html` <span class="pending">${this.t('asset.parsing')}&hellip;</span> `
+          }
         </div>
       </div>
     `;

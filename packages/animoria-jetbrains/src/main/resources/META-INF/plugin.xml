@@ -3,17 +3,17 @@
     <name>Animoria</name>
     <vendor id="sxnnyside-project" email="support.sxnnyside@sxnnysideproject.com" url="https://github.com/sxnnyside-project">Sxnnyside Project</vendor>
 
-    <idea-version since-build="251"/>
+    <idea-version since-build="241"/>
 
     <description><![CDATA[
-        <h3>Animoria — Codebase Governance & Visual Tracking</h3>
-        <p><b>Workspace analysis, tracking, and asset governance for heavy animation structures (Lottie, Rive, GIF, SVG) directly inside your IDE sidebar.</b></p>
-        <p>Animoria acts as a local-first visual asset memory for developer teams who care about craft and codebase health. It automates the structural audit and reference tracing of animated files in large repositories to prevent production bundle bloat and technical debt.</p>
+        <h3>Animoria — Visual Asset Governance</h3>
+        <p><b>Workspace-wide discovery, governance, and reference tracing for animated (Lottie, Rive, GIF, APNG, SVG) and static (SVG, PNG, JPEG, WebP, AVIF) assets, directly inside your IDE sidebar.</b></p>
+        <p>Animoria acts as a local-first visual asset memory for developer teams who care about craft and codebase health. It automates the structural audit and reference tracing of visual assets in large repositories to prevent production bundle bloat and technical debt.</p>
         <h4>Key Features:</h4>
         <ul>
-            <li><b>Asset Governance:</b> Automatically scan and identify <i>Unused</i> (orphan) animations, <i>Duplicate</i> assets (identical MD5 file hashes), or <i>Overused</i> files exceeding customizable reference thresholds.</li>
+            <li><b>Asset Governance:</b> Automatically scan and identify <i>Unused</i> (orphan), <i>Duplicate</i> (identical MD5 file hashes), or <i>Overused</i> animated assets exceeding customizable reference thresholds. Static-asset governance is on the roadmap.</li>
             <li><b>Usage Traceability:</b> Trace where assets are referenced across Kotlin, Java, JavaScript, TypeScript, Swift, Dart, and more, jumping directly to the source file line.</li>
-            <li><b>Multi-Format Strategy:</b> Seamlessly parses Lottie (.json), dotLottie (.lottie), Rive (.riv), GIF/APNG (.gif/.apng), and Animated SVG (.svg).</li>
+            <li><b>Multi-Format Strategy:</b> Seamlessly parses Lottie (.json), dotLottie (.lottie), Rive (.riv), GIF/APNG (.gif/.apng), Animated SVG (.svg), and indexes static SVG/PNG/JPEG/WebP/AVIF files alongside them.</li>
             <li><b>Local & Offline-First:</b> Secure, offline processing guarantees code and asset data never leave your local workspace.</li>
         </ul>
     ]]></description>
@@ -25,5 +25,16 @@
                     anchor="right"
                     icon="AllIcons.Actions.Preview"
                     factoryClass="com.sxnnyside.animoria.ui.AnimoriaToolWindowFactory"/>
+        <projectConfigurable instance="com.sxnnyside.animoria.settings.AnimoriaSettingsConfigurable"
+                             id="com.sxnnyside.animoria.settings"
+                             displayName="Animoria"
+                             parentId="tools"/>
+        <editorFactoryListener implementation="com.sxnnyside.animoria.hover.AnimoriaEditorHoverListener"/>
+        <notificationGroup id="Animoria" displayType="BALLOON"/>
     </extensions>
+
+    <projectListeners>
+        <listener class="com.sxnnyside.animoria.backend.AnimoriaVFSListener"
+                  topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
+    </projectListeners>
 </idea-plugin>

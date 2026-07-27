@@ -1,170 +1,100 @@
-# Animoria — Visual Asset Memory for Developers
+# Animoria — Visual Asset Governance for VS Code
 
 ![Animoria Banner](https://raw.githubusercontent.com/sxnnyside-project/animoria/main/docs/banner.png)
 
-**Codebase Governance, reference tracing, and technical debt audit for animated assets directly inside VS Code.**
+**Visual Asset Governance for VS Code — find every animated and static asset in your codebase, see where it's used, and clean up what isn't.**
 
-![Animoria Demo](https://raw.githubusercontent.com/sxnnyside-project/animoria/main/docs/demo.gif)
+Animated assets (Lottie, dotLottie, Rive, GIF, APNG, animated SVG) and static assets (SVG, PNG, JPEG, WebP, AVIF) both pile up in every codebase that ships design: duplicates get checked in under different names, orphaned exports outlive the screens they were built for, and nothing tells you which is which. Animoria scans your workspace, builds a visual gallery of every asset, and traces each one back to where it's actually used in code — so you can delete with confidence instead of guessing.
 
-Animoria scans your workspace automatically, builds a visual asset memory, maps every reference to your code, and flags unused, duplicate, or overused files to keep your codebase clean, clean of debt, and optimized.
+## Why Animoria
+
+- **See it, don't guess it.** A live gallery with thumbnails and playback for every asset in your workspace — animated and static — always up to date.
+- **Know what's safe to delete.** Governance analysis flags Unused, Duplicate, and Overused animated assets automatically — no manual auditing. Static-asset governance ships in a later release; discovery is available today.
+- **Trace usage, not just files.** Every asset links to the exact file and line that references it, across TypeScript, JavaScript, Swift, Kotlin, Dart, Vue, and Svelte.
+- **Clean up safely.** Review and resolve duplicates, delete orphans, and export a governance report — all from the sidebar.
+- **Zero setup, zero network calls.** Works the moment you open a workspace. Everything runs locally; nothing leaves your machine.
+
+## Getting Started
+
+1. Install the extension and open a workspace containing visual assets.
+2. Animoria scans automatically — no configuration required.
+3. Click the Animoria icon in the Activity Bar to open the Gallery.
+4. Click any asset to preview it, or expand it to see where it's used in code.
+5. Click the shield icon (⛨) to run Governance Analysis and see Unused, Duplicate, and Overused assets.
+
+## Screenshots
+
+| Preview Panel | Governance Report | Bulk Cleanup Review |
+| :---: | :---: | :---: |
+| ![Preview Panel](https://raw.githubusercontent.com/sxnnyside-project/animoria/main/docs/screenshots/preview-panel.png) | ![Governance Report](https://raw.githubusercontent.com/sxnnyside-project/animoria/main/docs/screenshots/governance-report.png) | ![Cleanup Review](https://raw.githubusercontent.com/sxnnyside-project/animoria/main/docs/screenshots/cleanup-review.png) |
 
 ## Supported Formats
 
-| Format       | Extension |    Status    |
-| :----------- | :-------- | :----------: |
-| Lottie       | `.json`   | ✅ Supported |
-| dotLottie    | `.lottie` | ✅ Supported |
-| Rive         | `.riv`    | ✅ Supported |
-| GIF          | `.gif`    | ✅ Supported |
-| APNG         | `.apng`   | ✅ Supported |
-| Animated SVG | `.svg`    | ✅ Supported |
+**Animated** — full governance (usage tracking, duplicate/unused/overused detection), metadata, thumbnails, playback:
 
-## Commands
+| Format       | Extension |
+| :----------- | :-------- |
+| Lottie       | `.json`   |
+| dotLottie    | `.lottie` |
+| Rive         | `.riv`    |
+| GIF          | `.gif`    |
+| APNG         | `.apng`   |
+| Animated SVG | `.svg`    |
 
-| Command                              | Description                                                    |
-| :----------------------------------- | :------------------------------------------------------------- |
-| `Animoria: Refresh Gallery`          | Re-scan the workspace and rebuild the gallery                  |
-| `Animoria: Open Preview`             | Open the animation preview panel for the selected asset        |
-| `Animoria: Reveal in Explorer`       | Reveal the asset file in the VS Code file explorer             |
-| `Animoria: Search Animations`        | Open a quick-pick search across all gallery assets             |
-| `Animoria: Run Governance Analysis`  | Classify assets as Unused, Duplicate, or Overused              |
-| `Animoria: Export Governance Report` | Save the governance report as Markdown or JSON                 |
-| `Animoria: Delete Asset`             | Permanently delete an asset file from disk (with confirmation) |
+**Static** — discovered and browsable in their own Gallery section today; governance (duplicate/unused detection) ships in a later release:
 
-## Settings
-
-| Setting                                 | Type      | Default | Description                                                                          |
-| :-------------------------------------- | :-------- | :------ | :----------------------------------------------------------------------------------- |
-| `animoria.chromiumPath`                 | `string`  | `""`    | Path to Chrome or Chromium for thumbnail generation. Leave empty for auto-detection. |
-| `animoria.enableThumbnails`             | `boolean` | `true`  | Generate PNG thumbnails in the sidebar. Requires Chrome/Chromium.                    |
-| `animoria.governance.overusedThreshold` | `number`  | `10`    | References at or above this count flag an asset as Overused.                         |
+| Format | Extension                    |
+| :----- | :---------------------------- |
+| SVG    | `.svg`                        |
+| Raster | `.png`, `.jpg`/`.jpeg`, `.webp`, `.avif` |
 
 ## Comparison
 
 | Capability              | Animoria | LottieFiles for VS Code | Standard IDE Explorer |
-| :---------------------- | :------: | :---------------------: | :-------------------: |
-| Workspace Auto-Scanning |    ✅    |           ✅            |           —           |
-| Inline Thumbnails       |    ✅    |           ✅            |           —           |
-| Code Usage Tracking     |    ✅    |            —            |           —           |
-| Asset Governance        |    ✅    |            —            |           —           |
-| dotLottie Support       |    ✅    |            —            |           —           |
-| Multi-Format            |    🔜    |       Lottie only       |           —           |
-| Offline-First           |    ✅    |            —            |          ✅           |
-| Open Source Core        |    ✅    |            —            |           —           |
+| :----------------------- | :------: | :----------------------: | :--------------------: |
+| Workspace Auto-Scanning |    ✅    |            ✅            |           —            |
+| Inline Thumbnails       |    ✅    |            ✅            |           —            |
+| Code Usage Tracking     |    ✅    |            —            |           —            |
+| Asset Governance        |    ✅    |            —            |           —            |
+| dotLottie Support       |    ✅    |            —            |           —            |
+| Multi-Format            |    ✅    |       Lottie only       |           —            |
+| Offline-First           |    ✅    |            —            |           ✅            |
+| Open Source Core        |    ✅    |            —            |           —            |
+
+## What You Get
+
+- **Gallery Sidebar** — a live, auto-refreshing tree of every asset in your workspace, animated and static, with thumbnails, FPS/duration/reference-count summaries, and inline search.
+- **Governance Analysis** — Unused (zero references), Duplicate (identical content), and Overused (referenced past a configurable threshold) animated assets, exportable as Markdown or JSON.
+- **Preview Panel** — full playback controls, complete metadata (format, FPS, duration, frames, dimensions, layers, markers, file size), and every code reference, one click away.
+- **Cleanup & Duplicate Resolution** — review flagged assets and resolve duplicates directly from the sidebar, with confirmation before anything is deleted.
+- **Code Snippets** — one-click, paste-ready integration snippets for React, Vue, Flutter, SwiftUI, and Jetpack Compose.
+- **Native Thumbnails** — rendered in-process, no Chrome/Chromium install required.
+
+## Configuration
+
+Animoria works with no configuration. For workspace-wide governance policy (`.animoriarc`) and excluding paths from discovery (`.animoriaignore`), see [Configuration](https://github.com/sxnnyside-project/animoria/blob/main/docs/CONFIGURATION.md).
+
+| Setting                                 | Default | Description                                                    |
+| :--------------------------------------- | :------ | :--------------------------------------------------------------- |
+| `animoria.enableThumbnails`             | `true`  | Generate thumbnail previews for animated assets in the sidebar. |
+| `animoria.governance.overusedThreshold` | `10`    | References at or above this count flag an asset as Overused.   |
 
 ## Requirements
 
 - VS Code 1.85 or later
-- Chrome or Chromium for thumbnail generation (optional — the gallery works without it)
-
-## How It Works
-
-On activation, Animoria:
-
-1. Scans the workspace for animated assets (Lottie `.json`, `.lottie`, Rive `.riv`, `.gif`, `.apng`, `.svg`).
-2. Parses each file to extract format-specific metadata (such as FPS, duration, dimensions, layer count, artboards, state machines, element count).
-3. Populates the Gallery sidebar with asset items.
-4. Lazily loads code usage references when you expand an asset.
-5. In monorepos, scopes usage results to the nearest project boundary.
-6. Generates PNG thumbnails in `.animoria/thumbnails/` using a headless Chromium page (for Lottie and dotLottie).
-
----
-
-_Animoria is a Sxnnyside Project Tool. &copy; 2026 Sxnnyside Project._
-
-Animoria turns the animated assets scattered across your codebase into a structured, searchable gallery — complete with live playback, asset governance diagnostics, code reference tracing, and technical metadata.
-
----
-
-## Features
-
-### 🗂 Gallery Sidebar
-
-A live tree of every animated asset in your workspace, auto-refreshed when files change.
-
-- Thumbnail icons generated from the middle frame of each animation
-- Per-asset description shows FPS, duration, and reference count
-- Inline search to filter by name
-- Collapse-free tree with usage references as child nodes
-
-### ▶ Enhanced Preview Panel
-
-Click any asset to open a full detail panel:
-
-| Section              | Contents                                                              |
-| -------------------- | --------------------------------------------------------------------- |
-| **Thumbnail Header** | Static PNG preview, asset name, format badge, quick summary           |
-| **Live Preview**     | Lottie player with Play / Pause / Restart / Loop controls             |
-| **Metadata Grid**    | Format, FPS, Duration, Frames, Dimensions, Layers, Markers, File Size |
-| **Usage References** | Every file and line that imports or references the animation          |
-| **Quick Actions**    | Copy absolute path, copy stem name, reveal in Explorer                |
-
-### 🔍 Usage Scanner
-
-Pattern-based search across `.ts`, `.tsx`, `.js`, `.jsx`, `.vue`, `.swift`, `.kt`, `.dart`, and more. Click any reference to jump directly to that line in the source file.
-
-### 🖼 Thumbnail Generation
-
-Headless Chrome renders a crisp PNG from the middle frame of each animation. Thumbnails appear in both the sidebar tree and the panel header.
-
----
-
-## Requirements
-
-- **VS Code** 1.85 or later
-- **Chrome or Chromium** installed (for thumbnail generation — optional)
-
-If Chrome is not found, thumbnails are disabled and a warning is shown with a link to the `animoria.chromiumPath` setting.
-
----
-
-## Extension Settings
-
-| Setting                     | Default | Description                                     |
-| --------------------------- | ------- | ----------------------------------------------- |
-| `animoria.enableThumbnails` | `true`  | Generate static thumbnail previews              |
-| `animoria.chromiumPath`     | `""`    | Path to Chrome/Chromium. Auto-detected if empty |
-
-### Setting `chromiumPath` manually
-
-Open **Settings → Animoria: Chromium Path** and paste the full path:
-
-```
-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome   # macOS
-C:\Program Files\Google\Chrome\Application\chrome.exe           # Windows
-/usr/bin/google-chrome                                           # Linux
-```
-
----
-
-## Commands
-
-| Command                        | Description                                      |
-| ------------------------------ | ------------------------------------------------ |
-| `Animoria: Refresh Gallery`    | Re-scan the workspace for animation assets       |
-| `Animoria: Search Animations`  | Open quick-pick search over all found assets     |
-| `Animoria: Open Preview`       | Open the detail panel for the selected asset     |
-| `Animoria: Reveal in Explorer` | Highlight the asset file in the VS Code Explorer |
-
----
+- No Chrome/Chromium installation needed
 
 ## Known Limitations
 
-- Thumbnail generation via Chromium is currently supported for Lottie and dotLottie formats.
-- Thumbnail generation requires a Chromium-based browser.
+- Vector thumbnail rendering covers the vast majority of real-world Lottie exports; assets with no renderable visual content (e.g. text-only layers) fall back to a format badge.
 - Usage search is pattern-based; dynamic `require()` calls with computed paths may not be detected.
 
+## Learn More
+
+- [Repository](https://github.com/sxnnyside-project/animoria)
+- [Release Notes](CHANGELOG.md)
+- [Report an Issue](https://github.com/sxnnyside-project/animoria/issues)
+
 ---
 
-## Release Notes
-
-See [CHANGELOG.md](CHANGELOG.md).
-
----
-
-## About
-
-Animoria is part of the **Sxnnyside Project** — tools built for developers who care about craft.
-
-- GitHub: [github.com/sxnnyside-project/animoria](https://github.com/sxnnyside-project/animoria)
-- Issues: [github.com/sxnnyside-project/animoria/issues](https://github.com/sxnnyside-project/animoria/issues)
+_Animoria is a Sxnnyside Project tool. &copy; 2026 Sxnnyside Project._

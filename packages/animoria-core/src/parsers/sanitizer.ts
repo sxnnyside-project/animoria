@@ -1,5 +1,13 @@
 /**
- * Sanitiza una cadena de texto para evitar inyecciones de HTML o desbordamientos de atributos.
+ * Strips tags and escapes HTML-significant characters in a string
+ * pulled from parsed asset metadata (marker names, layer names, ...)
+ * before it is ever rendered into a webview or HTML attribute.
+ *
+ * Asset metadata originates from files a developer didn't necessarily
+ * author themselves (a downloaded Lottie file, a shared design asset);
+ * treating any string extracted from it as untrusted is what prevents
+ * a crafted marker/layer name from injecting markup into a hover card
+ * or preview panel.
  */
 export function sanitizeMetadataString(value: string): string {
   if (typeof value !== 'string') return '';

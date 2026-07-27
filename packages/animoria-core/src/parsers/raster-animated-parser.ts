@@ -1,14 +1,12 @@
 import type { AnimatedFormat, AnimoriaMetadata } from '../types/index.js';
 import type { IAssetParser } from './base-parser.js';
 
-/**
- * Parser para el formato de imagen animada GIF (.gif).
- */
+/** Parses the animated GIF format (`.gif`). */
 export class GifParser implements IAssetParser {
   supports(ext: string, bufferChunk: Buffer): boolean {
     if (ext !== '.gif') return false;
     if (bufferChunk.length < 6) return false;
-    // Magic bytes de cabecera GIF
+    // GIF header signature.
     const sig = bufferChunk.toString('ascii', 0, 6);
     return sig === 'GIF89a' || sig === 'GIF87a';
   }
@@ -19,7 +17,7 @@ export class GifParser implements IAssetParser {
       const height = buffer.readUInt16LE(8);
 
       let frameCount = 0;
-      let loopCount = 0; // 0 = loop infinito por defecto
+      const loopCount = 0; // 0 means infinite loop, GIF's own default.
       let pos = 10;
 
       const hasGCT = (buffer[10]! & 0x80) !== 0;
@@ -68,7 +66,7 @@ export class GifParser implements IAssetParser {
       }
 
       if (frameCount === 0) frameCount = 1;
-      const durationSeconds = parseFloat((frameCount * 0.1).toFixed(4));
+      const durationSeconds = Number.parseFloat((frameCount * 0.1).toFixed(4));
 
       return {
         format: 'gif',
@@ -91,15 +89,13 @@ export class GifParser implements IAssetParser {
   }
 }
 
-/**
- * Parser para el formato de imagen animada APNG (.apng / .png).
- */
+/** Parses the animated PNG format (`.apng` / animated `.png`). */
 export class ApngParser implements IAssetParser {
   supports(ext: string, bufferChunk: Buffer): boolean {
     if (ext !== '.png' && ext !== '.apng') return false;
     if (bufferChunk.length < 8) return false;
 
-    // Firma PNG estándar
+    // Standard PNG signature.
     const isPng =
       bufferChunk[0] === 0x89 &&
       bufferChunk[1] === 0x50 &&
@@ -112,7 +108,7 @@ export class ApngParser implements IAssetParser {
 
     if (!isPng) return false;
 
-    // Buscar el chunk "acTL" (Animation Control Chunk) en el fragmento inicial
+    // A "acTL" (Animation Control Chunk) is what distinguishes an animated PNG from a static one.
     return bufferChunk.indexOf('acTL') !== -1;
   }
 
@@ -128,7 +124,7 @@ export class ApngParser implements IAssetParser {
 
       const frameCount = buffer.readUInt32BE(acTlPos + 4);
       const loopCount = buffer.readUInt32BE(acTlPos + 8);
-      const durationSeconds = parseFloat((frameCount * 0.1).toFixed(4));
+      const durationSeconds = Number.parseFloat((frameCount * 0.1).toFixed(4));
 
       return {
         format: 'apng',

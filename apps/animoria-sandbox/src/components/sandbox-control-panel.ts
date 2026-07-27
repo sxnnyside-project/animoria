@@ -1,7 +1,8 @@
-import { LitElement, html, css } from 'lit';
-import { customElement, property, state } from 'lit/decorators.js';
 import type { AnimoriaAsset } from '@animoria/core';
 import { t } from '@animoria/core/i18n';
+import { LitElement, css, html } from 'lit';
+import { customElement, property, state } from 'lit/decorators.js';
+import './mingcute-icon.js';
 
 @customElement('sandbox-control-panel')
 export class SandboxControlPanel extends LitElement {
@@ -11,10 +12,10 @@ export class SandboxControlPanel extends LitElement {
   static override styles = css`
     :host {
       display: block;
-      width: 280px;
+      width: 260px;
       background: var(--animoria-bg-secondary);
       border-left: 1px solid var(--animoria-border-color);
-      padding: 20px;
+      padding: 16px;
       box-sizing: border-box;
       font-family: var(--animoria-font-family);
       color: var(--animoria-text-primary);
@@ -22,44 +23,50 @@ export class SandboxControlPanel extends LitElement {
     }
 
     h3 {
-      font-size: 14px;
+      font-size: 11px;
       font-weight: 700;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
       margin-top: 0;
-      margin-bottom: 16px;
+      margin-bottom: 12px;
       color: var(--animoria-accent);
       border-bottom: 1px solid var(--animoria-border-color);
-      padding-bottom: 8px;
+      padding-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
 
     .section-title {
-      font-size: 11px;
-      font-weight: 600;
+      font-size: 10px;
+      font-weight: 700;
       color: var(--animoria-text-muted);
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      margin-top: 20px;
+      margin-top: 16px;
       margin-bottom: 8px;
     }
 
     .theme-info {
-      font-size: 11px;
+      font-size: 10px;
       color: var(--animoria-text-muted);
-      margin-bottom: 12px;
+      margin-bottom: 8px;
+      font-family: monospace;
     }
 
     .btn {
-      display: block;
+      display: flex;
+      align-items: center;
+      gap: 6px;
       width: 100%;
       background: var(--animoria-bg-primary);
       border: 1px solid var(--animoria-border-color);
       color: var(--animoria-text-primary);
-      padding: 8px 12px;
+      padding: 6px 10px;
       border-radius: 4px;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 500;
       text-align: left;
       transition:
@@ -94,7 +101,7 @@ export class SandboxControlPanel extends LitElement {
       color: var(--animoria-text-primary);
       padding: 6px;
       border-radius: 4px;
-      font-size: 12px;
+      font-size: 11px;
       cursor: pointer;
       font-family: inherit;
       outline: none;
@@ -129,6 +136,14 @@ export class SandboxControlPanel extends LitElement {
         composed: true,
       })
     );
+  }
+
+  private _emitScan() {
+    window.postMessage({ command: 'scan', target: 'extension' }, '*');
+  }
+
+  private _emitInjectDemo() {
+    window.postMessage({ command: 'injectDemo', target: 'extension' }, '*');
   }
 
   private _emitWatcherEvent(type: 'added' | 'modified' | 'removed', asset: AnimoriaAsset) {
@@ -222,7 +237,38 @@ export class SandboxControlPanel extends LitElement {
 
   override render() {
     return html`
-      <h3>${this.t('control.title')}</h3>
+      <h3>
+        <mingcute-icon name="settings" size="14" color="#6366f1"></mingcute-icon>
+        ${this.t('control.title')}
+      </h3>
+
+      <div class="section-title">${this.t('control.coreOps')}</div>
+      <button class="btn" @click="${this._emitScan}">
+        <mingcute-icon name="refresh" size="13"></mingcute-icon>
+        ${this.t('control.runScan')}
+      </button>
+      <button class="btn" @click="${this._emitInjectDemo}">
+        <mingcute-icon name="file-code" size="13"></mingcute-icon>
+        ${this.t('control.injectDemo')}
+      </button>
+
+      <div class="section-title">${this.t('control.watcherSimulator')}</div>
+      <button class="btn btn-watcher" @click="${this._simulateAddRive}">
+        <mingcute-icon name="file-code" size="13" color="#818cf8"></mingcute-icon>
+        ${this.t('control.addRive')}
+      </button>
+      <button class="btn btn-watcher" @click="${this._simulateAddGif}">
+        <mingcute-icon name="file-image" size="13" color="#f59e0b"></mingcute-icon>
+        ${this.t('control.addGif')}
+      </button>
+      <button class="btn btn-watcher" @click="${this._simulateModifyAsset}">
+        <mingcute-icon name="refresh" size="13" color="#10b981"></mingcute-icon>
+        ${this.t('control.modifyAsset')}
+      </button>
+      <button class="btn btn-watcher" @click="${this._simulateRemoveAsset}">
+        <mingcute-icon name="trash" size="13" color="#f43f5e"></mingcute-icon>
+        ${this.t('control.removeAsset')}
+      </button>
 
       <div class="section-title">${this.t('control.language')}</div>
       <div class="lang-selector">
@@ -237,7 +283,7 @@ export class SandboxControlPanel extends LitElement {
 
       <div class="section-title">${this.t('control.hybridThemes')}</div>
       <div class="theme-info">
-        ${this.t('control.activeTheme')}<strong>${this._currentTheme}</strong>
+        Active: <strong>${this._currentTheme}</strong>
       </div>
 
       <button
@@ -257,21 +303,6 @@ export class SandboxControlPanel extends LitElement {
         @click="${() => this._setTheme('theme-intellij-light')}"
       >
         ${this.t('control.themeLight')}
-      </button>
-
-      <div class="section-title">${this.t('control.watcherSimulator')}</div>
-
-      <button class="btn btn-watcher" @click="${this._simulateAddRive}">
-        ${this.t('control.addRive')}
-      </button>
-      <button class="btn btn-watcher" @click="${this._simulateAddGif}">
-        ${this.t('control.addGif')}
-      </button>
-      <button class="btn btn-watcher" @click="${this._simulateModifyAsset}">
-        ${this.t('control.modifyAsset')}
-      </button>
-      <button class="btn btn-watcher" @click="${this._simulateRemoveAsset}">
-        ${this.t('control.removeAsset')}
       </button>
     `;
   }

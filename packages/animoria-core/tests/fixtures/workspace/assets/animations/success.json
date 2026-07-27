@@ -7,8 +7,5 @@
   "h": 512,
   "nm": "success",
   "layers": [{ "ty": 4, "nm": "Shape Layer 1", "ip": 0, "op": 90 }],
-  "markers": [
-    { "tm": 0, "cm": "intro", "dr": 15 },
-    { "tm": 30, "cm": "loop", "dr": 60 }
-  ]
+  "markers": [{ "tm": 0, "cm": "intro", "dr": 15 }, { "tm": 30, "cm": "loop", "dr": 60 }]
 }

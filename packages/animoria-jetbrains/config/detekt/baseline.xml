@@ -1,0 +1,11 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues></ManuallySuppressedIssues>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:AnimoriaTreeCellRenderer.kt$AnimoriaTreeCellRenderer$override fun customizeCellRenderer( tree: JTree, value: Any?, selected: Boolean, expanded: Boolean, leaf: Boolean, row: Int, hasFocus: Boolean, )</ID>
+    <ID>CyclomaticComplexMethod:AnimoriaTreeModel.kt$AnimoriaTreeModel$fun rebuildTree()</ID>
+    <ID>CyclomaticComplexMethod:AnimoriaVFSListener.kt$AnimoriaVFSListener$override fun after(events: List&lt;VFileEvent&gt;)</ID>
+    <ID>LongMethod:AnimoriaTreeCellRenderer.kt$AnimoriaTreeCellRenderer$override fun customizeCellRenderer( tree: JTree, value: Any?, selected: Boolean, expanded: Boolean, leaf: Boolean, row: Int, hasFocus: Boolean, )</ID>
+    <ID>LoopWithTooManyJumpStatements:AnimoriaVFSListener.kt$AnimoriaVFSListener$for</ID>
+  </CurrentIssues>
+</SmellBaseline>
