@@ -241,7 +241,10 @@ async function main() {
   if (platform() === 'darwin') {
     postjectArgs.push('--macho-segment-name', 'NODE_SEA');
   }
-  execFileSync('npx', postjectArgs, { stdio: 'inherit' });
+  // On Windows `npx` is a `.cmd` shim, which execFileSync cannot resolve
+  // without going through a shell — without this it fails with ENOENT even
+  // though `npx` is on PATH.
+  execFileSync('npx', postjectArgs, { stdio: 'inherit', shell: platform() === 'win32' });
 
   if (platform() === 'darwin') {
     signDarwinBinary(outputPath);
