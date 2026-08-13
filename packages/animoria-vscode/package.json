@@ -327,12 +327,12 @@
     "@animoria/ui": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^25.9.2",
-    "@types/vscode": "^1.85.0",
+    "@types/node": "^26.2.0",
+    "@types/vscode": "^1.125.0",
     "@vscode/vsce": "^3.9.2",
     "lottie-web": "5.12.2",
-    "typescript": "^5.9.3",
-    "vite": "^8.0.16",
-    "vitest": "^3.2.6"
+    "typescript": "^7.0.2",
+    "vite": "^8.2.1",
+    "vitest": "^4.1.10"
   }
 }
