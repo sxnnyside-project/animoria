@@ -28,7 +28,7 @@
   "dependencies": {
     "@animoria/core": "workspace:*",
     "lit": "^3.3.3",
-    "lottie-web": "5.12.2"
+    "lottie-web": "5.13.0"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

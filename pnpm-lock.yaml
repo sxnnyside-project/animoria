@@ -101,8 +101,8 @@ importers:
         specifier: ^3.3.3
         version: 3.3.3
       lottie-web:
-        specifier: 5.12.2
-        version: 5.12.2
+        specifier: 5.13.0
+        version: 5.13.0
     devDependencies:
       typescript:
         specifier: ^5.9.3
@@ -133,8 +133,8 @@ importers:
         specifier: ^3.9.2
         version: 3.9.2
       lottie-web:
-        specifier: 5.12.2
-        version: 5.12.2
+        specifier: 5.13.0
+        version: 5.13.0
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -1868,8 +1868,8 @@ packages:
   lodash@4.18.1:
     resolution: {integrity: sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==}
 
-  lottie-web@5.12.2:
-    resolution: {integrity: sha512-uvhvYPC8kGPjXT3MyKMrL3JitEAmDMp30lVkuq/590Mw9ok6pWcFCwXJveo0t5uqYw1UREQHofD+jVpdjBv8wg==}
+  lottie-web@5.13.0:
+    resolution: {integrity: sha512-+gfBXl6sxXMPe8tKQm7qzLnUy5DUPJPKIyRHwtpCpyUEYjHYRJC/5gjUvdkuO2c3JllrPtHXH5UJJK8LRYl5yQ==}
 
   loupe@3.2.1:
     resolution: {integrity: sha512-CdzqowRJCeLU72bHvWqwRBBlLcMEtIvGrlvef74kMnV2AolS9Y8xUv1I0U/MNAWMhBlKIoyuEgoJ0t/bbwHbLQ==}
@@ -4336,7 +4336,7 @@ snapshots:
 
   lodash@4.18.1: {}
 
-  lottie-web@5.12.2: {}
+  lottie-web@5.13.0: {}
 
   loupe@3.2.1: {}
 
