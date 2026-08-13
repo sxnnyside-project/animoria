@@ -13,16 +13,22 @@ import { buildReferenceIndex } from '../../src/usage/reference-index';
  * ## Where these numbers come from
  * They are measured, not chosen. On the audit's reference workload — 60 assets,
  * 300 source files of 200 lines — the previous implementation took **28,270 ms**
- * and the current one takes **~65 ms**. The soft budget sits roughly 7× above the
- * measured figure to absorb CI-runner variance, cold page cache, and larger
+ * and the current one takes **~65 ms**. The soft budget sits roughly 11× above
+ * the measured figure to absorb CI-runner variance, cold page cache, and larger
  * real-world assets, while still failing an order-of-magnitude regression.
+ *
+ * 500ms (≈7×) was observed to fail on shared CI runners under ordinary
+ * contention — 556ms on an otherwise clean run — with nothing wrong in the
+ * code; the run comfortably cleared the 1s hard budget. 750ms keeps a full
+ * order of magnitude of headroom below that hard budget and the old
+ * implementation's 28s, while giving CI's real variance room to breathe.
  *
  * These are the *secondary* guard. The primary one is
  * `../usage/reference-index-structure.test.ts`, which asserts the execution model
  * itself; a timing threshold alone would go green on a fast machine even if the
  * quadratic shape came back.
  */
-const SOFT_BUDGET_MS = 500;
+const SOFT_BUDGET_MS = 750;
 const HARD_BUDGET_MS = 1_000;
 
 const ASSET_COUNT = 60;
