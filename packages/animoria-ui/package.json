@@ -1,6 +1,6 @@
 {
   "name": "@animoria/ui",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Animoria's shared product UI: Lit components that render a WorkspaceAnalysis and emit host intent. No host APIs, no governance decisions.",
   "type": "module",

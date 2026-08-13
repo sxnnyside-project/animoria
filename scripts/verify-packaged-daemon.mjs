@@ -53,7 +53,9 @@ const required = requiredMethods();
 if (required.length === 0) fail('could not read REQUIRED_METHODS from CoreProcessManager.kt');
 
 for (const platform of platforms) {
-  const binary = join(nativeRoot, platform.name, 'animoria-core');
+  // build-sea.mjs names the Windows binary with a `.exe` suffix.
+  const binaryName = platform.name.startsWith('win32') ? 'animoria-core.exe' : 'animoria-core';
+  const binary = join(nativeRoot, platform.name, binaryName);
   if (!existsSync(binary)) fail(`${platform.name}: the packaged daemon executable is missing`);
   await verify(binary, platform.name);
 }

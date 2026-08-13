@@ -13,6 +13,16 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.0.1] — 2026-08-13
+
+### Changed
+
+- Maintenance release: dependency updates and release-pipeline fixes (Windows
+  and macOS native daemon packaging, JetBrains build/signing). No user-facing
+  changes to the extension itself.
+
+---
+
 ## [1.0.0] — 2026-08-12
 
 ### Added

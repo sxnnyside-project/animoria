@@ -1,6 +1,6 @@
 {
   "name": "@animoria/core",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "IDE-agnostic scanning, parsing, usage tracing, and governance engine for animated assets (Lottie, dotLottie, Rive, GIF, APNG, animated SVG).",
   "keywords": [
     "lottie",

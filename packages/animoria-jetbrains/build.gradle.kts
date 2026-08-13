@@ -144,7 +144,11 @@ val verifyBundledDaemon by tasks.registering {
                 .maxOfOrNull { it.lastModified() } ?: return@doLast
 
         for (platform in platforms) {
-            val binary = File(platform, "animoria-core")
+            // build-sea.mjs names the Windows binary with a `.exe` suffix —
+            // an unqualified "animoria-core" only ever matched the other
+            // three platforms, so win32-x64 failed this check unconditionally.
+            val binaryName = if (platform.name.startsWith("win32")) "animoria-core.exe" else "animoria-core"
+            val binary = File(platform, binaryName)
             require(binary.exists()) {
                 "The bundled daemon for ${platform.name} is missing its executable. " +
                     "Run: pnpm package:jetbrains-daemon"
