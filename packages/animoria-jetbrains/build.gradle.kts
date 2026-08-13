@@ -1,6 +1,6 @@
 plugins {
     kotlin("jvm") version "1.9.21"
-    id("org.jetbrains.intellij") version "1.17.2"
+    id("org.jetbrains.intellij") version "1.17.4"
     kotlin("plugin.serialization") version "1.9.21"
     id("io.gitlab.arturbosch.detekt") version "1.23.3"
     id("org.jlleitschuh.gradle.ktlint") version "12.1.0"
