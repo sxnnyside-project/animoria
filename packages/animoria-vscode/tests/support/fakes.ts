@@ -1,8 +1,4 @@
-import type {
-  WorkspaceIndexSnapshot,
-  WorkspaceIndexUpdate,
-  WorkspaceIndexer,
-} from '@animoria/core';
+import type { WorkspaceAnalysis, WorkspaceIndexUpdate, WorkspaceIndexer } from '@animoria/core';
 import type { CleanupPlanner } from '../../src/cleanup/CleanupPlanner.js';
 import { EventEmitter } from '../mocks/vscode.js';
 
@@ -19,37 +15,77 @@ import { EventEmitter } from '../mocks/vscode.js';
  * implementation, per TASK-H1.1's harness architecture.
  */
 
-export function buildSnapshot(
-  overrides: Partial<WorkspaceIndexSnapshot> = {}
-): WorkspaceIndexSnapshot {
+/**
+ * A canonical {@link WorkspaceAnalysis} for tests.
+ *
+ * Named `buildAnalysis` rather than `buildSnapshot` because there is no longer a
+ * snapshot type distinct from the analysis: the extension consumes the same
+ * aggregate Core produces and the CLI renders.
+ */
+export function buildAnalysis(overrides: Partial<WorkspaceAnalysis> = {}): WorkspaceAnalysis {
   return {
+    workspacePath: '/workspace',
+    generatedAt: '2026-01-01T00:00:00.000Z',
+    generation: 1,
+    durationMs: 1,
+    readiness: {
+      assetsIndexed: true,
+      referencesResolved: true,
+      duplicatesResolved: true,
+      complete: true,
+    },
     assets: [],
-    ruleReport: null,
+    // A complete scan by default, so a test that does not care about coverage still
+    // exercises the ordinary path. A test asserting on confidence must override this:
+    // confidence is capped by coverage, and a fake with no coverage would otherwise
+    // silently produce low-confidence candidates for reasons unrelated to its subject.
+    coverage: {
+      status: 'complete',
+      scannedExtensions: ['.ts', '.tsx', '.html', '.css', '.md'],
+      unscannedExtensions: [],
+      filesScanned: 12,
+      referencesDetected: 0,
+      excludedPatterns: [],
+      scopePath: '/workspace',
+    },
     referenceCounts: new Map(),
-    healthScore: null,
+    referenceIndex: null,
+    diagnostics: [],
+    evaluatedRuleIds: [],
+    skippedRules: [],
+    configErrors: [],
+    duplicateGroups: [],
+    health: {
+      status: 'unavailable',
+      reason: 'no-rules-configured',
+      message: 'No rules were configured, so there is nothing to score.',
+    },
     ...overrides,
-  } as WorkspaceIndexSnapshot;
+  } as WorkspaceAnalysis;
 }
 
 interface FakeWorkspaceIndexerHandle {
   indexer: WorkspaceIndexer;
-  setSnapshot(snapshot: WorkspaceIndexSnapshot): void;
+  setAnalysis(analysis: WorkspaceAnalysis): void;
   /** Test-only hook: schedules `onDidUpdate` to fire on the next microtask, simulating reactive re-convergence without a real timer. */
-  scheduleReconvergence(snapshot: WorkspaceIndexSnapshot): void;
+  scheduleReconvergence(analysis: WorkspaceAnalysis): void;
   /** Every `path`/`kind` pair passed to `indexer.notifyFileChanged`, in call order — lets a test assert the code under test actually nudges the reactive index. */
   notified: readonly { path: string; kind: string }[];
 }
 
 export function createFakeWorkspaceIndexer(
   workspacePath: string,
-  initialSnapshot: WorkspaceIndexSnapshot = buildSnapshot()
+  initialAnalysis: WorkspaceAnalysis = buildAnalysis()
 ): FakeWorkspaceIndexerHandle {
-  let snapshot = initialSnapshot;
+  let analysis = initialAnalysis;
   const emitter = new EventEmitter<WorkspaceIndexUpdate>();
   const notified: { path: string; kind: string }[] = [];
 
   const fake = {
-    getSnapshot: () => snapshot,
+    getAnalysis: () => analysis,
+    // The real indexer's `analyzeComplete` awaits outstanding work; the fake has
+    // none, so resolving with the current analysis is faithful.
+    analyzeComplete: async () => analysis,
     onDidUpdate: emitter.event,
     notifyFileChanged: (path: string, kind: string) => {
       notified.push({ path, kind });
@@ -61,7 +97,7 @@ export function createFakeWorkspaceIndexer(
       // still see the event, exactly as they would against the real
       // indexer's own debounce-then-fire behavior, just without a real
       // timer a test would have to wait out.
-      queueMicrotask(() => emitter.fire({ snapshot } as WorkspaceIndexUpdate));
+      queueMicrotask(() => emitter.fire({ analysis } as WorkspaceIndexUpdate));
     },
     get workspacePath() {
       return workspacePath;
@@ -71,12 +107,12 @@ export function createFakeWorkspaceIndexer(
 
   return {
     indexer: fake as unknown as WorkspaceIndexer,
-    setSnapshot: (next) => {
-      snapshot = next;
+    setAnalysis: (next) => {
+      analysis = next;
     },
     scheduleReconvergence: (next) => {
-      snapshot = next;
-      queueMicrotask(() => emitter.fire({ snapshot: next } as WorkspaceIndexUpdate));
+      analysis = next;
+      queueMicrotask(() => emitter.fire({ analysis: next } as WorkspaceIndexUpdate));
     },
     notified,
   };
@@ -88,12 +124,12 @@ interface FakeCleanupPlannerHandle {
 }
 
 export function createFakeCleanupPlanner(
-  snapshot: WorkspaceIndexSnapshot,
+  analysis: WorkspaceAnalysis,
   workspacePath = '/workspace'
 ): FakeCleanupPlannerHandle {
   const dismissedPaths: string[] = [];
   const fake = {
-    getSnapshot: () => snapshot,
+    getAnalysis: () => analysis,
     dismiss: (path: string) => {
       dismissedPaths.push(path);
     },

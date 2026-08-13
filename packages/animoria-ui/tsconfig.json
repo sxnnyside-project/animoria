@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    // DOM only. `node` is deliberately absent from `types`: a shared UI package
+    // that can reach `node:fs` is one commit away from being a host.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [],
+    "paths": {
+      "@animoria/core/contracts": ["../animoria-core/src/contracts.ts"],
+      "@animoria/core": ["../animoria-core/src/index.ts"],
+      "@animoria/core/i18n": ["../animoria-core/src/i18n/locales.ts"]
+    }
+  },
+  "include": ["src", "tests"]
+}

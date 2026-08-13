@@ -1,8 +1,9 @@
 package com.sxnnyside.animoria.ui
 
-import com.sxnnyside.animoria.backend.GovernanceResultData
 import com.sxnnyside.animoria.backend.JetBrainsAsset
+import com.sxnnyside.animoria.backend.RuleDiagnosticData
 import com.sxnnyside.animoria.backend.StaticAssetData
+import com.sxnnyside.animoria.backend.WorkspaceAnalysisData
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.DefaultTreeModel
 
@@ -51,13 +52,32 @@ data class FolderNode(val name: String, val relativePath: String)
 /** Section header: Governance category. */
 data class GovernanceSectionNode(val label: String, val count: Int, val category: String)
 
-/** A single governance issue leaf. */
+/**
+ * A single governance finding leaf.
+ *
+ * Carries the diagnostic itself rather than a re-derived category, so the renderer
+ * shows the same evidence, confidence and remediation every other client shows.
+ */
 data class GovernanceIssueNode(
     val asset: JetBrainsAsset,
-    val category: String,
-    val referenceCount: Int = 0,
-    val duplicateOf: List<String> = emptyList(),
-)
+    val diagnostic: RuleDiagnosticData,
+) {
+    /** The rule that produced this finding — used where a category used to be. */
+    val category: String get() = diagnostic.ruleId
+    val duplicateOf: List<String>
+        get() = diagnostic.evidence.locations.map { it.file }
+}
+
+/** Human-readable section titles per rule. An unknown rule falls back to its id. */
+private val SECTION_LABELS =
+    mapOf(
+        "no-unreferenced-assets" to "Unreferenced Assets",
+        "no-duplicate-content" to "Duplicate Content",
+        "no-duplicate-names" to "Duplicate Names",
+        "max-file-size-kb" to "Oversized Assets",
+        "allowed-formats" to "Disallowed Formats",
+        "no-gif" to "GIF Assets",
+    )
 
 // ── Tree model ─────────────────────────────────────────────────────────────────
 
@@ -87,7 +107,7 @@ class AnimoriaTreeModel : DefaultTreeModel(DefaultMutableTreeNode(GalleryRoot)) 
     private var healthScore: HealthScoreNode? = null
     private var assets: List<JetBrainsAsset> = emptyList()
     private var staticAssets: List<StaticAssetData> = emptyList()
-    private var governanceResult: GovernanceResultData? = null
+    private var analysis: WorkspaceAnalysisData? = null
     private var daemonUnavailableMessage: String? = null
 
     // Per-asset thumbnail state
@@ -126,7 +146,7 @@ class AnimoriaTreeModel : DefaultTreeModel(DefaultMutableTreeNode(GalleryRoot)) 
         thumbnails.clear()
         thumbnailFailures.clear()
         thumbnailPending.clear()
-        governanceResult = null
+        analysis = null
         rebuildTree()
     }
 
@@ -153,8 +173,8 @@ class AnimoriaTreeModel : DefaultTreeModel(DefaultMutableTreeNode(GalleryRoot)) 
         rebuildTree()
     }
 
-    fun setGovernanceResult(result: GovernanceResultData) {
-        governanceResult = result
+    fun setAnalysis(result: WorkspaceAnalysisData) {
+        analysis = result
         rebuildTree()
     }
 
@@ -204,7 +224,7 @@ class AnimoriaTreeModel : DefaultTreeModel(DefaultMutableTreeNode(GalleryRoot)) 
 
     fun getStaticAssets(): List<StaticAssetData> = staticAssets
 
-    fun getGovernanceResult(): GovernanceResultData? = governanceResult
+    fun getAnalysis(): WorkspaceAnalysisData? = analysis
 
     // ── Tree construction ──────────────────────────────────────────────────────
 
@@ -239,7 +259,7 @@ class AnimoriaTreeModel : DefaultTreeModel(DefaultMutableTreeNode(GalleryRoot)) 
         }
 
         // 3. Governance sections
-        governanceResult?.let { addGovernanceSections(root, it) }
+        analysis?.let { addGovernanceSections(root, it) }
 
         // 4. Static Assets section
         if (staticAssets.isNotEmpty()) {
@@ -258,40 +278,31 @@ class AnimoriaTreeModel : DefaultTreeModel(DefaultMutableTreeNode(GalleryRoot)) 
 
     // ── Private helpers ────────────────────────────────────────────────────────
 
+    /**
+     * Builds one section per rule that produced findings.
+     *
+     * Grouped by rule id rather than by a fixed unused/duplicate/overused taxonomy,
+     * so a rule Core gains appears here without this model learning about it — and
+     * so the sidebar's grouping matches the CLI's and VS Code's.
+     */
     private fun addGovernanceSections(
         root: DefaultMutableTreeNode,
-        gov: GovernanceResultData,
+        result: WorkspaceAnalysisData,
     ) {
-        addGovernanceCategory(root, gov.unused, "Unused Assets", "unused")
-        addGovernanceCategory(root, gov.duplicates, "Duplicates", "duplicate")
-        addGovernanceCategory(root, gov.overused, "Overused Assets", "overused")
-    }
-
-    private fun addGovernanceCategory(
-        root: DefaultMutableTreeNode,
-        issues: List<com.sxnnyside.animoria.backend.GovernanceIssueData>,
-        label: String,
-        category: String,
-    ) {
-        if (issues.isEmpty()) return
-
-        val section = DefaultMutableTreeNode(GovernanceSectionNode(label, issues.size, category))
-        issues.forEach { issue ->
-            val asset =
-                assets.find { it.path == issue.assetPath }
-                    ?: JetBrainsAsset(issue.assetPath, issue.assetName, issue.assetName, "unknown", 0, 0.0, "parsed")
-            section.add(
-                DefaultMutableTreeNode(
-                    GovernanceIssueNode(
-                        asset,
-                        category,
-                        referenceCount = issue.referenceCount ?: 0,
-                        duplicateOf = issue.duplicateOf ?: emptyList(),
-                    ),
-                ),
-            )
-        }
-        root.add(section)
+        result.diagnostics
+            .groupBy { it.ruleId }
+            .toSortedMap()
+            .forEach { (ruleId, diagnostics) ->
+                val section =
+                    DefaultMutableTreeNode(
+                        GovernanceSectionNode(SECTION_LABELS[ruleId] ?: ruleId, diagnostics.size, ruleId),
+                    )
+                diagnostics.forEach { diagnostic ->
+                    val asset = assets.find { it.path == diagnostic.asset.path } ?: diagnostic.asset
+                    section.add(DefaultMutableTreeNode(GovernanceIssueNode(asset, diagnostic)))
+                }
+                root.add(section)
+            }
     }
 
     private fun filteredAssets(): List<JetBrainsAsset> {

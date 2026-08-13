@@ -29,7 +29,7 @@ import type { RuleDiagnostic } from '../rules-engine.js';
  * {@link evaluateAssetBadges}'s structure — see that function's own
  * docs for how a new condition is added.
  */
-export type AssetBadgeKind = 'orphaned' | 'duplicate' | 'rule-violation';
+export type AssetBadgeKind = 'unreferenced' | 'duplicate' | 'rule-finding';
 
 /** How urgently a badge should draw the developer's attention. */
 export type AssetBadgeSeverity = 'info' | 'warning' | 'error';
@@ -61,7 +61,7 @@ export interface AssetBadge {
 export interface AssetBadgeContext {
   /**
    * Reference counts keyed by asset path — e.g.
-   * `WorkspaceIndexSnapshot.referenceCounts`. Powers the `'orphaned'`
+   * `WorkspaceIndexSnapshot.referenceCounts`. Powers the `'unreferenced'`
    * badge. An asset absent from this map is treated as having an
    * unknown (not zero) reference count and is not flagged.
    */
@@ -75,7 +75,7 @@ export interface AssetBadgeContext {
   /**
    * Rule Engine diagnostics keyed by the asset path they concern — e.g.
    * grouped from `RuleEngineReport.diagnostics`. Powers the
-   * `'rule-violation'` badge, which covers every rule outcome
+   * `'rule-finding'` badge, which covers every rule outcome
    * (oversized assets, `.animoriarc` violations, disallowed formats,
    * ...) uniformly, since from this module's perspective they are all
    * "the Rule Engine flagged this asset" — the specific rule is carried

@@ -1,73 +1,34 @@
-import type { RuleConfigError } from '../../governance/rules-engine.js';
-import type { WorkspaceIndexSnapshot } from '../../indexer/workspace-indexer.js';
+import type { WorkspaceAnalysis } from '../../analysis/workspace-analysis.js';
 import { type CheckOutcomePolicy, determineCheckOutcome } from '../check-outcome.js';
 import type { GovernanceCheckReport } from './governance-check-report.js';
 
-/** Sentinel rule id used to surface a `.animoriarc` file-level problem through the same shape as a per-rule config error. */
-const CONFIG_FILE_PSEUDO_RULE_ID = '<.animoriarc>';
-
 /**
- * Assembles a {@link GovernanceCheckReport} from a workspace snapshot.
+ * Wraps a workspace analysis in the pass/fail decision for one `animoria check` run.
  *
- * Deliberately does almost nothing: every number here already exists on
- * `snapshot` or is the direct output of {@link determineCheckOutcome}.
- * This function's only real job is picking a stable shape for renderers
- * to depend on, so that a change to `WorkspaceIndexSnapshot`'s internal
- * structure (an infrastructure concern) doesn't ripple into every
- * `./renderers/*` implementation (a presentation concern).
+ * Deliberately does almost nothing. It used to copy a dozen fields out of the
+ * indexer's result and derive a second opinion about Health Score availability;
+ * both of those now live in the analysis, so the only thing left to compute here is
+ * the piece of policy that is genuinely the command's own — whether a CI pipeline
+ * should stop.
  *
- * @param snapshot - The workspace state to report on — typically the
- *   result of `WorkspaceIndexer.initialize()` for a one-shot CI run.
- * @param workspacePath - Absolute path that was checked, for display.
- * @param durationMs - Total wall-clock time for the whole check, from
- *   the CLI's perspective (workspace resolution through evaluation) —
- *   distinct from `snapshot`'s own internal timings, which only cover
- *   the indexer's own work.
+ * @param analysis - The workspace state to report on.
+ * @param durationMs - Total wall-clock time for the whole command.
  * @param policy - Pass/fail policy — see {@link CheckOutcomePolicy}.
- * @param configLoadWarnings - File-level problems loading `.animoriarc`
- *   itself (malformed JSON/YAML, wrong top-level shape), as recorded by
- *   `WorkspaceIndexer`'s own diagnostics for this run. Distinct from
- *   `RuleEngineReport.configErrors` (a specific rule id/value problem
- *   inside an otherwise-valid file) — both are surfaced through the same
- *   `configErrors` field on the resulting report so every renderer only
- *   needs to handle one shape, but this command needs to know about
- *   file-level failures specifically to pick the right exit code (see
- *   `check-command.js`).
  */
 export function buildGovernanceCheckReport(
-  snapshot: WorkspaceIndexSnapshot,
-  workspacePath: string,
+  analysis: WorkspaceAnalysis,
   durationMs: number,
-  policy: CheckOutcomePolicy,
-  configLoadWarnings: readonly string[] = []
+  policy: CheckOutcomePolicy
 ): GovernanceCheckReport {
-  const diagnostics = snapshot.ruleReport?.diagnostics ?? [];
-  const evaluatedRuleIds = snapshot.ruleReport?.evaluatedRuleIds ?? [];
-  const healthScore = snapshot.healthScore;
-
-  const configErrors: readonly RuleConfigError[] = [
-    ...configLoadWarnings.map((warning) => ({
-      ruleId: CONFIG_FILE_PSEUDO_RULE_ID,
-      errors: [warning],
-    })),
-    ...(snapshot.ruleReport?.configErrors ?? []),
-  ];
-
-  const outcome = determineCheckOutcome(diagnostics, healthScore?.score ?? null, policy);
-
   return {
-    workspacePath,
-    generatedAt: new Date().toISOString(),
+    analysis,
+    outcome: determineCheckOutcome(
+      analysis.diagnostics,
+      analysis.health.status === 'computed' ? analysis.health.report.score : null,
+      policy,
+      analysis.skippedRules
+    ),
     durationMs,
-    totalAssetCount: snapshot.assets.length,
-    healthScore,
-    diagnostics,
-    diagnosticCountBySeverity: {
-      error: diagnostics.filter((d) => d.severity === 'error').length,
-      warning: diagnostics.filter((d) => d.severity === 'warning').length,
-    },
-    configErrors,
-    evaluatedRuleIds,
-    outcome,
+    generatedAt: new Date().toISOString(),
   };
 }

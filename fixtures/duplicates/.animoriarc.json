@@ -1,0 +1,7 @@
+{
+  "rules": {
+    "no-gif": "warning",
+    "no-duplicate-content": "warning",
+    "no-duplicate-names": "warning"
+  }
+}

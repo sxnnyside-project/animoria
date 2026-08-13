@@ -4,3 +4,4 @@ export * from './scanner.js';
 export * from './parser.js';
 export * from './formats.js';
 export * from './static-asset.js';
+export * from './scan-coverage.js';

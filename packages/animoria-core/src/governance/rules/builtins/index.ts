@@ -1,6 +1,7 @@
 import { RuleRegistry } from '../rule-registry.js';
 import { allowedFormatsRule } from './allowed-formats.rule.js';
 import { maxFileSizeRule } from './max-file-size.rule.js';
+import { noDuplicateContentRule } from './no-duplicate-content.rule.js';
 import { noDuplicateNamesRule } from './no-duplicate-names.rule.js';
 import { noGifRule } from './no-gif.rule.js';
 import { noUnreferencedAssetsRule } from './no-unreferenced-assets.rule.js';
@@ -8,6 +9,7 @@ import { noUnreferencedAssetsRule } from './no-unreferenced-assets.rule.js';
 export { maxFileSizeRule } from './max-file-size.rule.js';
 export type { MaxFileSizeOptions } from './max-file-size.rule.js';
 export { noGifRule } from './no-gif.rule.js';
+export { noDuplicateContentRule } from './no-duplicate-content.rule.js';
 export { noDuplicateNamesRule } from './no-duplicate-names.rule.js';
 export { noUnreferencedAssetsRule } from './no-unreferenced-assets.rule.js';
 export { allowedFormatsRule } from './allowed-formats.rule.js';
@@ -33,6 +35,7 @@ export function createDefaultRuleRegistry(): RuleRegistry {
   registry.register(maxFileSizeRule);
   registry.register(noGifRule);
   registry.register(noDuplicateNamesRule);
+  registry.register(noDuplicateContentRule);
   registry.register(noUnreferencedAssetsRule);
   registry.register(allowedFormatsRule);
   return registry;

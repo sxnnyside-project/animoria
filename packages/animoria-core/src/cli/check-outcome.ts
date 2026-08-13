@@ -1,4 +1,8 @@
-import type { ActiveRuleSeverity, RuleDiagnostic } from '../governance/rules-engine.js';
+import type {
+  ActiveRuleSeverity,
+  RuleDiagnostic,
+  SkippedRule,
+} from '../governance/rules-engine.js';
 
 /** Policy inputs for {@link determineCheckOutcome}. */
 export interface CheckOutcomePolicy {
@@ -16,6 +20,13 @@ export interface CheckOutcome {
   readonly passed: boolean;
   /** Human-readable reasons the check failed. Empty when `passed` is `true`. */
   readonly failureReasons: readonly string[];
+  /**
+   * True when the run failed *only* because a configured gate could not be
+   * evaluated — no asset was found to violate anything. Lets the caller map this to
+   * `INCOMPLETE_ANALYSIS` instead of reporting a governance violation that does not
+   * exist.
+   */
+  readonly incomplete: boolean;
 }
 
 /**
@@ -52,14 +63,25 @@ export interface CheckOutcome {
 export function determineCheckOutcome(
   diagnostics: readonly RuleDiagnostic[],
   healthScore: number | null,
-  policy: CheckOutcomePolicy = {}
+  policy: CheckOutcomePolicy = {},
+  skippedRules: readonly SkippedRule[] = []
 ): CheckOutcome {
   const reasons: string[] = [];
 
   const errorCount = diagnostics.filter((d) => isErrorSeverity(d.severity)).length;
   if (errorCount > 0) {
+    reasons.push(`${errorCount} rule finding(s) at "error" severity (see the diagnostics above).`);
+  }
+
+  // A rule the workspace configured at "error" is a gate the team asked to enforce.
+  // If it could not run, this check has not established that the gate holds, and
+  // saying "passed" would be a claim the run does not support. Reported as its own
+  // failure reason — and mapped to its own exit code — rather than as a violation,
+  // because nothing was found to be wrong with any asset.
+  const blockingSkips = skippedRules.filter((r) => isErrorSeverity(r.severity));
+  for (const skip of blockingSkips) {
     reasons.push(
-      `${errorCount} rule violation(s) at "error" severity (see the diagnostics above).`
+      `Rule "${skip.ruleId}" is configured at "error" severity but could not be evaluated: ${skip.reason.message}`
     );
   }
 
@@ -73,7 +95,11 @@ export function determineCheckOutcome(
     );
   }
 
-  return { passed: reasons.length === 0, failureReasons: reasons };
+  return {
+    passed: reasons.length === 0,
+    failureReasons: reasons,
+    incomplete: reasons.length > 0 && errorCount === 0 && blockingSkips.length > 0,
+  };
 }
 
 function isErrorSeverity(severity: ActiveRuleSeverity): boolean {

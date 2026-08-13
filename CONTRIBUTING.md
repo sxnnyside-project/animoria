@@ -1,6 +1,6 @@
 # Contributing to Animoria
 
-Contributions are welcome — bugs, fixes, features, or documentation.  
+Contributions are welcome — bugs, fixes, features, or documentation.
 This document covers how to work with the project as a contributor.
 
 ---
@@ -10,6 +10,7 @@ This document covers how to work with the project as a contributor.
 - Search [existing issues](https://github.com/sxnnyside-project/animoria/issues) before opening a new one.
 - For significant changes, open an issue first to discuss the direction before writing code.
 - Read the [Code of Conduct](CODE_OF_CONDUCT.md). It applies to all interactions in this project.
+- Review the [Maintainer Guide Library](docs/guides/README.md) (`docs/guides/`) to understand subsystem boundaries, daemon protocol contracts, and architectural invariants.
 
 ---
 
@@ -22,7 +23,7 @@ Include:
 - What you expected to happen
 - What actually happened
 - Steps to reproduce
-- Environment details (OS, Node.js version, VS Code version, relevant config)
+- Environment details (OS, Node.js version, editor version, relevant config)
 
 ---
 
@@ -37,9 +38,10 @@ For larger features, an issue discussion first avoids wasted effort on both side
 ## Workflow
 
 1. Fork the repository and create a branch from `main`.
-2. Name your branch descriptively — `fix/crash-on-empty-input`, `feat/rive-support`.
+2. Name your branch descriptively — `fix/crash-on-empty-input`, `feat/offline-mode`.
 3. Make your changes.
-4. Open a pull request against `main` with a clear description of what changed and why.
+4. Run the quality gate to ensure checks pass: `just check` (or `pnpm check`).
+5. Open a pull request against `main` with a clear description of what changed and why.
 
 ---
 
@@ -47,18 +49,16 @@ For larger features, an issue discussion first avoids wasted effort on both side
 
 Before submitting:
 
-- [ ] All quality gates pass (`pnpm check`) — formatting, lint, typecheck, tests, and build
-- [ ] Changes are described in `CHANGELOG.md` under `[Unreleased]`
+- [ ] The project builds without errors (`just check` / `pnpm check`)
+- [ ] Changes are described in [CHANGELOG.md](CHANGELOG.md) under `[Unreleased]`
 - [ ] The PR description explains what changed and why
 - [ ] New behavior is covered by tests where applicable
-- [ ] New public core APIs, classes, and properties are documented with JSDoc comments
-- [ ] No VS Code API imports were added to `packages/animoria-core`
 
 ---
 
 ## Commit Style
 
-This project uses [Conventional Commits](https://www.conventionalcommits.org/). Every commit message must follow the format:
+This project uses [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). Every commit message must follow the format:
 
 ```
 <type>: <description>
@@ -83,31 +83,13 @@ Accepted types:
 Examples:
 
 ```
-feat: add Rive format support to FileScanner
-fix: prevent thumbnail cache collision for same-named assets in different dirs
-docs: document GovernanceAnalyzer public API
-chore: bump @dotlottie/dotlottie-js to latest
+feat: add multi-root workspace support
+fix: prevent file watcher burst on rapid branch checkouts
+docs: update installation steps for JetBrains daemon
+chore: bump dependencies to latest stable
 ```
 
 Commits that don't follow this format will be flagged during review.
-
----
-
-## Running & Debugging in Development
-
-- **VS Code extension**: open the workspace root in VS Code and press `F5` to launch an Extension Development Host with the local build loaded.
-- **JetBrains plugin**: run `./gradlew runIde` from `packages/animoria-jetbrains` to launch a sandbox IDE instance with the local plugin installed.
-- **Component sandbox**: run `just dev` to start the Vite dev server for iterating on shared Lit components without launching an IDE.
-
----
-
-## Package Boundaries
-
-`packages/animoria-core` is pure TypeScript with zero IDE dependencies. This constraint is intentional and must be preserved:
-
-- Do not import `vscode` or any VS Code API into `animoria-core`.
-- Do not reimplement governance or parsing logic natively in Kotlin — the JetBrains plugin consumes `@animoria/core` as a background Node.js CLI daemon and stays a presentation layer.
-- All changes to `animoria-core` must be additive — existing tests must continue to pass.
 
 ---
 

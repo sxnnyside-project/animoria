@@ -1,0 +1,6 @@
+{
+  "comment": "only-in-json-data.json is named here, but .json is a data format Animoria does not read",
+  "entries": [
+    "only-in-json-data.json"
+  ]
+}

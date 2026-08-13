@@ -11,7 +11,7 @@
         <p>Animoria acts as a local-first visual asset memory for developer teams who care about craft and codebase health. It automates the structural audit and reference tracing of visual assets in large repositories to prevent production bundle bloat and technical debt.</p>
         <h4>Key Features:</h4>
         <ul>
-            <li><b>Asset Governance:</b> Automatically scan and identify <i>Unused</i> (orphan), <i>Duplicate</i> (identical MD5 file hashes), or <i>Overused</i> animated assets exceeding customizable reference thresholds. Static-asset governance is on the roadmap.</li>
+            <li><b>Asset Governance:</b> Configurable rules identify <i>unreferenced</i> assets, <i>byte-identical duplicates</i>, oversized files, and disallowed formats. Every finding carries the evidence behind it, how confident the check is, and how much of your workspace was actually searched. Static-asset governance is on the roadmap.</li>
             <li><b>Usage Traceability:</b> Trace where assets are referenced across Kotlin, Java, JavaScript, TypeScript, Swift, Dart, and more, jumping directly to the source file line.</li>
             <li><b>Multi-Format Strategy:</b> Seamlessly parses Lottie (.json), dotLottie (.lottie), Rive (.riv), GIF/APNG (.gif/.apng), Animated SVG (.svg), and indexes static SVG/PNG/JPEG/WebP/AVIF files alongside them.</li>
             <li><b>Local & Offline-First:</b> Secure, offline processing guarantees code and asset data never leave your local workspace.</li>
@@ -29,12 +29,88 @@
                              id="com.sxnnyside.animoria.settings"
                              displayName="Animoria"
                              parentId="tools"/>
+        <!--
+          Editor hover parity with VS Code's AnimoriaHoverProvider. Backed by Core's
+          reference index through the daemon, not by matching asset names against
+          document text — see AnimoriaEditorHoverListener for what that cost.
+        -->
         <editorFactoryListener implementation="com.sxnnyside.animoria.hover.AnimoriaEditorHoverListener"/>
         <notificationGroup id="Animoria" displayType="BALLOON"/>
+        <projectService serviceImplementation="com.sxnnyside.animoria.backend.AnimoriaCoroutineScope"/>
+        <projectService serviceImplementation="com.sxnnyside.animoria.actions.AnimoriaActionHost"/>
+        <projectService serviceImplementation="com.sxnnyside.animoria.backend.AnimoriaAnalysisHolder"/>
+        <localInspection language=""
+                         implementationClass="com.sxnnyside.animoria.inspections.AnimoriaGovernanceInspection"
+                         displayName="Animoria asset governance"
+                         groupName="Animoria"
+                         shortName="AnimoriaGovernance"
+                         enabledByDefault="true"
+                         level="WARNING"/>
     </extensions>
 
     <projectListeners>
         <listener class="com.sxnnyside.animoria.backend.AnimoriaVFSListener"
                   topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
     </projectListeners>
+
+    <!--
+      Every Animoria operation is reachable through the paths a JetBrains developer
+      actually uses: Find Action, Search Everywhere, the Keymap, and the Tools menu.
+      The plugin previously registered no actions at all, so none of those surfaces
+      knew Animoria could do anything.
+
+      Only two keyboard defaults are claimed, both on the shift-alt row that the
+      platform leaves largely free. Binding every action by default would fight the
+      user's own keymap for chords they did not ask us to take.
+    -->
+    <actions>
+        <group id="Animoria.MainGroup" text="Animoria" description="Visual asset governance" popup="true">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+
+            <action id="Animoria.ShowToolWindow"
+                    class="com.sxnnyside.animoria.actions.ShowAnimoriaToolWindowAction"
+                    text="Show Animoria"
+                    description="Open the Animoria tool window"/>
+
+            <separator/>
+
+            <action id="Animoria.RefreshAnalysis"
+                    class="com.sxnnyside.animoria.actions.RefreshAnalysisAction"
+                    text="Refresh Analysis"
+                    description="Rescan the workspace and refresh the asset index">
+                <keyboard-shortcut keymap="$default" first-keystroke="shift alt A"/>
+            </action>
+
+            <action id="Animoria.AnalyzeWorkspace"
+                    class="com.sxnnyside.animoria.actions.AnalyzeWorkspaceAction"
+                    text="Analyze Workspace"
+                    description="Run the configured governance rules and open the report">
+                <keyboard-shortcut keymap="$default" first-keystroke="shift alt G"/>
+            </action>
+
+            <action id="Animoria.OpenGovernanceReport"
+                    class="com.sxnnyside.animoria.actions.OpenGovernanceReportAction"
+                    text="Open Governance Report"
+                    description="Open the current governance report"/>
+
+            <separator/>
+
+            <action id="Animoria.ReviewCleanup"
+                    class="com.sxnnyside.animoria.actions.ReviewCleanupAction"
+                    text="Review Cleanup"
+                    description="Review assets Animoria proposes removing"/>
+
+            <action id="Animoria.RestoreCleanup"
+                    class="com.sxnnyside.animoria.actions.RestoreCleanupAction"
+                    text="Restore From Trash"
+                    description="Put assets from a previous cleanup or duplicate resolution back"/>
+
+            <separator/>
+
+            <action id="Animoria.OpenSettings"
+                    class="com.sxnnyside.animoria.actions.OpenSettingsAction"
+                    text="Settings"
+                    description="Configure Animoria for this project"/>
+        </group>
+    </actions>
 </idea-plugin>

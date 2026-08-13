@@ -1,7 +1,14 @@
 import type { AnimatedFormat } from '../../../types/asset.js';
 import { ASSET_EXTENSIONS_BY_FORMAT } from '../../../types/formats.js';
+import { helpUriForRule } from '../rule-help.js';
 import { describe, parseSeverityWithOptions } from '../shared/rule-option-parsing.js';
-import type { GovernanceRule, RuleEvaluationContext, RuleViolation } from '../types.js';
+import {
+  DIRECT_OBSERVATION_CONFIDENCE,
+  type GovernanceRule,
+  type RuleEvaluationContext,
+  type RuleOutcome,
+  evaluated,
+} from '../types.js';
 
 const RULE_ID = 'allowed-formats';
 
@@ -34,6 +41,7 @@ export interface AllowedFormatsOptions {
 export const allowedFormatsRule: GovernanceRule<AllowedFormatsOptions> = {
   id: RULE_ID,
   description: 'Restricts which animated asset formats are permitted in the workspace.',
+  helpUri: helpUriForRule(RULE_ID),
 
   parseOptions(raw) {
     return parseSeverityWithOptions<AllowedFormatsOptions>(raw, RULE_ID, (value) => {
@@ -59,15 +67,27 @@ export const allowedFormatsRule: GovernanceRule<AllowedFormatsOptions> = {
     });
   },
 
-  evaluate(context: RuleEvaluationContext<AllowedFormatsOptions>): readonly RuleViolation[] {
+  evaluate(context: RuleEvaluationContext<AllowedFormatsOptions>): RuleOutcome {
     const { formats } = context.options;
 
-    return context.assets
-      .filter((asset) => !formats.has(asset.format))
-      .map((asset) => ({
-        asset,
-        message: `"${asset.name}" has format "${asset.format}", which is not in the allowed list: ${Array.from(formats).join(', ')}.`,
-        details: { format: asset.format, allowedFormats: Array.from(formats) },
-      }));
+    // Format is a direct property of every indexed asset — no external signal needed.
+    return evaluated(
+      context.assets
+        .filter((asset) => !formats.has(asset.format))
+        .map((asset) => ({
+          asset,
+          message: `"${asset.name}" has format "${asset.format}", which is not in the allowed list: ${Array.from(formats).join(', ')}.`,
+          details: { format: asset.format, allowedFormats: Array.from(formats) },
+          evidence: {
+            kind: 'config' as const,
+            summary: `Format "${asset.format}" is absent from the workspace's allow-list.`,
+            data: { format: asset.format, allowedFormats: Array.from(formats) },
+          },
+          confidence: DIRECT_OBSERVATION_CONFIDENCE,
+          remediation: {
+            summary: `Convert the asset to one of: ${Array.from(formats).join(', ')} — or add "${asset.format}" to "allowed-formats" in .animoriarc.`,
+          },
+        }))
+    );
   },
 };

@@ -6,8 +6,8 @@ import { detectDuplicateGroups } from '../../src/governance/duplicates/duplicate
 import { buildResolutionPlan } from '../../src/governance/duplicates/resolution-plan';
 import { validateResolutionPlan } from '../../src/governance/duplicates/resolution-plan-validator';
 import { buildResolutionSummary } from '../../src/governance/duplicates/resolution-summary';
-import type { AnimoriaAsset } from '../../src/types/asset';
 import type { DuplicateGroup } from '../../src/governance/duplicates/types';
+import type { AnimoriaAsset } from '../../src/types/asset';
 
 const tempDirs: string[] = [];
 

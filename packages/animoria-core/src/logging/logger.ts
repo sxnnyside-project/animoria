@@ -61,6 +61,7 @@ export type OperationId =
   | 'config-load'
   | 'rule-option-parse'
   | 'duplicate-resolution-validate'
+  | 'duplicate-resolution-execute'
   | 'thumbnail-generation'
   | 'cli-watch'
   | 'cli-check'
@@ -69,7 +70,17 @@ export type OperationId =
   | 'governance-run'
   | 'extension-deactivate'
   | 'asset-card-render'
-  | 'trash-cleanup';
+  | 'trash-cleanup'
+  | 'daemon-protocol'
+  | 'daemon-lifecycle'
+  /**
+   * A host adapter translating between the shared UI and the platform.
+   *
+   * Its own workflow rather than a sub-case of the others: a message that reached
+   * the bridge and failed there is a *connectivity* failure, and grouping it under
+   * `governance-run` would hide it among the analysis it was merely asking about.
+   */
+  | 'host-bridge';
 
 /** Structured context for a single diagnostic entry. */
 export interface LogContext {
@@ -87,6 +98,26 @@ export interface LogContext {
   readonly error?: unknown;
   /** What the caller did instead — the state the operation converged to (e.g. `'returned null'`, `'skipped file'`). */
   readonly recovery?: string;
+
+  // ── Daemon correlation ─────────────────────────────────────────────────────
+  //
+  // A daemon failure is only diagnosable if it can be tied to the request that
+  // caused it and the session it happened in. Without these, a log line saying
+  // "request handler threw" in a process serving several workspaces over a long
+  // session is an observation nobody can act on.
+  //
+  // Deliberately *identifiers*, not payloads: a session id, a request id, a
+  // workspace id and a method name are enough to correlate, and none of them
+  // carries file contents, asset data or an analysis object into the log.
+
+  /** The daemon session this entry belongs to. */
+  readonly sessionId?: string;
+  /** The protocol request id, when the entry arose while serving one. */
+  readonly requestId?: string;
+  /** The protocol method being served. */
+  readonly method?: string;
+  /** The workspace identity — the hashed id, never the developer's directory layout. */
+  readonly workspaceId?: string;
 }
 
 /** Receives structured diagnostic entries. Implemented by the consuming host (e.g. the VS Code extension); core only ever calls through this contract. */

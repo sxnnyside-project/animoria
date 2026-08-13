@@ -27,6 +27,19 @@ export interface AnimoriaAsset {
   thumbnailPath?: string | undefined;
 }
 
+/**
+ * How a reference was tied to its asset — the strength of the individual match.
+ *
+ * - `resolved-path` — the referenced path resolved to exactly this asset's file.
+ *   The strongest form: no other asset could satisfy it.
+ * - `filename` — the reference names this asset's filename, but its location could
+ *   not be resolved (a bundler alias, a bare specifier, a web-root-absolute URL).
+ *   Real evidence, but two identically-named assets would both be credited.
+ * - `code` — matched a language-specific usage pattern (an import, `R.raw.*`,
+ *   `Lottie.asset(...)`) rather than a resolvable path.
+ */
+export type UsageReferenceKind = 'resolved-path' | 'filename' | 'code';
+
 export interface UsageReference {
   /** Absolute path to the file containing the reference */
   file: string;
@@ -34,6 +47,8 @@ export interface UsageReference {
   line: number;
   /** Trimmed content of the matching line */
   content: string;
+  /** How this reference was established — see {@link UsageReferenceKind}. */
+  kind: UsageReferenceKind;
 }
 
 export interface UsageSearchConfig {
@@ -128,35 +143,10 @@ export interface ThumbnailBatchResult {
 }
 
 // ── Governance ───────────────────────────────────────────────────────────────
-
-export type GovernanceCategory = 'unused' | 'duplicate' | 'overused';
-
-export interface GovernanceIssue {
-  category: GovernanceCategory;
-  asset: AnimoriaAsset;
-  /** Other assets with identical content (duplicates only) */
-  duplicateOf?: AnimoriaAsset[];
-  /** Number of references found in source files */
-  referenceCount: number;
-}
-
-export interface GovernanceConfig {
-  workspacePath: string;
-  assets: AnimoriaAsset[];
-  /** Minimum references to flag as overused (default: 10) */
-  overusedThreshold?: number;
-  /** Scope path for usage search per asset */
-  scopeResolver?: (asset: AnimoriaAsset) => string;
-}
-
-export interface GovernanceReport {
-  unused: GovernanceIssue[];
-  duplicates: GovernanceIssue[];
-  overused: GovernanceIssue[];
-  /** Total assets analyzed */
-  totalAssets: number;
-  /** Duration in ms */
-  durationMs: number;
-  /** ISO timestamp of when the report was generated */
-  generatedAt: string;
-}
+//
+// `GovernanceCategory`, `GovernanceIssue`, `GovernanceConfig` and `GovernanceReport`
+// used to live here — the result shape of a second governance engine that ran its
+// own usage scan and content hashing, produced `unused` / `duplicate` / `overused`
+// categories, and fed nothing into the Health Score. Every concept it expressed is
+// now a rule diagnostic or a duplicate group inside `WorkspaceAnalysis`, so the
+// parallel vocabulary is gone rather than maintained alongside the canonical one.

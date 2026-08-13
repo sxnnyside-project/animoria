@@ -1,133 +1,53 @@
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import fg from 'fast-glob';
-import { logDebug } from '../logging/logger.js';
-import type { UsageReference, UsageSearchConfig, UsageSearchResult } from '../types/asset.js';
-import { type ReferenceMatchStrategy, lineMatchesAsset } from './reference-patterns.js';
+import type { UsageSearchConfig, UsageSearchResult } from '../types/asset.js';
+import { buildReferenceIndex } from './reference-index.js';
+
+export { DEFAULT_USAGE_SCAN_EXTENSIONS } from './scan-extensions.js';
 
 /**
- * Source file extensions scanned for asset references when a caller
- * does not supply its own list. Exported (rather than kept module-private)
- * so other subsystems that need to know "is this a source file Animoria
- * scans for references" — notably the incremental indexer's path
- * classifier — stay in sync with this scanner's own definition instead
- * of maintaining a second, potentially-drifting copy.
- */
-export const DEFAULT_USAGE_SCAN_EXTENSIONS = [
-  '.ts',
-  '.tsx',
-  '.js',
-  '.jsx',
-  '.swift',
-  '.kt',
-  '.dart',
-  '.vue',
-  '.svelte',
-  '.py',
-  '.cs',
-];
-
-const DEFAULT_EXCLUDE = [
-  '**/node_modules/**',
-  '**/dist/**',
-  '**/build/**',
-  '**/.git/**',
-  '**/.turbo/**',
-];
-
-const BATCH_SIZE = 8;
-
-/**
- * Traces file references in code files recursively.
- * Uses strategy patterns to detect asset references based on file stem or filename.
+ * Answers "which source files reference this one asset".
+ *
+ * ## Why this is now a thin wrapper
+ * This class used to own a complete scanning implementation: glob the workspace,
+ * read every source file, test every line. That is the right answer to a
+ * single-asset question asked once — a "show usages" lookup, a hover card — and
+ * exactly the wrong one when the caller has a whole workspace of assets, because
+ * running it per asset re-globs and re-reads the entire source tree once per asset.
+ * That is how a governance pass over 60 assets came to take 28 seconds.
+ *
+ * The scanning implementation now lives in {@link buildReferenceIndex}, which walks
+ * the tree once for any number of assets. This class remains as the single-asset
+ * entry point — same inputs, same results, same public shape — so on-demand lookups
+ * keep working unchanged while every whole-workspace caller uses the index directly.
  */
 export class UsageScanner {
   constructor(private config: UsageSearchConfig) {}
 
   /**
-   * Searches the workspace files for occurrences/imports matching the asset signature.
-   * Leverages fast-glob and read-streaming in batched parallel queries.
+   * Searches the workspace for references to this scanner's asset.
    *
-   * @returns A promise resolving to the list of discovered usage references.
+   * @returns The discovered references, plus how many source files were examined.
    */
   async search(): Promise<UsageSearchResult> {
     const start = performance.now();
-    const {
+    const { workspacePath, asset, strategy, extensions, exclude, scopePath } = this.config;
+
+    const index = await buildReferenceIndex({
       workspacePath,
-      asset,
-      strategy = 'pattern',
-      extensions = DEFAULT_USAGE_SCAN_EXTENSIONS,
-      exclude = [],
-      scopePath,
-    } = this.config;
-
-    const extList = extensions.map((e) => e.replace(/^\./, '')).join(',');
-    const pattern = `**/*.{${extList}}`;
-    const ignorePatterns = [...DEFAULT_EXCLUDE, ...exclude];
-
-    const files = await fg(pattern, {
-      cwd: workspacePath,
-      absolute: true,
-      ignore: ignorePatterns,
+      assets: [asset],
+      strategy,
+      extensions,
+      exclude,
+      // A single-asset scan resolves its scope directly from the config rather than
+      // through a resolver callback.
+      scopeResolver: scopePath ? () => scopePath : undefined,
     });
-
-    let references: UsageReference[] = [];
-
-    for (let i = 0; i < files.length; i += BATCH_SIZE) {
-      const batch = files.slice(i, i + BATCH_SIZE);
-      const batchResults = await Promise.all(
-        batch.map((file) => this._searchFile(file, asset.name, asset.stem, strategy))
-      );
-      for (const refs of batchResults) {
-        references.push(...refs);
-      }
-    }
-
-    if (scopePath) {
-      const scope = resolve(scopePath);
-      references = references.filter((r) => r.file.startsWith(scope));
-    }
 
     return {
       asset,
-      references,
-      searchedFiles: files.length,
+      references: [...index.referencesFor(asset.path)],
+      searchedFiles: index.summary.filesScanned,
       durationMs: performance.now() - start,
     };
-  }
-
-  private async _searchFile(
-    file: string,
-    filename: string,
-    stem: string,
-    strategy: ReferenceMatchStrategy
-  ): Promise<UsageReference[]> {
-    try {
-      const content = await readFile(file, 'utf-8');
-      const lines = content.split('\n');
-      const refs: UsageReference[] = [];
-
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i]!;
-        if (lineMatchesAsset(line, filename, stem, strategy)) {
-          refs.push({
-            file,
-            line: i + 1,
-            content: line.trim(),
-          });
-        }
-      }
-
-      return refs;
-    } catch (err) {
-      logDebug('usage-scan', 'UsageScanner', 'Could not read source file during usage scan', {
-        assetPath: file,
-        reason: 'file vanished or unreadable',
-        error: err,
-        recovery: 'reported zero references for this file',
-      });
-      return [];
-    }
   }
 }

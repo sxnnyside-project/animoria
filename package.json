@@ -19,17 +19,18 @@
     "audit": "pnpm audit",
     "sandbox": "turbo run dev --filter=animoria-sandbox",
     "package:vscode": "pnpm --filter animoria-vscode package",
-    "package:jetbrains-daemon": "pnpm --filter @animoria/core build:sea && node scripts/copy-sea-into-jetbrains.mjs",
-    "package:jetbrains": "pnpm --filter animoria-sandbox build && mkdir -p packages/animoria-jetbrains/src/main/resources/assets && cp -r apps/animoria-sandbox/dist/* packages/animoria-jetbrains/src/main/resources/assets/ && pnpm package:jetbrains-daemon && cd packages/animoria-jetbrains && ./gradlew buildPlugin",
+    "package:jetbrains-daemon": "pnpm --filter @animoria/core build:sea && node scripts/copy-sea-into-jetbrains.mjs && node scripts/verify-packaged-daemon.mjs",
+    "package:jetbrains": "pnpm --filter @animoria/ui build && pnpm package:jetbrains-daemon && cd packages/animoria-jetbrains && ./gradlew buildPlugin",
     "package:all": "pnpm package:vscode && pnpm package:jetbrains",
-    "prepare": "husky"
+    "prepare": "husky",
+    "verify:packaged-daemon": "node scripts/verify-packaged-daemon.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
-    "@commitlint/cli": "^19.7.1",
-    "@commitlint/config-conventional": "^19.7.1",
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
     "husky": "^9.1.7",
     "turbo": "latest",
-    "typescript": "^5.0.0"
+    "typescript": "^5.9.3"
   }
 }

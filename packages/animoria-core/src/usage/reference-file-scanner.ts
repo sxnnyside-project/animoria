@@ -1,43 +1,40 @@
 import { readFile } from 'node:fs/promises';
 import { logDebug } from '../logging/logger.js';
 import type { AnimoriaAsset, UsageReference } from '../types/asset.js';
-import { type ReferenceMatchStrategy, lineMatchesAsset } from './reference-patterns.js';
+import { collectFromFile, createReferenceEntry } from './reference-index.js';
+import type { ReferenceMatchStrategy } from './reference-patterns.js';
 
 /**
- * Finds, for a single source file, which of a given set of assets it
- * references — the inverse of what {@link "./usage-scanner.js"} does.
+ * Finds, for a single source file, which of a given set of assets it references —
+ * the inverse of a whole-workspace scan.
  *
  * ## Why this exists
- * `UsageScanner` answers "which source files reference *this one*
- * asset", by walking every source file in the workspace. That is the
- * right question — and the right cost — for a full governance analysis
- * or an on-demand "show usages" lookup. It is the *wrong* cost for
- * reacting to a single source file being saved: re-walking the entire
- * workspace, once per asset, every time a developer edits one file,
- * does not scale to a workspace with thousands of assets and source
- * files.
+ * `buildReferenceIndex` answers "which source files reference these assets" by
+ * walking the whole tree. That is the right cost for an initial index or a CI run,
+ * and the wrong cost for reacting to one file being saved. This function reads the
+ * one file that changed and tests it against every asset, so an incremental update
+ * costs `O(lines in this file × assets)` rather than a workspace walk.
  *
- * This function flips the direction: given the one file that just
- * changed, read it once and test it against every asset's reference
- * patterns. Cost is `O(lines in this file × assets)` instead of
- * `O(source files in workspace)` — the piece of work that is actually
- * proportional to what changed. This is what lets
- * `WorkspaceIndexer` keep per-asset reference counts incrementally
- * correct without ever re-scanning the workspace on a source edit.
+ * ## Why it delegates rather than implementing matching itself
+ * The two paths must agree exactly. If the incremental scanner had its own notion of
+ * what counts as a reference, an asset's count would depend on *when* the file was
+ * read — during the cold scan or after a later edit — and the two would drift as
+ * soon as either gained a format the other lacked. Both therefore call
+ * {@link collectFromFile}: format dispatch, target extraction, path resolution, and
+ * the inline-ignore directive all live in exactly one place.
  *
  * @param filePath - Absolute path to the single source file to scan.
  * @param assets - Candidate assets to test this file's lines against.
- * @param strategy - Match strategy — see `UsageSearchConfig.strategy`.
- *   Defaults to `'pattern'`, matching `UsageScanner`'s own default, so
- *   the two stay consistent unless a caller deliberately diverges.
- * @returns A map from asset path to the references found for that asset
- *   in this file. Assets with no references in this file are omitted
- *   entirely (never present with an empty array), so `map.size` is
- *   directly the count of assets this file references.
+ * @param workspacePath - Workspace root, used to resolve root-absolute targets.
+ * @param strategy - Match strategy for code-syntax files. See `UsageSearchConfig.strategy`.
+ * @returns A map from asset path to the references found in this file. Assets with no
+ *   references are omitted entirely, so `map.size` is the count of assets this file
+ *   references.
  */
 export async function scanFileForAssetReferences(
   filePath: string,
   assets: readonly AnimoriaAsset[],
+  workspacePath: string,
   strategy: ReferenceMatchStrategy = 'pattern'
 ): Promise<ReadonlyMap<string, UsageReference[]>> {
   const result = new Map<string, UsageReference[]>();
@@ -61,17 +58,11 @@ export async function scanFileForAssetReferences(
     return result; // File vanished or is unreadable — no references to report.
   }
 
-  const lines = content.split('\n');
+  const entries = assets.map((asset) => createReferenceEntry(asset, strategy));
+  collectFromFile(filePath, content, workspacePath, entries);
 
-  for (const asset of assets) {
-    const refs: UsageReference[] = [];
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]!;
-      if (lineMatchesAsset(line, asset.name, asset.stem, strategy)) {
-        refs.push({ file: filePath, line: i + 1, content: line.trim() });
-      }
-    }
-    if (refs.length > 0) result.set(asset.path, refs);
+  for (const entry of entries) {
+    if (entry.references.length > 0) result.set(entry.asset.path, entry.references);
   }
 
   return result;

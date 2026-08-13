@@ -45,7 +45,7 @@ export function buildRecommendations(
 function formatRecommendationMessage(category: HealthScoreCategoryBreakdown): string {
   const label = humanizeRuleId(category.ruleId);
   const count = category.diagnosticCount;
-  const noun = count === 1 ? 'violation' : 'violations';
+  const noun = count === 1 ? 'finding' : 'findings';
   const points = roundToOneDecimal(category.totalPenalty);
   return `Resolve ${count} "${label}" ${noun} to recover up to ${points} point(s).`;
 }

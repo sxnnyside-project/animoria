@@ -90,6 +90,20 @@ export class ChangeCoalescer {
    * call directly from a watcher callback with no debouncing of your
    * own.
    */
+  /**
+   * Whether filesystem signals have arrived that no committed analysis reflects
+   * yet.
+   *
+   * This is the mechanical basis of the product's staleness answer: an analysis is
+   * stale exactly when the workspace has produced changes the analysis predates.
+   * Exposed rather than inferred by clients because a client comparing timestamps
+   * or diffing asset lists would be re-deriving — differently — something the
+   * coalescer already knows for certain.
+   */
+  hasPendingChanges(): boolean {
+    return this._pending.size > 0;
+  }
+
   record(event: FileChangeEvent): void {
     if (this._disposed) return;
 

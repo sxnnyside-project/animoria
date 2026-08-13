@@ -1,3 +1,4 @@
+import type { CoverageStatus } from '../../types/scan-coverage.js';
 import type { ActiveRuleSeverity, RuleDiagnostic } from '../rules-engine.js';
 
 /**
@@ -46,6 +47,52 @@ import type { ActiveRuleSeverity, RuleDiagnostic } from '../rules-engine.js';
  * nothing here re-reads a file or re-runs a rule.
  */
 export type RulePenaltyWeight = number | ((diagnostic: RuleDiagnostic) => number);
+
+/**
+ * Why a Health Score could not be produced.
+ *
+ * A score is a *verdict*, and a verdict requires something to have been judged. The
+ * scoring arithmetic returns 100 whenever no diagnostic exists — which is correct
+ * arithmetic and a misleading verdict when nothing was checked. Three situations
+ * yield zero diagnostics for reasons that have nothing to do with repository health:
+ * no assets were discovered, no rules were configured to find anything, or the
+ * analysis never finished. Each of them once rendered as `100/100 · Excellent`.
+ */
+export type HealthScoreUnavailableReason =
+  | 'no-assets-discovered'
+  | 'no-rules-configured'
+  | 'incomplete-analysis';
+
+/**
+ * Something that limits what a computed score means, without preventing it.
+ *
+ * Distinct from {@link HealthScoreUnavailableReason}: the score *was* computed and
+ * every diagnostic behind it is real, but part of the workspace went unexamined —
+ * a configured rule declined to run, or the reference scan skipped formats. The
+ * number is a floor on the problems present, not a complete accounting of them, and
+ * a client that presents it without this caveat overstates it.
+ */
+export interface HealthScoreQualification {
+  readonly code: 'rules-skipped' | 'partial-coverage';
+  /** Human-readable, safe to render standalone. */
+  readonly message: string;
+}
+
+/**
+ * The result of asking for a Health Score.
+ *
+ * A discriminated union rather than a nullable number, so "we scored it" and "there
+ * was nothing to score" are structurally different values no consumer can conflate
+ * by defaulting.
+ */
+export type HealthScoreOutcome =
+  | { readonly status: 'computed'; readonly report: HealthScoreReport }
+  | {
+      readonly status: 'unavailable';
+      readonly reason: HealthScoreUnavailableReason;
+      /** Human-readable explanation, safe to render standalone. */
+      readonly message: string;
+    };
 
 /**
  * The complete, tunable scoring policy: how much a violation of a given
@@ -161,6 +208,8 @@ export interface HealthScoreReport {
   readonly categories: readonly HealthScoreCategoryBreakdown[];
   /** Deterministic, ranked recommendations — see {@link HealthScoreRecommendation}. */
   readonly recommendations: readonly HealthScoreRecommendation[];
+  /** Caveats limiting what this score means — see {@link HealthScoreQualification}. Empty when the analysis was complete and every configured rule ran. */
+  readonly qualifications: readonly HealthScoreQualification[];
   /** ISO timestamp this report was computed. */
   readonly generatedAt: string;
   /** Wall-clock duration of this evaluation, in milliseconds. Always small — see class docs. */
@@ -181,4 +230,26 @@ export interface HealthScoreEvaluationInput {
    * it does not affect the score itself.
    */
   readonly totalAssetCount: number;
+  /**
+   * How many configured rules actually evaluated. Zero means nothing was enforced,
+   * so a clean diagnostic list reflects an absent policy rather than a healthy
+   * workspace — the engine reports the score as unavailable instead of as 100.
+   */
+  readonly evaluatedRuleCount: number;
+  /**
+   * Rules that were configured but declined to run. Does not prevent a score, but
+   * qualifies it: part of the policy went unchecked.
+   */
+  readonly skippedRuleCount: number;
+  /**
+   * Whether the analysis behind these diagnostics finished. An unfinished analysis
+   * describes an unknown fraction of the workspace and cannot support a verdict.
+   */
+  readonly analysisComplete: boolean;
+  /**
+   * Reach of the reference scan, when one ran. `'partial'` qualifies the score;
+   * `'unknown'` does not by itself prevent one, because rules that depend on the
+   * scan will already have declared themselves skipped.
+   */
+  readonly coverageStatus?: CoverageStatus | undefined;
 }

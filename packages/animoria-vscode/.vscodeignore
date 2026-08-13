@@ -18,6 +18,11 @@ vitest.config.ts
 
 # Build intermediates and maps
 dist/**/*.map
+# The shared UI's sourcemap is 1.1 MB and only useful to us. The bundle itself
+# must ship — it *is* the extension's UI.
+media/*.map
+# Scripts that produce media/, not consumed at runtime.
+scripts/
 
 # Monorepo root files that leak in
 ../../.gitignore
@@ -36,6 +41,8 @@ Thumbs.db
 
 # Keep in the .vsix:
 # ✔  dist/extension.js
+# ✔  media/animoria-ui.js   (the shared UI bundle — the panel is blank without it)
+# ✔  media/tokens.css
 # ✔  assets/icon.svg
 # ✔  assets/icon.png   (if present)
 # ✔  package.json

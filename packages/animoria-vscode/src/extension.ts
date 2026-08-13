@@ -1,30 +1,33 @@
 import { basename, join } from 'node:path';
 import {
-  GovernanceAnalyzer,
   StaticAssetScanner,
   ThumbnailEngine,
-  WorkspaceIndexer,
+  WorkspaceSession,
+  buildCleanupCandidates,
   buildJsonReport,
   buildMarkdownReport,
+  duplicateGroupForAsset,
   integrationRegistry,
+  listTrashSessions,
   logDebug,
   logWarn,
+  moveAssetsToTrash,
+  purgeExpiredTrashSessions,
+  restoreTrashSession,
   setLogger,
 } from '@animoria/core';
 import type {
   AnimoriaAsset,
   AnimoriaStaticAsset,
-  DuplicateCandidate,
   DuplicateGroup,
-  GovernanceReport,
-  WorkspaceIndexUpdate,
+  MultiRootAnalysis,
+  WorkspaceAnalysis,
+  WorkspaceIndexer,
 } from '@animoria/core';
 import * as vscode from 'vscode';
-import { purgeExpiredTrashSessions } from './cleanup/CleanupTrash';
+import { DiagnosticPublisher } from './diagnostics/DiagnosticPublisher';
 import { OutputChannelLogger } from './logging/OutputChannelLogger';
-import { AnimoriaCleanupPanel } from './panels/AnimoriaCleanupPanel';
-import { AnimoriaDuplicateResolver } from './panels/AnimoriaDuplicateResolver';
-import { AnimoriaPreviewPanel, ensureProvidersRegistered } from './panels/AnimoriaPreviewPanel';
+import { AnimoriaWorkspacePanel } from './panels/AnimoriaWorkspacePanel';
 import { AnimoriaHoverProvider, HOVER_LANGUAGES } from './providers/AnimoriaHoverProvider';
 import { AnimoriaTreeProvider } from './providers/AnimoriaTreeProvider';
 import type { AnimoriaGovernanceIssueItem } from './providers/AnimoriaTreeProvider';
@@ -68,10 +71,27 @@ const GOVERNANCE_REPORT_URI = vscode.Uri.parse(`${GOVERNANCE_REPORT_SCHEME}:/Gov
 const governanceReportContentProvider = new GovernanceReportContentProvider();
 
 let treeProvider: AnimoriaTreeProvider;
-let indexer: WorkspaceIndexer | undefined;
-let fileWatcher: AnimoriaFileWatcher | undefined;
-let lastGovernanceReport: GovernanceReport | undefined;
+/**
+ * Every open root's indexers, as one session.
+ *
+ * Replaces the single `WorkspaceIndexer` over `workspaceFolders[0]`. Commands that
+ * need "the workspace" ask this; commands that need a specific root ask it to route.
+ */
+let session: WorkspaceSession | undefined;
+/** One per root. A single watcher over the first folder saw none of the others' changes. */
+let fileWatchers: (AnimoriaFileWatcher | null)[] = [];
+/** The most recent aggregate. Read by commands that report on "the workspace". */
+let lastAggregate: MultiRootAnalysis | undefined;
 let hoverRegistration: vscode.Disposable | undefined;
+let diagnosticPublisher: DiagnosticPublisher | undefined;
+/**
+ * Module-level so commands invoked outside `activate`'s closure can reach them.
+ * Both are set once, in `activate`, and never reassigned — the alternative was
+ * hanging them off a panel class as static state, which is how
+ * `AnimoriaPreviewPanel.activeEditorTracker` came to be a global in disguise.
+ */
+let extensionContext: vscode.ExtensionContext | undefined;
+let activeEditorTracker: ActiveEditorTracker | undefined;
 
 const activeGenerators = new Set<{
   generator: ThumbnailEngine;
@@ -88,6 +108,11 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(outputChannel);
   setLogger(new OutputChannelLogger(outputChannel));
 
+  // Governance findings belong in the Problems panel, where a VS Code developer
+  // looks for them, rather than in a status-bar message that disappears.
+  diagnosticPublisher = new DiagnosticPublisher();
+  context.subscriptions.push(diagnosticPublisher);
+
   context.subscriptions.push(
     vscode.workspace.registerTextDocumentContentProvider(
       GOVERNANCE_REPORT_SCHEME,
@@ -101,8 +126,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Track the last real, on-disk editor to focus so Snippet Generation can
   // anchor generated import paths to it (see ActiveEditorTracker's doc).
-  const activeEditorTracker = new ActiveEditorTracker();
-  AnimoriaPreviewPanel.activeEditorTracker = activeEditorTracker;
+  extensionContext = context;
+  activeEditorTracker = new ActiveEditorTracker();
   context.subscriptions.push(activeEditorTracker);
 
   // 2. Register tree view
@@ -130,10 +155,38 @@ export async function activate(context: vscode.ExtensionContext) {
       // the inline icon silently opening the panel with the wrong shape.
       const asset = arg && 'asset' in arg ? arg.asset : arg;
       if (!asset || typeof asset !== 'object' || !('path' in asset)) return;
-      const workspaceFolders = vscode.workspace.workspaceFolders;
-      const workspacePath = workspaceFolders?.[0]?.uri.fsPath;
-      const thumbPath = treeProvider.getThumbnail(asset.path);
-      AnimoriaPreviewPanel.render(context, asset, thumbPath, workspacePath);
+      if (!session) {
+        vscode.window.showWarningMessage('Animoria: No workspace indexed. Open a folder first.');
+        return;
+      }
+
+      // A static asset goes to VS Code's own image viewer.
+      //
+      // It is not in the analysis — static assets are discovered separately and the
+      // canonical pipeline for them is a later wave — so focusing the shared panel on
+      // one selects a path the grid does not contain, and the developer lands on an
+      // asset list that does not include the asset they clicked. VS Code's built-in
+      // image preview is a genuinely good viewer for a PNG or a WebP, and it is
+      // *native*, which is the right answer here rather than a placeholder in a
+      // webview.
+      if (!isAnimatedAsset(asset)) {
+        void vscode.commands.executeCommand('vscode.open', vscode.Uri.file(asset.path), {
+          preview: true,
+        });
+        return;
+      }
+
+      // The panel opens *on this asset*.
+      //
+      // It used to unwrap the argument, validate it, and then discard it — rendering
+      // the panel on the assets tab with nothing selected. "Open Preview" on a
+      // specific file therefore produced a grid of every file, and the developer had
+      // to find theirs again. The asset's identity is the whole point of the command.
+      AnimoriaWorkspacePanel.show(context, () => session, 'inspector', {
+        tab: 'assets',
+        assetPath: asset.path,
+        rootId: session.indexerForPath(asset.path)?.root.id ?? '',
+      });
     }
   );
 
@@ -166,9 +219,7 @@ export async function activate(context: vscode.ExtensionContext) {
         : undefined;
       quickPick.hide();
       if (asset) {
-        const thumbPath = treeProvider.getThumbnail(asset.path);
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        AnimoriaPreviewPanel.render(context, asset, thumbPath, workspaceFolders?.[0]?.uri.fsPath);
+        void vscode.commands.executeCommand('animoria.openPreview', asset);
       }
     });
     quickPick.onDidHide(() => {
@@ -193,21 +244,44 @@ export async function activate(context: vscode.ExtensionContext) {
   const deleteCommand = vscode.commands.registerCommand(
     'animoria.deleteAsset',
     async (item: AnimoriaGovernanceIssueItem) => {
-      if (!item?.issue) return;
-      const asset = item.issue.asset;
+      if (!item?.diagnostic) return;
+      const asset = item.diagnostic.asset;
+      const workspacePath = session?.indexerForPath(asset.path)?.root.path;
+      if (!workspacePath) return;
+
+      // Staged, not permanent. This command previously called
+      // `vscode.workspace.fs.delete` with no `useTrash` and no staging — an
+      // irreversible deletion — while Bulk Cleanup in this same extension staged to
+      // `.animoria/trash/` and the JetBrains equivalent told the user the file could
+      // be recovered. The same user intent must not be reversible in one client and
+      // irreversible in another.
       const confirm = await vscode.window.showWarningMessage(
-        `Delete ${asset.name} permanently from disk?`,
-        { modal: true },
-        'Delete'
+        `Move ${asset.name} to .animoria/trash/?`,
+        {
+          modal: true,
+          detail:
+            'The file leaves its current location but is preserved on disk and can be restored by moving it back.',
+        },
+        'Move to Trash'
       );
-      if (confirm !== 'Delete') return;
-      await vscode.workspace.fs.delete(vscode.Uri.file(asset.path));
-      // The file watcher will independently observe this deletion and
-      // reach the same conclusion via the reactive index; removing it
-      // here too just avoids waiting out the debounce window for
-      // feedback on an action the user just took themselves.
+      if (confirm !== 'Move to Trash') return;
+
+      const { trashDir, moved } = await moveAssetsToTrash(workspacePath, [asset]);
+      if (moved.length === 0) {
+        vscode.window.showWarningMessage(
+          `Animoria: ${asset.name} could not be moved to trash — it may already be gone. See the Animoria output channel.`
+        );
+        return;
+      }
+
+      // The file watcher will independently observe this move and reach the same
+      // conclusion via the reactive index; removing it here too just avoids waiting
+      // out the debounce window for feedback on an action the user just took.
       treeProvider.removeAsset(asset.path);
-      vscode.window.setStatusBarMessage(`Animoria: Deleted ${asset.name}`, 3000);
+      vscode.window.setStatusBarMessage(
+        `Animoria: ${asset.name} moved to ${basename(trashDir)}`,
+        4000
+      );
     }
   );
 
@@ -224,8 +298,30 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   );
 
+  // Each capability opens its own surface. A tab bar inside one webview made every
+  // one of these land the developer in a workspace browser.
+  const viewFindingsCommand = vscode.commands.registerCommand('animoria.viewFindings', () => {
+    if (!session) {
+      vscode.window.showWarningMessage('Animoria: No workspace indexed. Open a folder first.');
+      return;
+    }
+    AnimoriaWorkspacePanel.show(context, () => session, 'findings', { tab: 'findings' });
+  });
+
+  const viewDuplicatesCommand = vscode.commands.registerCommand('animoria.viewDuplicates', () => {
+    if (!session) {
+      vscode.window.showWarningMessage('Animoria: No workspace indexed. Open a folder first.');
+      return;
+    }
+    AnimoriaWorkspacePanel.show(context, () => session, 'duplicates', { tab: 'duplicates' });
+  });
+
   const cleanupReviewCommand = vscode.commands.registerCommand('animoria.startCleanupReview', () =>
     startCleanupReview(context)
+  );
+
+  const restoreCleanupCommand = vscode.commands.registerCommand('animoria.restoreCleanup', () =>
+    restoreCleanup()
   );
 
   const toggleViewModeCommand = vscode.commands.registerCommand('animoria.toggleViewMode', () => {
@@ -248,7 +344,10 @@ export async function activate(context: vscode.ExtensionContext) {
     deleteCommand,
     resolveDuplicatesCommand,
     generateSnippetCommand,
+    viewFindingsCommand,
+    viewDuplicatesCommand,
     cleanupReviewCommand,
+    restoreCleanupCommand,
     toggleViewModeCommand
   );
 
@@ -265,8 +364,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
 /**
  * Tears down the previous workspace's indexer and file watcher (if any)
- * and brings up a fresh {@link WorkspaceIndexer} for the current first
- * workspace folder, performing its one-time initial scan and then
+ * and brings up a fresh {@link WorkspaceSession} over every open workspace folder,
+ * performing its one-time initial scan and then
  * switching into continuous, event-driven synchronization.
  *
  * This is the single entry point for "start being reactive" — called
@@ -281,21 +380,29 @@ async function startWorkspace(): Promise<void> {
     vscode.window.showWarningMessage('Animoria: No workspace folder open.');
     return;
   }
-  const workspacePath = workspaceFolders[0]!.uri.fsPath;
 
-  // Best-effort, non-blocking: bounds how long Bulk Cleanup's trash
-  // (`.animoria/trash/`) can accumulate. Never awaited — a slow or
-  // failing purge must not delay workspace activation, and
-  // `purgeExpiredTrashSessions` itself never throws.
-  void purgeExpiredTrashSessions(workspacePath);
+  // V2: every folder, not `workspaceFolders[0]`.
+  //
+  // Eight sites read the first folder and silently ignored the rest, so in a
+  // multi-root workspace two thirds of a developer's assets were invisible — not
+  // reported as unscanned, simply absent, which reads as "you have none".
+  //
+  // `WorkspaceSession` owns one `WorkspaceIndexer` per root, because `.animoriarc`
+  // is root-scoped and a merged scan would apply one root's policy to files it does
+  // not govern (D-05).
+  const rootPaths = workspaceFolders.map((folder) => folder.uri.fsPath);
+  const activeSession = new WorkspaceSession(rootPaths);
+  session = activeSession;
 
-  const activeIndexer = new WorkspaceIndexer({
-    workspacePath,
-    scopeResolver: (asset) => resolveScopePath(asset.path, workspacePath),
-  });
-  indexer = activeIndexer;
+  // Purge each root's own trash. Best-effort and never awaited: a slow purge must
+  // not delay activation, and `purgeExpiredTrashSessions` never throws.
+  for (const rootPath of rootPaths) void purgeExpiredTrashSessions(rootPath);
 
-  activeIndexer.onDidUpdate((update) => applyIndexUpdate(update, workspacePath));
+  for (const root of activeSession.roots) {
+    activeSession
+      .indexerForRoot(root.id)
+      ?.onDidUpdate(() => applyIndexUpdate(activeSession, root.path));
+  }
 
   await vscode.window.withProgress(
     {
@@ -304,43 +411,61 @@ async function startWorkspace(): Promise<void> {
       cancellable: false,
     },
     async () => {
-      const snapshot = await activeIndexer.initialize();
-      const assets = [...snapshot.assets];
-      treeProvider.setAssets(assets);
-      treeProvider.setGovernanceState({
-        ruleReport: snapshot.ruleReport,
-        healthScore: snapshot.healthScore,
-        referenceCounts: snapshot.referenceCounts,
-      });
-      reportRuleDiagnostics(snapshot.ruleReport?.diagnostics.length ?? 0);
+      const aggregate = await activeSession.initializeFast();
+      applyAggregate(aggregate);
 
-      vscode.window.setStatusBarMessage(`Animoria: ${assets.length} assets indexed`, 5000);
+      const assets = aggregate.assets.map((entry) => entry.asset);
+      const rootSuffix =
+        activeSession.roots.length > 1 ? ` across ${activeSession.roots.length} roots` : '';
+      vscode.window.setStatusBarMessage(
+        `Animoria: ${assets.length} assets indexed${rootSuffix}`,
+        5000
+      );
 
-      maybeGenerateThumbnails(assets, workspacePath);
-      // Awaited deliberately: this progress indicator is the user's only
-      // signal that "Refresh" has finished. Governance state (used/unused,
-      // duplicates, overused) previously recomputed here via a fire-and-forget
-      // call, so the spinner could disappear — and the command visibly
-      // "complete" — before the recompute had actually finished, leaving the
-      // sidebar showing pre-refresh state for a period with no indication
-      // anything was still happening. Awaiting means "done" only ever means
-      // governance is actually current.
-      await runGovernanceSilently(workspacePath);
-      void scanAndApplyStaticAssets(assets, workspacePath);
+      // Thumbnails and static assets are per-root: both write into that root's
+      // `.animoria/` and resolve paths against it.
+      for (const { root, analysis } of aggregate.roots) {
+        const rootAssets = [...analysis.assets];
+        maybeGenerateThumbnails(rootAssets, root.path);
+        // Reported rather than dropped. `void` on a promise that can reject means a
+        // failed static-asset scan leaves the sidebar section silently empty, which
+        // is indistinguishable from a workspace that has no static assets.
+        scanAndApplyStaticAssets(rootAssets, root.path).catch((error: unknown) => {
+          logWarn('file-scan', 'scanAndApplyStaticAssets', 'Static asset scan failed', {
+            reason: `scanning ${root.path} threw`,
+            error,
+            recovery: 'the Static Assets section keeps its previous contents',
+          });
+        });
+      }
     }
   );
 
-  fileWatcher = new AnimoriaFileWatcher(activeIndexer);
-  fileWatcher.start(workspacePath);
+  // One watcher per root. A single watcher over the first folder saw none of the
+  // others' changes, so their analyses were frozen at activation.
+  fileWatchers = activeSession.roots.map((root) => {
+    const indexerForRoot = activeSession.indexerForRoot(root.id);
+    if (!indexerForRoot) return null;
+    const watcher = new AnimoriaFileWatcher(indexerForRoot);
+    watcher.start(root.path);
+    return watcher;
+  });
 
   // Register (or re-register) the hover provider now that a live indexer
   // is available. Dispose any previous registration first so there is never
   // more than one active provider per language.
   hoverRegistration?.dispose();
-  hoverRegistration = vscode.languages.registerHoverProvider(
-    HOVER_LANGUAGES.map((lang) => ({ language: lang })),
-    new AnimoriaHoverProvider(activeIndexer, treeProvider)
-  );
+  // The hover resolves an asset by path, so it needs the indexer that owns that
+  // path. In a single-root workspace this is the only indexer; in a multi-root one
+  // the first root's is used as the lookup entry point and the session routes from
+  // there.
+  const primaryIndexer = activeSession.indexerForRoot(activeSession.roots[0]!.id);
+  hoverRegistration = primaryIndexer
+    ? vscode.languages.registerHoverProvider(
+        HOVER_LANGUAGES.map((lang) => ({ language: lang })),
+        new AnimoriaHoverProvider(primaryIndexer, treeProvider)
+      )
+    : undefined;
   // Not pushed onto context.subscriptions because this function can run
   // multiple times (workspace folder changes, refresh). We manage the
   // registration's lifetime directly via hoverRegistration.dispose() above.
@@ -354,10 +479,13 @@ async function startWorkspace(): Promise<void> {
 }
 
 function stopWorkspace(): void {
-  fileWatcher?.dispose();
-  fileWatcher = undefined;
-  indexer?.dispose();
-  indexer = undefined;
+  diagnosticPublisher?.clear();
+  for (const watcher of fileWatchers) watcher?.dispose();
+  fileWatchers = [];
+  // Disposes every root's indexer. Nothing else holds one, so no root's background
+  // work can outlive the session.
+  session?.dispose();
+  session = undefined;
   hoverRegistration?.dispose();
   hoverRegistration = undefined;
 }
@@ -378,6 +506,73 @@ async function forceFullReindex(): Promise<void> {
 }
 
 /**
+ * The indexer and root path the shared UI panel is mounted over.
+ *
+ * The panel's `VsCodeHostBridge` reads one `WorkspaceAnalysis`; in a multi-root
+ * workspace that is the first root's. This is a stated limitation rather than a
+ * hidden one — the tree, the Problems panel and every command below are multi-root,
+ * and the panel's own multi-root pass is Wave 6 work tracked as U5.
+
+
+/**
+ * Pushes one aggregate into every surface that renders workspace state.
+ *
+ * One function rather than four call sites, so the tree, the Problems panel, the
+ * cached analysis and the status report cannot drift into describing different
+ * subsets of the workspace — which is exactly what happened when each root was
+ * published independently.
+ */
+function applyAggregate(aggregate: MultiRootAnalysis): void {
+  treeProvider.setAssets(aggregate.assets.map((entry) => entry.asset));
+  treeProvider.setMultiRootAnalysis(aggregate);
+
+  // One publication covering every root. Publishing per root would clear the
+  // previous root's diagnostics, leaving only the last one visible.
+  diagnosticPublisher?.publishAll(aggregate.roots.map((entry) => entry.analysis));
+
+  lastAggregate = aggregate;
+  reportRuleDiagnostics(aggregate.diagnostics.length);
+  AnimoriaWorkspacePanel.broadcast(aggregate);
+
+  // Any asset still without a thumbnail decision gets one.
+  //
+  // Applying an aggregate is the only thing "Run Governance Analysis" does, and it
+  // used to leave the tree full of spinners: the thumbnail state was cleared and no
+  // generation pass followed. Asking here means every path that publishes an analysis
+  // also settles the gallery, rather than each caller having to remember.
+  settlePendingThumbnails();
+}
+
+/**
+ * Starts a generation pass for assets that have no thumbnail answer yet.
+ *
+ * Grouped by root because a `ThumbnailEngine` writes into one root's `.animoria/`
+ * and resolves paths against it.
+ */
+function settlePendingThumbnails(): void {
+  const activeSession = session;
+  if (!activeSession) return;
+
+  const pending = treeProvider.assetsAwaitingThumbnails();
+  if (pending.length === 0) return;
+
+  const byRoot = new Map<string, AnimoriaAsset[]>();
+  for (const asset of pending) {
+    const rootPath = activeSession.indexerForPath(asset.path)?.root.path;
+    if (!rootPath) {
+      // Unattributable, so no engine can render it. Settled rather than left spinning.
+      treeProvider.markThumbnailUnavailable(asset.path);
+      continue;
+    }
+    const forRoot = byRoot.get(rootPath) ?? [];
+    forRoot.push(asset);
+    byRoot.set(rootPath, forRoot);
+  }
+
+  for (const [rootPath, assets] of byRoot) maybeGenerateThumbnails(assets, rootPath);
+}
+
+/**
  * Applies one settled batch from the reactive index to the tree view and
  * (for newly touched assets only) kicks off thumbnail generation.
  *
@@ -387,39 +582,34 @@ async function forceFullReindex(): Promise<void> {
  * never invalidates the thumbnail cache or usage-reference cache of any
  * other asset in the workspace.
  */
-function applyIndexUpdate(update: WorkspaceIndexUpdate, workspacePath: string): void {
-  const assetsByPath = new Map(update.snapshot.assets.map((a) => [a.path, a] as const));
+function applyIndexUpdate(activeSession: WorkspaceSession, changedRootPath: string): void {
+  // Re-derived from the whole session rather than from the one root's update: the
+  // tree, the diagnostics and the health widget describe the *workspace*, and
+  // rendering one root's batch over them would blank the others.
+  const aggregate = activeSession.getAnalysis();
+  applyAggregate(aggregate);
 
-  for (const path of update.removedAssetPaths) {
-    treeProvider.removeAsset(path);
-  }
-
-  const touchedAssets: AnimoriaAsset[] = [];
-  for (const path of update.upsertedAssetPaths) {
-    const asset = assetsByPath.get(path);
-    if (!asset) continue;
-    treeProvider.updateAsset(asset);
-    touchedAssets.push(asset);
-  }
-
-  treeProvider.setGovernanceState({
-    ruleReport: update.snapshot.ruleReport,
-    healthScore: update.snapshot.healthScore,
-    referenceCounts: update.snapshot.referenceCounts,
-  });
-  reportRuleDiagnostics(update.snapshot.ruleReport?.diagnostics.length ?? 0);
+  const changedRoot = aggregate.roots.find((entry) => entry.root.path === changedRootPath);
+  const touchedAssets = changedRoot ? [...changedRoot.analysis.assets] : [];
 
   if (touchedAssets.length > 0) {
-    maybeGenerateThumbnails(touchedAssets, workspacePath);
+    maybeGenerateThumbnails(touchedAssets, changedRootPath);
   }
 
-  void runGovernanceSilently(workspacePath);
-  void scanAndApplyStaticAssets(update.snapshot.assets, workspacePath);
+  if (changedRoot) {
+    scanAndApplyStaticAssets(touchedAssets, changedRootPath).catch((error: unknown) => {
+      logWarn('file-scan', 'scanAndApplyStaticAssets', 'Static asset rescan failed', {
+        reason: `rescanning ${changedRootPath} threw`,
+        error,
+        recovery: 'the Static Assets section keeps its previous contents',
+      });
+    });
+  }
 }
 
 function reportRuleDiagnostics(count: number): void {
   if (count > 0) {
-    vscode.window.setStatusBarMessage(`Animoria: ${count} rule violation(s)`, 5000);
+    vscode.window.setStatusBarMessage(`Animoria: ${count} rule finding(s)`, 5000);
   }
 }
 
@@ -432,6 +622,17 @@ function reportRuleDiagnostics(count: number): void {
  * animated assets — see `AnimoriaTreeProvider.setStaticAssets`. Run
  * during initial indexing and on manual refresh.
  */
+/**
+ * Whether this is an asset the shared panel can show.
+ *
+ * `format` is present on every `AnimoriaAsset` and absent on `AnimoriaStaticAsset`'s
+ * animated counterpart set — the distinction the tree already makes, read here rather
+ * than re-derived from the extension.
+ */
+function isAnimatedAsset(asset: AnimoriaAsset | AnimoriaStaticAsset): asset is AnimoriaAsset {
+  return session?.getAnalysis().assets.some((entry) => entry.asset.path === asset.path) ?? false;
+}
+
 async function scanAndApplyStaticAssets(
   animatedAssets: readonly AnimoriaAsset[],
   workspacePath: string
@@ -439,9 +640,12 @@ async function scanAndApplyStaticAssets(
   // Shares the reactive indexer's already-loaded `.animoriaignore`
   // patterns rather than reloading and re-parsing the file — the indexer
   // is the single source of truth for which patterns are currently in effect.
+  // Each root's own ignore patterns. Using the first root's for every root would
+  // apply one project's `.animoriaignore` to another's files.
+  const rootIndexer = session?.indexerForPath(join(workspacePath, '.'))?.indexer;
   const scanner = new StaticAssetScanner({
     workspacePath,
-    exclude: indexer ? [...indexer.getIgnorePatterns()] : [],
+    exclude: rootIndexer ? [...rootIndexer.getIgnorePatterns()] : [],
   });
   const result = await scanner.scan();
 
@@ -461,7 +665,14 @@ function maybeGenerateThumbnails(assets: AnimoriaAsset[], workspacePath: string)
     .getConfiguration('animoria')
     .get<boolean>('enableThumbnails', true);
 
-  if (thumbnailsEnabled && assets.length > 0) {
+  if (!thumbnailsEnabled) {
+    // Turned off is an answer. Left unsettled, every asset would show the spinner
+    // that means "still generating" for a pass that will never run.
+    for (const asset of assets) treeProvider.markThumbnailUnavailable(asset.path);
+    return;
+  }
+
+  if (assets.length > 0) {
     // Fire-and-forget — the gallery is immediately usable. No external
     // browser process required: rendering runs natively in-process.
     generateThumbnailsInBackground(assets, workspacePath, treeProvider);
@@ -493,16 +704,41 @@ async function generateThumbnailsInBackground(
       }
     }
 
+    // Anything the batch did not report on is settled here.
+    //
+    // `generateBatch` returns a result per asset it processed; an asset it skipped —
+    // or one the engine dropped — would otherwise keep its spinner forever, because
+    // "no thumbnail and no recorded failure" *is* the loading state.
+    const reported = new Set(batch.results.map((result) => result.asset.path));
+    for (const asset of assets) {
+      if (!reported.has(asset.path)) provider.markThumbnailUnavailable(asset.path);
+    }
+
     vscode.window.setStatusBarMessage(
       `Animoria: ${batch.generated} thumbnails generated · ` +
         `${batch.fromCache} cached · ${batch.failed} failed`,
       5000
     );
   } catch (err) {
+    // Every asset settles, including on failure and cancellation.
+    //
+    // This used to log and return, leaving every asset in the batch with neither a
+    // thumbnail nor a failure — the exact state the tree renders as a spinner. One
+    // thrown batch meant a permanently loading gallery with nothing in the UI to say
+    // so.
+    for (const asset of assets) provider.markThumbnailUnavailable(asset.path);
+
     if (abortController.signal.aborted) {
-      console.log('Animoria: Thumbnail generation aborted successfully.');
+      logDebug('thumbnail-generation', 'generateThumbnailsInBackground', 'Cancelled', {
+        reason: 'a newer generation pass or shutdown superseded this one',
+        recovery: 'assets show the format placeholder until the next pass',
+      });
     } else {
-      console.error('Animoria thumbnail generation failed:', err);
+      logWarn('thumbnail-generation', 'generateThumbnailsInBackground', 'Generation failed', {
+        reason: 'generateBatch threw',
+        error: err,
+        recovery: 'assets show the format placeholder rather than a permanent spinner',
+      });
     }
   } finally {
     activeGenerators.delete(entry);
@@ -517,37 +753,40 @@ async function generateThumbnailsInBackground(
  * The group is assembled from data already computed by
  * `GovernanceAnalyzer` (`item.issue.asset` and `item.issue.duplicateOf`,
  * from the "Run Governance" flow) and the live reactive index's current
- * reference counts (`indexer.getSnapshot().referenceCounts`) — this
+ * reference counts (`indexer.getAnalysis().referenceCounts`) — this
  * function performs no content hashing or usage scanning of its own. It
  * exists solely to translate an already-known duplicate relationship
- * into the `DuplicateGroup` shape `AnimoriaDuplicateResolver` expects.
+ * into the `DuplicateGroup` shape the shared duplicates view expects.
  */
 function resolveDuplicates(item: AnimoriaGovernanceIssueItem): void {
-  if (!item?.issue || item.issue.category !== 'duplicate') return;
+  if (!item?.diagnostic || item.diagnostic.ruleId !== 'no-duplicate-content') return;
 
-  const workspaceFolders = vscode.workspace.workspaceFolders;
-  if (!workspaceFolders || workspaceFolders.length === 0 || !indexer) return;
-  const workspacePath = workspaceFolders[0]!.uri.fsPath;
+  // Routed to the root that owns the asset, not to the first folder. In a
+  // multi-root workspace those differ, and resolving a duplicate against the wrong
+  // root would build a plan whose paths do not exist.
+  const located = session?.indexerForPath(item.diagnostic.asset.path);
+  if (!located) return;
 
-  const groupAssets = [item.issue.asset, ...(item.issue.duplicateOf ?? [])];
-  const referenceCounts = indexer.getSnapshot().referenceCounts;
+  // The group comes from the analysis, which computed it by content hash. It used to
+  // be reassembled here from `GovernanceIssue.duplicateOf` — a second engine's view
+  // of the same relationship, with an id synthesised from sorted paths rather than
+  // the hash that established it.
+  const group = duplicateGroupForAsset(located.indexer.getAnalysis(), item.diagnostic.asset.path);
+  if (!group) return;
 
-  const candidates: DuplicateCandidate[] = groupAssets.map((asset) => ({
-    asset,
-    referenceCount: referenceCounts.get(asset.path) ?? 0,
-  }));
-
-  const group: DuplicateGroup = {
-    id: groupAssets
-      .map((a) => a.path)
-      .sort()
-      .join('|'),
-    candidates,
-    sizeBytes: item.issue.asset.sizeBytes,
-    potentialSavingsBytes: (candidates.length - 1) * item.issue.asset.sizeBytes,
-  };
-
-  AnimoriaDuplicateResolver.render(workspacePath, group, indexer);
+  // The group travels with the request.
+  //
+  // `void group;` stood here: the group was computed, deliberately discarded, and
+  // the panel opened on a bare duplicates tab. A developer who clicked "Resolve
+  // Duplicates" on one specific finding arrived at a list of every duplicate group
+  // in the workspace with no indication which one they had asked about — the
+  // regression that made this audit necessary.
+  if (!extensionContext) return;
+  AnimoriaWorkspacePanel.show(extensionContext, () => session, 'duplicates', {
+    tab: 'duplicates',
+    groupId: group.id,
+    rootId: located.root.id,
+  });
 }
 
 /**
@@ -558,14 +797,8 @@ function resolveDuplicates(item: AnimoriaGovernanceIssueItem): void {
  * diverge between the two entry points.
  */
 async function generateSnippet(asset: AnimoriaAsset): Promise<void> {
-  ensureProvidersRegistered();
-
-  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-  const context = buildIntegrationContext(
-    asset,
-    workspacePath,
-    AnimoriaPreviewPanel.activeEditorTracker
-  );
+  const workspacePath = session?.indexerForPath(asset.path)?.root.path ?? '';
+  const context = buildIntegrationContext(asset, workspacePath, activeEditorTracker);
 
   const results = integrationRegistry.generate(context);
   if (results.length === 0) {
@@ -599,169 +832,162 @@ async function generateSnippet(asset: AnimoriaAsset): Promise<void> {
  * → Approve → Execute → Summarize workflow internally.
  */
 async function startCleanupReview(context: vscode.ExtensionContext): Promise<void> {
-  if (!indexer) {
+  const activeSession = session;
+  if (!activeSession) {
     vscode.window.showWarningMessage('Animoria: No workspace indexed. Open a folder first.');
     return;
   }
-  await AnimoriaCleanupPanel.render(context, indexer);
+  AnimoriaWorkspacePanel.show(context, () => session, 'cleanup', { tab: 'cleanup' });
 }
 
 /**
- * Runs the full unused/duplicate/overused governance analysis and applies
- * the result to `treeProvider` and `lastGovernanceReport`.
+ * The "Restore from Trash" command.
  *
- * This is the single computation both the automatic pass (triggered from
- * `startWorkspace` and every reactive index update) and the manual
- * `animoria.runGovernance` command go through — there is deliberately no
- * second, parallel implementation of this analysis anywhere in the
- * extension.
+ * Every Bulk Cleanup removal moves assets into `.animoria/trash/<sessionId>/`
+ * rather than deleting them (`@animoria/core`'s `cleanup/trash.ts`) — this is
+ * the other half of that guarantee: a session id alone was never enough to
+ * make trash *usable*, since a developer restoring a mistaken cleanup has no
+ * reason to know or remember one. This command lists what is actually
+ * recoverable and lets the developer pick from that, in plain terms
+ * ("N asset(s), reclaiming X"), rather than asking them to already know
+ * which directory under `.animoria/trash/` they want.
  */
-async function computeAndApplyGovernance(
-  assets: readonly AnimoriaAsset[],
-  workspacePath: string
-): Promise<GovernanceReport> {
-  const analyzer = new GovernanceAnalyzer({
-    workspacePath,
-    assets: [...assets],
-    overusedThreshold: vscode.workspace
-      .getConfiguration('animoria')
-      .get<number>('governance.overusedThreshold', 10),
-    scopeResolver: (asset) => resolveScopePath(asset.path, workspacePath),
-  });
-
-  const report = await analyzer.analyze();
-  lastGovernanceReport = report;
-  treeProvider.setGovernanceReport(report);
-  return report;
-}
-
-/**
- * Whether the one-time "governance analysis complete" notification has
- * already been shown this session. Automatic governance runs on every
- * reactive index update (see `applyIndexUpdate`), and a toast per file
- * change would be noise — but showing the very first result at least
- * once is what makes the automatic pass's outcome actually reachable
- * without the developer already knowing the manual command or the
- * governance section's context menu exist.
- */
-let hasShownInitialGovernanceNotice = false;
-
-/**
- * Runs governance analysis automatically, with no progress dialog and
- * (after the first run this session) no notification — used for the
- * initial scan and every subsequent reactive index update, where a toast
- * per file change would be noise rather than signal. Errors are
- * swallowed: automatic passes must never interrupt the developer, and the
- * manual command remains available to surface a report explicitly.
- */
-async function runGovernanceSilently(workspacePath: string): Promise<void> {
-  const assets = treeProvider.getAssets();
-  if (assets.length === 0) return;
-  try {
-    const report = await computeAndApplyGovernance(assets, workspacePath);
-
-    if (!hasShownInitialGovernanceNotice) {
-      hasShownInitialGovernanceNotice = true;
-      const total = report.unused.length + report.duplicates.length + report.overused.length;
-      const message =
-        total > 0
-          ? `Animoria: Governance analysis complete — ${total} issue(s) found.`
-          : 'Animoria: Governance analysis complete — no issues found.';
-      vscode.window.showInformationMessage(message, 'View Report').then(
-        (selection) => {
-          if (selection === 'View Report') viewGovernanceReport();
-        },
-        () => {
-          // Dismissed — the report remains reachable via
-          // `animoria.runGovernance` or the governance section's context menu.
-        }
-      );
-    }
-  } catch (err) {
-    logWarn(
-      'governance-run',
-      'runGovernanceSilently',
-      'Automatic governance analysis pass failed',
-      {
-        assetPath: workspacePath,
-        reason: 'computeAndApplyGovernance threw',
-        error: err,
-        recovery: 'no notification shown; manual "Run Governance Analysis" remains available',
-      }
-    );
-    // Silent to the user by design — see doc comment above. The one-time
-    // notice above only fires on success, so a failure here never shows a
-    // false "complete".
-  }
-}
-
-/**
- * The manual "Run Governance Analysis" command. Automatic governance
- * execution (see `runGovernanceSilently`) now covers initial indexing and
- * workspace changes, so this command's role is explicit revalidation —
- * useful when a developer wants an on-demand, user-visible confirmation
- * rather than waiting on the background pass. It is not the primary
- * execution path anymore, but it is not removed.
- */
-async function runGovernance(): Promise<void> {
-  const workspaceFolders = vscode.workspace.workspaceFolders;
-  if (!workspaceFolders || workspaceFolders.length === 0) return;
-
-  const workspacePath = workspaceFolders[0]!.uri.fsPath;
-  const assets = treeProvider.getAssets();
-
-  if (assets.length === 0) {
-    vscode.window.showInformationMessage('Animoria: No assets found. Run a scan first.');
+async function restoreCleanup(): Promise<void> {
+  const activeSession = session;
+  if (!activeSession) {
+    vscode.window.showWarningMessage('Animoria: No workspace indexed. Open a folder first.');
     return;
   }
 
-  await vscode.window.withProgress(
+  // Every root's trash, each tagged with the root it belongs to. A restore offering
+  // only the first root's sessions would silently make the other roots' cleanups
+  // unrecoverable through the UI.
+  const perRoot = await Promise.all(
+    activeSession.roots.map(async (root) => ({
+      root,
+      sessions: await listTrashSessions(root.path),
+    }))
+  );
+  const sessions = perRoot.flatMap((entry) =>
+    entry.sessions.map((trashSession) => ({ ...trashSession, root: entry.root }))
+  );
+  if (sessions.length === 0) {
+    vscode.window.showInformationMessage('Animoria: Nothing in trash to restore.');
+    return;
+  }
+
+  const picked = await vscode.window.showQuickPick(
+    sessions.map((session) => {
+      const totalBytes = session.entries.reduce((sum, e) => sum + e.sizeBytes, 0);
+      return {
+        label: `${session.entries.length} asset(s) — ${formatBytesShort(totalBytes)}`,
+        description: new Date(session.movedAt).toLocaleString(),
+        detail: session.entries.map((e) => e.originalPath).join(', '),
+        session,
+      };
+    }),
+    {
+      title: 'Restore from Trash',
+      placeHolder: 'Choose which cleanup run to undo',
+    }
+  );
+  if (!picked) return;
+
+  // Restored into the root the session came from, and the change routed back to
+  // that root's indexer.
+  const result = await restoreTrashSession(picked.session.root.path, picked.session.sessionId);
+  for (const path of result.restoredPaths) {
+    activeSession.notifyFileChanged(path, 'created');
+  }
+
+  if (result.failures.length === 0) {
+    vscode.window.showInformationMessage(
+      `Animoria: Restored ${result.restoredPaths.length} asset(s).`
+    );
+    return;
+  }
+
+  const occupied = result.failures.filter((f) => f.reason === 'destination-occupied');
+  const messages = [
+    `Restored ${result.restoredPaths.length} of ${picked.session.entries.length} asset(s).`,
+  ];
+  if (occupied.length > 0) {
+    messages.push(
+      `${occupied.length} could not be restored because something new now exists at their original path: ${occupied.map((f) => f.originalPath).join(', ')}`
+    );
+  }
+  vscode.window.showWarningMessage(`Animoria: ${messages.join(' ')}`);
+}
+
+function formatBytesShort(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * The "Run Governance Analysis" command.
+ *
+ * ## Why this no longer runs an analysis
+ * It used to construct a `GovernanceAnalyzer` and re-scan the workspace — a second
+ * governance pass alongside the one the reactive indexer already performs, producing
+ * a differently-shaped result that fed nothing into the Health Score shown beside it.
+ * A silent copy of that pass also ran on *every* file save.
+ *
+ * The indexer maintains the canonical analysis continuously, so this command's job is
+ * to make the current one visible and confirm it is complete — which is what a
+ * developer actually wants from a button labelled "run".
+ */
+async function runGovernance(): Promise<void> {
+  const activeSession = session;
+  if (!activeSession) {
+    vscode.window.showWarningMessage('Animoria: No workspace indexed. Open a folder first.');
+    return;
+  }
+
+  const ANALYSIS_TIMEOUT_MS = 30_000;
+
+  const analysis = await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: 'Animoria: Revalidating governance...',
-      cancellable: false,
+      title: 'Animoria: Completing analysis...',
+      // Cancellable so the user can escape if a large workspace stalls.
+      cancellable: true,
     },
-    async (progress) => {
-      progress.report({ message: `Analyzing ${assets.length} assets...` });
+    // Race `analyzeComplete()` against a 30-second timeout. If the background
+    // reference-resolution pass hasn't settled, fall back to the cached
+    // `getAnalysis()` rather than hanging indefinitely.
+    (_progress, token) => {
+      const complete = activeSession.analyzeComplete();
+      const timeout = new Promise<MultiRootAnalysis>((resolve) => {
+        const id = setTimeout(() => resolve(activeSession.getAnalysis()), ANALYSIS_TIMEOUT_MS);
+        // Clean up the timer when the token fires so we don't leak it if the
+        // user cancels before the 30s elapses.
+        token.onCancellationRequested(() => {
+          clearTimeout(id);
+          resolve(activeSession.getAnalysis());
+        });
+      });
+      return Promise.race([complete, timeout]);
+    }
+  );
 
-      const report = await computeAndApplyGovernance(assets, workspacePath);
+  applyAggregate(analysis);
 
-      const total = report.unused.length + report.duplicates.length + report.overused.length;
+  const total = analysis.diagnostics.length;
+  const message =
+    total > 0
+      ? `Animoria found ${total} governance finding(s).`
+      : 'Animoria: Analysis complete — no findings.';
 
-      const summary =
-        total === 0
-          ? 'No governance issues found.'
-          : [
-              report.unused.length > 0 ? `${report.unused.length} unused` : '',
-              report.duplicates.length > 0 ? `${report.duplicates.length} duplicate` : '',
-              report.overused.length > 0 ? `${report.overused.length} overused` : '',
-            ]
-              .filter(Boolean)
-              .join(' · ');
-
-      vscode.window.setStatusBarMessage(`Animoria Governance: ${summary}`, 8000);
-
-      // Always offer a durable way to see the report — a status bar
-      // message disappears after 8 seconds and is easy to miss, and a
-      // clean result (`total === 0`) is exactly the case a developer most
-      // wants confirmed by an actual report, not just inferred from the
-      // absence of a toast.
-      const message =
-        total > 0
-          ? `Animoria found ${total} governance issue(s): ${summary}`
-          : 'Animoria: Governance analysis complete — no issues found.';
-
-      vscode.window.showInformationMessage(message, 'View Report', 'Export to File').then(
-        (selection) => {
-          if (selection === 'View Report') viewGovernanceReport();
-          if (selection === 'Export to File') exportGovernanceReport();
-        },
-        () => {
-          // Notification dismissed or superseded — nothing to do; the
-          // report remains reachable via the governance section's
-          // context menu and `animoria.viewGovernanceReport`.
-        }
-      );
+  vscode.window.showInformationMessage(message, 'View Report', 'Export to File').then(
+    (selection) => {
+      if (selection === 'View Report') viewGovernanceReport();
+      if (selection === 'Export to File') exportGovernanceReport();
+    },
+    () => {
+      // Dismissed — the report stays reachable via the governance section's context
+      // menu and `animoria.viewGovernanceReport`.
     }
   );
 }
@@ -780,14 +1006,22 @@ async function runGovernance(): Promise<void> {
  * duplicating on every subsequent "View Report" click.
  */
 async function viewGovernanceReport(): Promise<void> {
-  if (!lastGovernanceReport) {
+  if (!lastAggregate) {
     vscode.window.showWarningMessage(
       'Animoria: No governance report available. Run analysis first.'
     );
     return;
   }
 
-  governanceReportContentProvider.update(buildMarkdownReport(lastGovernanceReport));
+  // One report section per root. `buildMarkdownReport` describes one analysis; a
+  // multi-root workspace is several, and concatenating them under root headings is
+  // honest where merging them would not be — the roots may have different policies.
+  const sections = lastAggregate.roots.map(({ root, analysis }) =>
+    lastAggregate!.workspace.isSingleRoot
+      ? buildMarkdownReport(analysis)
+      : `## ${root.name}\n\n${buildMarkdownReport(analysis)}`
+  );
+  governanceReportContentProvider.update(sections.join('\n\n---\n\n'));
   // `showTextDocument`'s `preview: true` means a reusable editor tab, not
   // a rendered Markdown view — it shows raw `##`/`|---|` source. The
   // report is meant to be read, not edited, so open VS Code's built-in
@@ -796,7 +1030,7 @@ async function viewGovernanceReport(): Promise<void> {
 }
 
 async function exportGovernanceReport(): Promise<void> {
-  if (!lastGovernanceReport) {
+  if (!lastAggregate) {
     vscode.window.showWarningMessage(
       'Animoria: No governance report available. Run analysis first.'
     );
@@ -806,9 +1040,12 @@ async function exportGovernanceReport(): Promise<void> {
   const workspaceFolders = vscode.workspace.workspaceFolders;
   if (!workspaceFolders || workspaceFolders.length === 0) return;
 
-  const report = lastGovernanceReport;
+  const aggregate = lastAggregate;
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const defaultUri = vscode.Uri.file(
+    // The first folder is the *save dialog's default location*, not the scope of the
+    // report — the report below covers every root. A dialog needs one directory to
+    // open in, and the developer can change it.
     join(workspaceFolders[0]!.uri.fsPath, `animoria-governance-${timestamp}.md`)
   );
 
@@ -820,8 +1057,28 @@ async function exportGovernanceReport(): Promise<void> {
 
   if (!saveUri) return;
 
+  // Per root, for the same reason the viewed report is: the roots may govern
+  // themselves differently, so one merged report would have to pick a policy.
   const isJson = saveUri.fsPath.endsWith('.json');
-  const content = isJson ? buildJsonReport(report) : buildMarkdownReport(report);
+  const content = isJson
+    ? JSON.stringify(
+        {
+          workspace: aggregate.workspace,
+          roots: aggregate.roots.map(({ root, analysis }) => ({
+            root,
+            report: JSON.parse(buildJsonReport(analysis)) as unknown,
+          })),
+        },
+        null,
+        2
+      )
+    : aggregate.roots
+        .map(({ root, analysis }) =>
+          aggregate.workspace.isSingleRoot
+            ? buildMarkdownReport(analysis)
+            : `## ${root.name}\n\n${buildMarkdownReport(analysis)}`
+        )
+        .join('\n\n---\n\n');
 
   await vscode.workspace.fs.writeFile(saveUri, Buffer.from(content, 'utf-8'));
 

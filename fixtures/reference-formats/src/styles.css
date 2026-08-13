@@ -1,0 +1,5 @@
+.hero { background-image: url("../assets/by-css-url.json"); }
+/* False positives */
+.ext { background-image: url("https://cdn.example.com/fp-external-url.json"); }
+.out { background-image: url("../../outside/fp-outside-workspace.json"); }
+/* fp-prose.json mentioned in a comment only */

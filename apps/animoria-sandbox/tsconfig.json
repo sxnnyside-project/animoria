@@ -1,12 +1,19 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2020",
+    "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "experimentalDecorators": true,
     "useDefineForClassFields": false,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"]
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "paths": {
+      "@animoria/ui": ["../../packages/animoria-ui/src/index.ts"],
+      "@animoria/core/contracts": ["../../packages/animoria-core/src/contracts.ts"],
+      "@animoria/core/i18n": ["../../packages/animoria-core/src/i18n/locales.ts"],
+      "@animoria/core": ["../../packages/animoria-core/src/index.ts"]
+    }
   },
   "include": ["src"]
 }

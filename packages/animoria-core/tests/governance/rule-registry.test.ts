@@ -53,7 +53,7 @@ describe('RuleRegistry', () => {
 });
 
 describe('createDefaultRuleRegistry', () => {
-  it('registers all five built-in rules', () => {
+  it('registers all six built-in rules', () => {
     const registry = createDefaultRuleRegistry();
     const ids = registry
       .list()
@@ -63,6 +63,7 @@ describe('createDefaultRuleRegistry', () => {
       [
         'allowed-formats',
         'max-file-size-kb',
+        'no-duplicate-content',
         'no-duplicate-names',
         'no-gif',
         'no-unreferenced-assets',

@@ -53,6 +53,10 @@ export async function detectDuplicateGroups(
     const sizeBytes = candidates[0]!.asset.sizeBytes;
     groups.push({
       id: hash,
+      // Byte equality, established by hashing the files themselves — not by their
+      // names, which `no-duplicate-names` reports separately and for a different reason.
+      matchKind: 'content-hash',
+      contentHash: hash,
       candidates,
       sizeBytes,
       potentialSavingsBytes: (candidates.length - 1) * sizeBytes,

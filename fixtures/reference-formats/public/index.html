@@ -1,0 +1,17 @@
+<!doctype html>
+<html><body>
+  <img src="../assets/by-html.json" alt="referenced">
+  <img srcset="../assets/by-html-srcset.json 1x, ../assets/by-html-srcset.json 2x" alt="">
+  <img src="../assets/by-query-suffix.json?v=3" alt="query is stripped">
+  <img src="../assets/by-fragment-suffix.json#frag" alt="fragment is stripped">
+  <img src="/assets/by-web-absolute.json" alt="web-root absolute">
+
+  <!-- False positives: none of the following may count. -->
+  <img src="https://cdn.example.com/assets/fp-external-url.json" alt="external host">
+  <img src="//cdn.example.com/assets/fp-protocol-relative.json" alt="protocol-relative">
+  <img src="../assets/fp-wrong-extension.png" alt="different file">
+  <img src="../../outside/fp-outside-workspace.json" alt="outside the workspace">
+  <img src="data:application/json;base64,fp-data-uri.json" alt="data uri">
+  <p>The file fp-prose.json is discussed here but never used.</p>
+  <p title="fp-prose.json">Title text is not a resource attribute.</p>
+</body></html>

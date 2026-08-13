@@ -1,4 +1,3 @@
-export * from './governance-analyzer.js';
 export * from './rules-engine.js';
 export * from './config-loader.js';
 export * from './rules/builtins/index.js';

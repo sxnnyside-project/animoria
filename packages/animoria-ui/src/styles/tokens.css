@@ -1,0 +1,159 @@
+/* ============================================================================
+   Animoria design tokens — the host-neutral contract.
+
+   ## What this file is
+   The complete list of custom properties shared components may read, with a
+   self-sufficient default for every one. A host supplies values by overriding
+   these on `:root`; it never asks a component to read a host variable.
+
+   ## What this file is NOT, and why that matters
+   The previous token layer (`apps/animoria-sandbox/src/styles/theme-bridge.css`)
+   defined every token *in terms of a VS Code variable*:
+
+       --animoria-bg-primary: var(--vscode-sideBar-background, #1e1e1e);
+
+   So the abstraction whose entire purpose was to remove host names was written
+   in host names, and the consequence showed up in the JetBrains plugin: both of
+   its panels emitted `--vscode-editor-background`, `--vscode-button-background`
+   and thirteen more *from JBColor values*, because that is what the shared CSS
+   demanded. A JetBrains IDE was therefore impersonating VS Code's theme API to
+   satisfy a bridge that claimed to be neutral.
+
+   No `--vscode-*`, `--jb-*`, or any other host identifier appears below, and
+   `tokens.test.ts` fails the build if one is added.
+
+   ## Fallbacks
+   Every token's default is a real, usable value rather than `inherit` or a
+   sentinel. A host that supplies nothing still renders a legible dark UI; a
+   half-configured host degrades to consistent, not to invisible.
+   ============================================================================ */
+
+:root {
+  color-scheme: dark;
+
+  /* ── Typography ─────────────────────────────────────────────────────────
+     No @import. The previous token file pulled Outfit from Google Fonts,
+     which a VS Code webview CSP blocks and an offline JCEF cannot reach —
+     so the font silently never applied in either IDE, and the sandbox was
+     the only surface that ever rendered the intended typeface. The stack is
+     system fonts, which are present everywhere by definition. */
+  --animoria-font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --animoria-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  /* ── Type scale ──────────────────────────────────────────────────────
+     Relative to the host's own base size, not fixed pixels.
+
+     These were 13/11/9px absolute. 9px is smaller than any text either IDE
+     renders, and a panel whose secondary text is two points below everything
+     around it reads as a web page embedded in an editor rather than as part
+     of it — which is exactly how the shared UI was described in review.
+
+     `--animoria-font-size-base` is what a host sets from its own platform:
+     `--vscode-font-size` in VS Code, the JBUI label font in JetBrains. The
+     fallback is 13px so the sandbox and any host that sets nothing still
+     render sensibly. */
+  --animoria-font-size-base: 13px;
+  --animoria-font-size: var(--animoria-font-size-base);
+  --animoria-font-size-sm: calc(var(--animoria-font-size-base) - 1px);
+  --animoria-font-size-xs: calc(var(--animoria-font-size-base) - 2px);
+  --animoria-font-size-lg: calc(var(--animoria-font-size-base) + 3px);
+  --animoria-line-height: 1.45;
+
+  /* ── Surfaces ───────────────────────────────────────────────────────── */
+  --animoria-bg-primary: #1e1e1e;
+  --animoria-bg-secondary: #252526;
+  --animoria-bg-raised: #2d2d30;
+  --animoria-bg-hover: rgba(255, 255, 255, 0.06);
+  --animoria-bg-selected: rgba(255, 255, 255, 0.1);
+
+  /* ── Text ───────────────────────────────────────────────────────────── */
+  --animoria-text-primary: #cccccc;
+  --animoria-text-strong: #ffffff;
+  --animoria-text-muted: #8b8b8b;
+  --animoria-text-on-accent: #ffffff;
+
+  /* ── Lines ──────────────────────────────────────────────────────────── */
+  --animoria-border: #3e3e42;
+  --animoria-border-strong: #565659;
+  --animoria-focus-ring: #0e7fd4;
+  --animoria-radius: 6px;
+  --animoria-radius-sm: 3px;
+
+  /* ── Accent ─────────────────────────────────────────────────────────── */
+  --animoria-accent: #0e639c;
+  --animoria-accent-hover: #1177bb;
+  --animoria-accent-quiet: rgba(14, 99, 156, 0.16);
+
+  /* ── Semantic status ────────────────────────────────────────────────────
+     Named for meaning, not colour: `--animoria-danger` survives a redesign
+     that makes it orange, `--animoria-red` does not. */
+  --animoria-success: #4ec26b;
+  --animoria-success-quiet: rgba(78, 194, 107, 0.14);
+  --animoria-warning: #d8a012;
+  --animoria-warning-quiet: rgba(216, 160, 18, 0.14);
+  --animoria-danger: #e05252;
+  --animoria-danger-quiet: rgba(224, 82, 82, 0.14);
+  --animoria-info: #4a9edb;
+  --animoria-info-quiet: rgba(74, 158, 219, 0.14);
+  --animoria-neutral-quiet: rgba(255, 255, 255, 0.07);
+
+  /* ── Confidence ─────────────────────────────────────────────────────────
+     Four levels, four distinct colours, deliberately not a red-to-green ramp:
+     `low` confidence is not "bad", it is "less established", and colouring it
+     as a failure would push developers to act on findings by colour rather
+     than by evidence. */
+  --animoria-confidence-certain: #4ec26b;
+  --animoria-confidence-high: #6fb4e8;
+  --animoria-confidence-moderate: #d8a012;
+  --animoria-confidence-low: #9a9a9a;
+
+  /* ── Coverage ───────────────────────────────────────────────────────── */
+  --animoria-coverage-complete: #4ec26b;
+  --animoria-coverage-partial: #d8a012;
+  --animoria-coverage-none: #e05252;
+  --animoria-coverage-unknown: #9a9a9a;
+
+  /* ── Lifecycle ──────────────────────────────────────────────────────────
+     One colour per state, so "stale" and "incomplete" are never the same
+     picture — the collapse this whole layer exists to undo. */
+  --animoria-state-initializing: #9a9a9a;
+  --animoria-state-analyzing: #4a9edb;
+  --animoria-state-ready: #4ec26b;
+  --animoria-state-stale: #d8a012;
+  --animoria-state-incomplete: #d8a012;
+  --animoria-state-failed: #e05252;
+
+  /* ── Spacing ────────────────────────────────────────────────────────── */
+  --animoria-space-1: 4px;
+  --animoria-space-2: 8px;
+  --animoria-space-3: 12px;
+  --animoria-space-4: 16px;
+  --animoria-space-5: 24px;
+
+  /* ── Scrollbar ──────────────────────────────────────────────────────── */
+  --animoria-scroll-thumb: #424242;
+  --animoria-scroll-thumb-hover: #4f4f4f;
+}
+
+/* A host that reports a light theme sets `data-animoria-theme="light"` on the
+   root. It still supplies its own values on top; these are the fallbacks so an
+   unstyled light host is legible rather than white-on-white. */
+:root[data-animoria-theme="light"] {
+  color-scheme: light;
+
+  --animoria-bg-primary: #f3f3f3;
+  --animoria-bg-secondary: #ffffff;
+  --animoria-bg-raised: #ffffff;
+  --animoria-bg-hover: rgba(0, 0, 0, 0.05);
+  --animoria-bg-selected: rgba(0, 0, 0, 0.09);
+
+  --animoria-text-primary: #1f1f1f;
+  --animoria-text-strong: #000000;
+  --animoria-text-muted: #616161;
+
+  --animoria-border: #d4d4d4;
+  --animoria-border-strong: #b0b0b0;
+
+  --animoria-neutral-quiet: rgba(0, 0, 0, 0.06);
+  --animoria-scroll-thumb: #c1c1c1;
+  --animoria-scroll-thumb-hover: #a8a8a8;
+}

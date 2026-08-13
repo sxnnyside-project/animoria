@@ -4,10 +4,10 @@
 
 If you find a security vulnerability in **Animoria**, report it privately before disclosing it publicly.
 
-**Preferred channel:**  
+**Preferred channel:**
 Email — `legal.sxnnyside@sxnnysideproject.com`
 
-**Alternative:**  
+**Alternative:**
 [GitHub Private Security Advisory](https://github.com/sxnnyside-project/animoria/security/advisories/new)
 
 ---
@@ -44,9 +44,9 @@ Public disclosure is expected after a fix is available. If a fix isn't possible,
 
 ## Scope
 
-This policy covers the **Animoria** repository only.  
+This policy covers the **Animoria** repository only.
 For ecosystem-wide security concerns, use the email above.
 
 ---
 
-_Animoria is a Sxnnyside Project Tool. Part of the [Sxnnyside Project](https://sxnnysideproject.com)._
+*Animoria is a Sxnnyside Project Tool. Part of the [Sxnnyside Project](https://sxnnysideproject.com).*

@@ -1,8 +1,8 @@
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildAssetTreeProjection } from '../../src/navigation/asset-tree-projection';
-import type { AnimoriaAsset } from '../../src/types/asset';
 import type { AssetFolderNode } from '../../src/navigation/types';
+import type { AnimoriaAsset } from '../../src/types/asset';
 
 const WORKSPACE = '/workspace';
 

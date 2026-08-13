@@ -1,123 +1,151 @@
 # @animoria/core
 
-A zero-dependency, pure TypeScript library designed to orchestrate **Asset Governance, reference tracking, and workspace deduplication** for codebases with high densities of animated assets.
+The core scanning, parsing, usage-tracing, governance, and daemon engine for **Animoria**.
 
-This core package is completely decoupled from any IDE runtime (VS Code or JetBrains), making it ideal for integration into CI/CD pipelines, custom code quality scanners, build-time bundler plugins, and command-line interfaces (CLIs).
-
----
-
-## Architecture & Modules
-
-The library is structured into four main governance and analysis layers:
-
-| Module           | Core Class           | Role in Governance & Parsing                                                                                                                                            |
-| :--------------- | :------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`scanner`**    | `FileScanner`        | Scans directories recursively, performs fast-pass structural audits, and yields typed `AnimoriaAsset` objects.                                                          |
-| **`parsers`**    | `ParserRegistry`     | A singleton strategy registry implementing the parser plugin architecture. Matches file extensions and magic bytes to structural parsers.                              |
-| **`usage`**      | `UsageScanner`       | Traces references of animated assets in source code files using pattern matches. Supports project boundary scoping for monorepos.                                       |
-| **`governance`** | `GovernanceAnalyzer` | Processes the workspace assets to classify them as **Unused** (0 references), **Duplicate** (matching MD5 checksums), or **Overused** (references exceeding threshold). |
+`@animoria/core` is a pure TypeScript library designed to analyze, audit, and deduplicate animated (Lottie, dotLottie, Rive, GIF, APNG, animated SVG) and static (SVG, PNG, JPEG, WebP, AVIF) visual assets across codebases. It is completely decoupled from any IDE API, making it suitable for programmatic use, CI/CD linters, CLI tools, and background daemons.
 
 ---
 
-## Programmatic Integration
+## Architectural Subsystems
 
-### 1. Initializing the Parser Pipeline (Strategy Pattern)
-
-The core routes files dynamically using registered strategy parsers that implement the `IAssetParser` interface. By default, it registers support for **Lottie**, **dotLottie**, **Rive**, **GIF**, **APNG**, and **Animated SVG**.
-
-You can retrieve the central registry, verify registered formats, or register custom parsers:
-
-```typescript
-import { ParserRegistry } from '@animoria/core/parsers';
-
-const registry = ParserRegistry.getInstance();
-
-// Inspect currently supported formats
-const formats = registry.getRegisteredFormats();
-// -> ['lottie', 'dotlottie', 'rive', 'gif', 'apng', 'animated-svg']
 ```
-
-### 2. Workspace Scanning and Parsing
-
-To audit a codebase, instantiating `Animoria` orchestrates the `FileScanner` and the `ParserRegistry` in a single pass:
-
-```typescript
-import { Animoria } from '@animoria/core';
-
-const engine = new Animoria({
-  workspacePath: '/path/to/workspace',
-  onScanComplete: (count) => console.log(`Discovered ${count} candidate files`),
-  onAssetParsed: (asset, index, total) => {
-    console.log(`[${index + 1}/${total}] Audited: ${asset.name} (${asset.status})`);
-  },
-});
-
-const result = await engine.run();
-// result.assets   -> Array of AnimoriaAsset
-// result.parsed   -> Number of successfully parsed assets
-// result.duration -> Scan duration in milliseconds
-```
-
-### 3. Running Governance Analysis (Deduplication & References)
-
-The `GovernanceAnalyzer` aggregates results to produce a comprehensive technical debt report. It uses MD5 content hashing for byte-perfect duplicate checking and runs the reference tracer across assets:
-
-```typescript
-import { GovernanceAnalyzer } from '@animoria/core/governance';
-
-const analyzer = new GovernanceAnalyzer({
-  workspacePath: '/path/to/workspace',
-  assets: result.assets,
-  overusedThreshold: 8, // Triggers warning if referenced in 8 or more locations
-  scopeResolver: (asset) => {
-    // Optional: Resolve local monorepo boundary (e.g., packages/animoria-vscode)
-    // to prevent cross-package reference pollution
-    return '/path/to/workspace/packages/animoria-vscode';
-  },
-});
-
-const report = await analyzer.analyze();
-
-console.log(`Unused assets (deletable): ${report.unused.length}`);
-console.log(`Duplicate files (identical MD5): ${report.duplicates.length}`);
-console.log(`Overused assets (refactoring candidates): ${report.overused.length}`);
-
-// Access details:
-report.duplicates.forEach((issue) => {
-  console.log(`Asset: ${issue.asset.path} is a byte-duplicate of:`);
-  issue.duplicateOf.forEach((dup) => console.log(`  - ${dup.path}`));
-});
-```
-
-### 4. Code Reference Tracing
-
-To search for references to a specific asset in code files (supporting `.ts`, `.tsx`, `.js`, `.jsx`, `.swift`, `.kt`, `.dart`, etc.):
-
-```typescript
-import { UsageScanner } from '@animoria/core/usage';
-
-const usageScanner = new UsageScanner({
-  workspacePath: '/path/to/workspace',
-  asset: targetAsset,
-  strategy: 'pattern',
-  scopePath: '/path/to/workspace/packages/animoria-vscode', // Scope to active workspace package
-});
-
-const searchResult = await usageScanner.search();
-// searchResult.references -> Array of { uri: string, line: number, preview: string }
-// searchResult.durationMs  -> Time taken to search code files
+packages/animoria-core/src/
+├── scanner/           # Linear directory traversal & fast header sniffing guards
+├── parsers/           # Pluggable parser registry (Lottie, dotLottie, Rive, SVG, Image)
+├── governance/        # Rules engine, duplicate detector, health score pipeline
+├── usage/             # Multi-syntax usage reference indexer (20+ file extensions)
+├── cleanup/           # Safe cleanup planner, staged trash, and manifest restore
+├── daemon/            # JSON-RPC Protocol v1 server & WorkspaceSession orchestrator
+├── cli/               # CLI entry point, formatters, and terminal reports
+└── types/             # Shared TypeScript schemas and contract types
 ```
 
 ---
 
-## Technical Constraints & Standards
+## Programmatic API Usage
 
-- **Absolute Paths Only**: The core performs all file-system actions (`fast-glob`, `readdir`) using absolute paths to avoid resolution ambiguity in complex directories.
-- **Magic Bytes Validation**: Asset formats are checked by magic byte signatures (e.g., Lottie JSON structures, APNG `acTL` control chunks, Rive bin signatures), preventing parser collisions on standard JSON or static images.
-- **Batched Concurrency**: Scopes and analyzers execute asynchronous file operations in parallel using batched queues to prevent resource/file-descriptor exhaustion in large workspaces.
+### 1. Workspace Analysis & Governance
+
+The primary entry point is `WorkspaceIndexer`. It coordinates scanning, reference tracing, and duplicate hashing into a single `WorkspaceAnalysis` aggregate:
+
+```typescript
+import { WorkspaceIndexer } from '@animoria/core';
+
+const indexer = new WorkspaceIndexer({
+  workspacePath: '/path/to/project',
+});
+
+// analyzeComplete() waits for full reference resolution before returning
+const analysis = await indexer.analyzeComplete();
+
+console.log(`Discovered Assets: ${analysis.assets.length}`);
+console.log(`Governance Findings: ${analysis.diagnostics.length}`);
+
+if (analysis.health.status === 'computed') {
+  console.log(`Health Score: ${analysis.health.report.score}/100`);
+} else {
+  console.log(`Health Unavailable: ${analysis.health.reason}`);
+}
+
+// Access structured findings
+for (const diagnostic of analysis.diagnostics) {
+  console.log(`[${diagnostic.severity.toUpperCase()}] ${diagnostic.ruleId}: ${diagnostic.message}`);
+  console.log(`  Evidence: ${diagnostic.evidence.summary}`);
+  console.log(`  Remediation: ${diagnostic.remediation.description}`);
+}
+
+indexer.dispose();
+```
+
+### 2. Multi-Root Workspace Sessions
+
+For multi-root workspaces or IDE daemon sessions, use `WorkspaceSession`:
+
+```typescript
+import { WorkspaceSession } from '@animoria/core';
+
+const session = new WorkspaceSession({
+  roots: [
+    { id: 'client-app', path: '/path/to/client' },
+    { id: 'admin-app', path: '/path/to/admin' },
+  ],
+});
+
+await session.initialize();
+const multiAnalysis = await session.getMultiRootAnalysis();
+
+// Inspect per-root and aggregated results
+console.log(`Total Assets across roots: ${multiAnalysis.aggregated.assets.length}`);
+```
+
+### 3. Safe Reversible Cleanup Execution
+
+Animoria enforces safe staging to prevent permanent data loss:
+
+```typescript
+import { buildCleanupPlan, executeCleanupPlan } from '@animoria/core';
+
+// 1. Build an immutable plan from current analysis
+const plan = buildCleanupPlan(analysis, {
+  selectedAssetPaths: ['assets/unused_hero.json'],
+});
+
+if (plan.safety === 'safe') {
+  // 2. Execute plan — moves files to .animoria/trash/ with a session manifest
+  const result = await executeCleanupPlan(plan, { workspacePath: '/path/to/project' });
+  console.log(`Moved ${result.movedCount} files to trash session ${result.sessionId}`);
+}
+```
 
 ---
 
-## Testing
+## Command-Line Interface (CLI)
 
-Tests live in `tests/`, organized by domain (`core/`, `scanner/`, `parsers/`, `usage/`, `governance/`, `indexer/`, `thumbnails/`, `cli/`, `integration/`) rather than mirrored 1:1 against `src/`, so a single feature's coverage (e.g. duplicate detection) stays in one place even when it spans multiple source modules. Fixtures under `tests/fixtures/` are synthetic and exist purely to exercise parsing and governance logic deterministically — see [tests/fixtures/README.md](tests/fixtures/README.md) before relying on them for anything beyond that.
+`@animoria/core` ships with an executable binary (`animoria`):
+
+```bash
+# Audit a workspace directory
+animoria check /path/to/project
+
+# Output machine-readable JSON report
+animoria check /path/to/project --format=json
+
+# Run in background daemon mode (for IDE IPC)
+animoria daemon /path/to/project
+```
+
+### CLI Exit Codes
+
+| Exit Code | Meaning |
+| :---: | :--- |
+| `0` | Clean workspace (no errors, all governance rules passed). |
+| `1` | Governance rule violation detected with `error` severity. |
+| `2` | Configuration parsing error in `.animoriarc`. |
+| `6` | Analysis incomplete or workspace unreadable. |
+
+---
+
+## Technical Constraints & Design Principles
+
+* **Absolute Paths on Disk:** All internal paths are normalized and resolved absolutely to avoid symlink/working-directory ambiguity.
+* **Single-Pass Reference Indexing:** Source files are globbed once, read once, and matched against compiled regex trees, guaranteeing linear scaling $O(\text{files})$.
+* **Zero Fabricated Confidence:** Findings never report arbitrary confidence numbers; confidence is strictly derived from scan coverage and AST matching precision.
+
+---
+
+## Development & Testing
+
+```bash
+# Run all core unit and integration tests
+pnpm --filter @animoria/core test
+
+# Run performance benchmark suite
+pnpm --filter @animoria/core test tests/perf/
+
+# Build TypeScript output
+pnpm --filter @animoria/core build
+```
+
+---
+
+*Part of the [Sxnnyside Project](https://sxnnysideproject.com).*

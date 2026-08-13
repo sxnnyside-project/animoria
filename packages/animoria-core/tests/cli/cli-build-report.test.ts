@@ -1,111 +1,85 @@
 import { describe, expect, it } from 'vitest';
+import { diagnosticCountBySeverity, totalAssetCount } from '../../src/analysis/workspace-analysis';
 import { buildGovernanceCheckReport } from '../../src/cli/report/build-report';
-import type { RuleDiagnostic } from '../../src/governance/rules-engine';
-import type { WorkspaceIndexSnapshot } from '../../src/indexer/workspace-indexer';
-import type { AnimoriaAsset } from '../../src/types/asset';
+import { testAnalysis, testDiagnostic } from '../support/analysis.js';
 
-function asset(): AnimoriaAsset {
-  return {
-    path: '/w/a.gif',
-    name: 'a.gif',
-    stem: 'a',
-    format: 'gif',
-    sizeBytes: 100,
-    mtime: 0,
-    status: 'parsed',
-  };
-}
-
-function diagnostic(severity: 'error' | 'warning'): RuleDiagnostic {
-  return { ruleId: 'no-gif', severity, asset: asset(), message: 'msg' };
-}
-
-function snapshot(overrides: Partial<WorkspaceIndexSnapshot> = {}): WorkspaceIndexSnapshot {
-  return {
-    assets: [asset()],
-    ruleReport: {
-      diagnostics: [],
-      configErrors: [],
-      evaluatedRuleIds: ['no-gif'],
-      durationMs: 1,
-    },
-    healthScore: null,
-    referenceCounts: new Map(),
-    generation: 1,
-    ...overrides,
-  };
-}
-
+/**
+ * `buildGovernanceCheckReport` is a projection, not a computation: it attaches a
+ * pass/fail verdict and timing to an analysis it does not otherwise touch. These
+ * tests assert exactly that — that facts arrive unaltered, and that the only new
+ * value is the outcome.
+ */
 describe('buildGovernanceCheckReport', () => {
-  it('passes through basic metadata', () => {
-    const report = buildGovernanceCheckReport(snapshot(), '/w', 123, {});
-    expect(report.workspacePath).toBe('/w');
+  it('carries the analysis through unmodified', () => {
+    const analysis = testAnalysis();
+    const report = buildGovernanceCheckReport(analysis, 123, {});
+
+    // Identity, not deep equality: a copy would be a second source of truth.
+    expect(report.analysis).toBe(analysis);
     expect(report.durationMs).toBe(123);
-    expect(report.totalAssetCount).toBe(1);
-    expect(report.evaluatedRuleIds).toEqual(['no-gif']);
+    expect(report.analysis.workspacePath).toBe('/w');
+    expect(totalAssetCount(report.analysis)).toBe(1);
+    expect(report.analysis.evaluatedRuleIds).toEqual(['no-gif']);
   });
 
-  it('counts diagnostics by severity', () => {
+  it('counts diagnostics by severity off the analysis', () => {
     const report = buildGovernanceCheckReport(
-      snapshot({
-        ruleReport: {
-          diagnostics: [diagnostic('error'), diagnostic('error'), diagnostic('warning')],
-          configErrors: [],
-          evaluatedRuleIds: ['no-gif'],
-          durationMs: 1,
-        },
+      testAnalysis({
+        diagnostics: [
+          testDiagnostic({ severity: 'error' }),
+          testDiagnostic({ severity: 'error' }),
+          testDiagnostic({ severity: 'warning' }),
+        ],
       }),
-      '/w',
       0,
       {}
     );
-    expect(report.diagnosticCountBySeverity).toEqual({ error: 2, warning: 1 });
+
+    expect(diagnosticCountBySeverity(report.analysis)).toEqual({ error: 2, warning: 1 });
   });
 
-  it('defaults empty diagnostics/configErrors/evaluatedRuleIds when ruleReport is null', () => {
-    const report = buildGovernanceCheckReport(snapshot({ ruleReport: null }), '/w', 0, {});
-    expect(report.diagnostics).toEqual([]);
-    expect(report.configErrors).toEqual([]);
-    expect(report.evaluatedRuleIds).toEqual([]);
-  });
-
-  it('merges config-load warnings ahead of rule-level config errors', () => {
+  it('reports an analysis that ran no rules as empty rather than as clean', () => {
     const report = buildGovernanceCheckReport(
-      snapshot({
-        ruleReport: {
-          diagnostics: [],
-          configErrors: [{ ruleId: 'unknown-rule', errors: ['not registered'] }],
-          evaluatedRuleIds: [],
-          durationMs: 1,
-        },
-      }),
-      '/w',
+      testAnalysis({ diagnostics: [], evaluatedRuleIds: [], configErrors: [] }),
       0,
-      {},
-      ['Invalid JSON in .animoriarc.json']
+      {}
     );
-    expect(report.configErrors).toHaveLength(2);
-    expect(report.configErrors[0]?.errors).toEqual(['Invalid JSON in .animoriarc.json']);
-    expect(report.configErrors[1]?.ruleId).toBe('unknown-rule');
+
+    expect(report.analysis.diagnostics).toEqual([]);
+    expect(report.analysis.configErrors).toEqual([]);
+    expect(report.analysis.evaluatedRuleIds).toEqual([]);
+    // An empty diagnostic list with no rules evaluated is not a health score of
+    // 100 — see the health outcome union.
+    expect(report.analysis.health.status).toBe('unavailable');
   });
 
-  it('computes outcome via determineCheckOutcome using the snapshot health score', () => {
-    const failing = buildGovernanceCheckReport(
-      snapshot({
-        ruleReport: {
-          diagnostics: [diagnostic('error')],
-          configErrors: [],
-          evaluatedRuleIds: ['no-gif'],
-          durationMs: 1,
-        },
+  it('surfaces config errors from the analysis in order', () => {
+    const report = buildGovernanceCheckReport(
+      testAnalysis({
+        evaluatedRuleIds: [],
+        configErrors: [
+          { ruleId: '<.animoriarc>', errors: ['Invalid JSON in .animoriarc.json'] },
+          { ruleId: 'unknown-rule', errors: ['not registered'] },
+        ],
       }),
-      '/w',
+      0,
+      {}
+    );
+
+    expect(report.analysis.configErrors).toHaveLength(2);
+    expect(report.analysis.configErrors[0]?.errors).toEqual(['Invalid JSON in .animoriarc.json']);
+    expect(report.analysis.configErrors[1]?.ruleId).toBe('unknown-rule');
+  });
+
+  it('computes the outcome via determineCheckOutcome using the analysis health score', () => {
+    const failing = buildGovernanceCheckReport(
+      testAnalysis({ diagnostics: [testDiagnostic({ severity: 'error' })] }),
       0,
       {}
     );
     expect(failing.outcome.passed).toBe(false);
 
-    const passing = buildGovernanceCheckReport(snapshot(), '/w', 0, {});
+    const passing = buildGovernanceCheckReport(testAnalysis(), 0, {});
     expect(passing.outcome.passed).toBe(true);
   });
 });

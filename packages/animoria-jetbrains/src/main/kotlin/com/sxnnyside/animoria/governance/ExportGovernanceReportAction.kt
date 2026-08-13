@@ -8,10 +8,10 @@ import com.intellij.openapi.fileChooser.FileChooserFactory
 import com.intellij.openapi.fileChooser.FileSaverDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
+import com.sxnnyside.animoria.backend.AnimoriaCoroutineScope
 import com.sxnnyside.animoria.backend.CoreProcessManager
 import com.sxnnyside.animoria.backend.GovernanceReportExportData
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
@@ -40,11 +40,12 @@ class ExportGovernanceReportAction(private val project: Project) :
         val format = if (targetFile.extension.lowercase() == "json") "json" else "markdown"
         val processManager = project.getService(CoreProcessManager::class.java)
 
-        GlobalScope.launch(Dispatchers.IO) {
+        AnimoriaCoroutineScope.of(project).launch(Dispatchers.IO) {
             try {
                 val response =
                     processManager.sendCommand(
-                        "exportGovernanceReport",
+                        // `exportGovernanceReport` is not a protocol method; `exportReport` is.
+                        "exportReport",
                         buildJsonObject { put("format", format) },
                     )
                 val result = Json.decodeFromJsonElement<GovernanceReportExportData>(response)

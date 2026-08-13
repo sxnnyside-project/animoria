@@ -1,0 +1,94 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/sxnnyside-project/animoria/main/packages/animoria-vscode/schemas/animoriarc.schema.json",
+  "title": "Animoria configuration",
+  "description": "Workspace-wide governance policy for Animoria. Every property under \"rules\" is optional — an absent rule simply does not run. This schema validates only the shapes below; unrecognized rule ids are still accepted (and reported by Animoria itself as unknown, not rejected by the editor), since a rule registered by a future Animoria version should not need this file republished to be usable.",
+  "type": "object",
+  "properties": {
+    "rules": {
+      "type": "object",
+      "description": "Rule configuration, keyed by rule id. Each value is either a bare severity, or a [severity, options] tuple for rules that take options.",
+      "properties": {
+        "no-gif": {
+          "description": "Disallows GIF assets in favor of more efficient animated formats.",
+          "$ref": "#/definitions/severityOnly"
+        },
+        "no-unreferenced-assets": {
+          "description": "Disallows assets with no detected references in source code.",
+          "$ref": "#/definitions/severityOnly"
+        },
+        "no-duplicate-content": {
+          "description": "Disallows two assets with byte-identical contents.",
+          "$ref": "#/definitions/severityOnly"
+        },
+        "no-duplicate-names": {
+          "description": "Disallows two assets sharing the same name (case-insensitive, extension ignored).",
+          "$ref": "#/definitions/severityOnly"
+        },
+        "max-file-size-kb": {
+          "description": "Disallows assets larger than a configured size threshold, in kibibytes.",
+          "oneOf": [
+            {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "A bare limit in KB. Severity is implied \"error\"."
+            },
+            {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": [
+                { "$ref": "#/definitions/severity" },
+                { "type": "number", "exclusiveMinimum": 0 }
+              ],
+              "description": "[severity, limitKb]"
+            },
+            { "const": "off" }
+          ]
+        },
+        "allowed-formats": {
+          "description": "Restricts which animated asset formats are permitted in the workspace.",
+          "oneOf": [
+            {
+              "type": "array",
+              "items": { "$ref": "#/definitions/animatedFormat" },
+              "description": "A bare list of permitted formats. Severity is implied \"error\"."
+            },
+            {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": [
+                { "$ref": "#/definitions/severity" },
+                {
+                  "type": "array",
+                  "items": { "$ref": "#/definitions/animatedFormat" }
+                }
+              ],
+              "description": "[severity, formats]"
+            },
+            { "const": "off" }
+          ]
+        }
+      },
+      "additionalProperties": {
+        "description": "A rule id this schema does not yet know about. Animoria's own config loader — not the editor — is the authority on whether it is valid."
+      }
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "severity": {
+      "type": "string",
+      "enum": ["error", "warning", "off"]
+    },
+    "severityOnly": {
+      "$ref": "#/definitions/severity",
+      "description": "This rule takes no options — configure it with a bare severity."
+    },
+    "animatedFormat": {
+      "type": "string",
+      "enum": ["lottie", "dotlottie", "rive", "gif", "apng", "animated-svg"]
+    }
+  }
+}

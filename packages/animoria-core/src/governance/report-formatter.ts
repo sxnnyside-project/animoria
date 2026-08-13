@@ -1,14 +1,17 @@
-import type { GovernanceReport } from '../types/asset.js';
+import type { WorkspaceAnalysis } from '../analysis/workspace-analysis.js';
+import { diagnosticCountBySeverity } from '../analysis/workspace-analysis.js';
 
 /**
- * Renders a {@link GovernanceReport} (the ad-hoc unused/duplicate/overused
- * classification produced by `GovernanceAnalyzer`) as Markdown, or hands
- * back the report unmodified for JSON serialization.
+ * Renders a {@link WorkspaceAnalysis} as a self-contained governance document.
  *
- * Shared by every client's "export governance report" action so the
- * document a VS Code user saves and the one a JetBrains user saves are
- * byte-for-byte the same format — this used to live duplicated inside
- * `animoria-vscode`.
+ * Shared by every client's "export governance report" action, so the document a
+ * VS Code user saves and the one a JetBrains user saves are byte-for-byte the same.
+ *
+ * ## Why this now takes the analysis
+ * It used to render a `GovernanceReport` — the ad-hoc `unused` / `duplicate` /
+ * `overused` classification produced by a second governance engine that fed nothing
+ * into the Health Score. An exported report could therefore contradict the sidebar
+ * that produced it. It now renders the same analysis every other surface consumes.
  */
 
 function formatReportTimestamp(iso: string): string {
@@ -23,78 +26,97 @@ function formatReportDuration(ms: number): string {
   return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(2)} s`;
 }
 
-/** Renders a governance report as a self-contained Markdown document. */
-export function buildMarkdownReport(report: GovernanceReport): string {
+/** Renders a governance analysis as a self-contained Markdown document. */
+export function buildMarkdownReport(analysis: WorkspaceAnalysis): string {
   const lines: string[] = [];
-  const total = report.unused.length + report.duplicates.length + report.overused.length;
+  const counts = diagnosticCountBySeverity(analysis);
 
   lines.push('# Animoria Governance Report', '');
-  lines.push('| | |');
-  lines.push('| :--- | :--- |');
-  lines.push(`| **Generated** | ${formatReportTimestamp(report.generatedAt)} |`);
-  lines.push(`| **Assets analyzed** | ${report.totalAssets} |`);
-  lines.push(`| **Analysis duration** | ${formatReportDuration(report.durationMs)} |`);
-  lines.push('');
+  lines.push(`**Workspace:** \`${analysis.workspacePath}\`  `);
+  lines.push(`**Generated:** ${formatReportTimestamp(analysis.generatedAt)}  `);
+  lines.push(`**Analysis time:** ${formatReportDuration(analysis.durationMs)}`, '');
 
   lines.push('## Summary', '');
-  lines.push('| Category | Count |');
+  lines.push('| Metric | Value |');
   lines.push('| :--- | ---: |');
-  lines.push(`| Unused Assets | ${report.unused.length} |`);
-  lines.push(`| Duplicate Assets | ${report.duplicates.length} |`);
-  lines.push(`| Overused Assets | ${report.overused.length} |`);
-  lines.push(`| **Total** | **${total}** |`);
+  lines.push(`| Assets analyzed | ${analysis.assets.length} |`);
+  lines.push(`| Findings | ${analysis.diagnostics.length} |`);
+  lines.push(`| Errors | ${counts.error} |`);
+  lines.push(`| Warnings | ${counts.warning} |`);
+  lines.push(`| Duplicate groups | ${analysis.duplicateGroups.length} |`);
+  lines.push(
+    `| Health Score | ${
+      analysis.health.status === 'computed'
+        ? `${analysis.health.report.score}/100`
+        : `not available — ${analysis.health.message}`
+    } |`
+  );
   lines.push('');
 
-  if (report.unused.length > 0) {
-    lines.push('## Unused Assets', '');
-    lines.push(
-      '> These assets have no detected references in source files. Consider removing them to reduce bundle size.'
-    );
-    lines.push('');
-    lines.push('| Asset | Path |');
-    lines.push('| :--- | :--- |');
-    for (const issue of report.unused) {
-      lines.push(`| \`${issue.asset.name}\` | \`${issue.asset.path}\` |`);
+  if (analysis.health.status === 'computed' && analysis.health.report.qualifications.length > 0) {
+    lines.push('> This score is qualified:', '>');
+    for (const qualification of analysis.health.report.qualifications) {
+      lines.push(`> - ${qualification.message}`);
     }
     lines.push('');
   }
 
-  if (report.duplicates.length > 0) {
-    lines.push('## Duplicate Assets', '');
-    lines.push(
-      '> These assets share identical file content. Keep one canonical copy and update references.'
-    );
-    lines.push('');
-    lines.push('| Asset | Identical To | Path |');
-    lines.push('| :--- | :--- | :--- |');
-    for (const issue of report.duplicates) {
-      const others = issue.duplicateOf?.map((a) => `\`${a.name}\``).join(', ') ?? '—';
-      lines.push(`| \`${issue.asset.name}\` | ${others} | \`${issue.asset.path}\` |`);
+  if (analysis.skippedRules.length > 0) {
+    lines.push('## Rules that could not be evaluated', '');
+    for (const skipped of analysis.skippedRules) {
+      lines.push(`- \`${skipped.ruleId}\` (${skipped.severity}) — ${skipped.reason.message}`);
     }
     lines.push('');
   }
 
-  if (report.overused.length > 0) {
-    lines.push('## Overused Assets', '');
-    lines.push(
-      '> These assets appear in many source files. Consider whether they should be centralized or split.'
-    );
-    lines.push('');
-    lines.push('| Asset | References | Path |');
-    lines.push('| :--- | ---: | :--- |');
-    for (const issue of report.overused) {
-      lines.push(`| \`${issue.asset.name}\` | ${issue.referenceCount} | \`${issue.asset.path}\` |`);
+  if (analysis.diagnostics.length === 0) {
+    lines.push('## Findings', '', 'No governance findings.', '');
+  } else {
+    lines.push('## Findings', '');
+    for (const diagnostic of analysis.diagnostics) {
+      lines.push(`### \`${diagnostic.asset.path}\``, '');
+      lines.push(`- **Rule:** [\`${diagnostic.ruleId}\`](${diagnostic.helpUri})`);
+      lines.push(`- **Severity:** ${diagnostic.severity}`);
+      lines.push(`- **Confidence:** ${diagnostic.confidence}`);
+      lines.push(`- **Evidence:** ${diagnostic.evidence.summary}`);
+      if (diagnostic.coverage) {
+        lines.push(
+          `- **Coverage:** \`${diagnostic.coverage.status}\` (${diagnostic.coverage.filesScanned} file(s) scanned)`
+        );
+      }
+      lines.push(`- **Fix:** ${diagnostic.remediation.summary}`, '');
     }
-    lines.push('');
   }
 
-  lines.push('---');
-  lines.push('*Generated by [Animoria](https://github.com/sxnnyside-project/animoria)*');
+  if (analysis.duplicateGroups.length > 0) {
+    lines.push('## Duplicate groups', '');
+    for (const group of analysis.duplicateGroups) {
+      lines.push(
+        `### \`${group.contentHash.slice(0, 12)}\` — ${group.candidates.length} identical files`,
+        ''
+      );
+      for (const candidate of group.candidates) {
+        lines.push(`- \`${candidate.asset.path}\` (${candidate.referenceCount} reference(s))`);
+      }
+      lines.push('');
+    }
+  }
 
+  lines.push('---', '', '_Generated by Animoria._');
   return lines.join('\n');
 }
 
-/** Renders a governance report as pretty-printed JSON. */
-export function buildJsonReport(report: GovernanceReport): string {
-  return JSON.stringify(report, null, 2);
+/**
+ * Serializes a governance analysis as JSON.
+ *
+ * `referenceCounts` is a `Map`, which `JSON.stringify` renders as `{}` — so it is
+ * converted to entries explicitly rather than silently disappearing from every
+ * exported report.
+ */
+export function buildJsonReport(analysis: WorkspaceAnalysis): string {
+  return JSON.stringify(
+    { ...analysis, referenceCounts: Array.from(analysis.referenceCounts.entries()) },
+    null,
+    2
+  );
 }

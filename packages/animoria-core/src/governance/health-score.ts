@@ -6,12 +6,17 @@ import { buildRecommendations } from './health/recommendation-builder.js';
 import { normalizeScore } from './health/score-normalizer.js';
 import type {
   HealthScoreEvaluationInput,
+  HealthScoreOutcome,
+  HealthScoreQualification,
   HealthScoreReport,
   HealthScoreWeights,
 } from './health/types.js';
 
 export type {
   HealthScoreReport,
+  HealthScoreOutcome,
+  HealthScoreUnavailableReason,
+  HealthScoreQualification,
   HealthScoreEvaluationInput,
   HealthScoreWeights,
   RulePenaltyWeight,
@@ -95,8 +100,28 @@ export class HealthScoreEngine {
    * list. Safe to call as often as governance state changes — see the
    * class docs for why this is cheap enough to do on every refresh.
    */
-  evaluate(input: HealthScoreEvaluationInput): HealthScoreReport {
+  /**
+   * Produces a Health Score, or states why one cannot be produced.
+   *
+   * ## Why this returns an outcome rather than a number
+   * The arithmetic below yields 100 for an empty diagnostic list, and an empty
+   * diagnostic list has three innocent causes that have nothing to do with health:
+   * no assets exist to violate anything, no rules are configured to find anything,
+   * or the analysis never finished. Each of them once rendered as
+   * `100/100 · Excellent` — the product telling a user their repository was in
+   * perfect condition on the strength of never having looked. Refusing to score is
+   * the honest answer, and the union makes it impossible for a caller to default
+   * its way past.
+   *
+   * A score that *is* computed may still be qualified: a configured rule that
+   * declined to run, or a reference scan that skipped formats, both mean the number
+   * is a floor on the problems present rather than a full accounting.
+   */
+  evaluate(input: HealthScoreEvaluationInput): HealthScoreOutcome {
     const start = performance.now();
+
+    const unavailable = this._describeUnavailability(input);
+    if (unavailable) return unavailable;
 
     const penalties = calculatePenalties(input.diagnostics, this._weights);
     const categories = buildCategoryBreakdown(penalties);
@@ -105,13 +130,72 @@ export class HealthScoreEngine {
     const recommendations = buildRecommendations(categories, this._maxRecommendations);
 
     return {
-      score,
-      totalAssetCount: input.totalAssetCount,
-      totalDiagnosticCount: input.diagnostics.length,
-      categories,
-      recommendations,
-      generatedAt: new Date().toISOString(),
-      durationMs: performance.now() - start,
+      status: 'computed',
+      report: {
+        score,
+        totalAssetCount: input.totalAssetCount,
+        totalDiagnosticCount: input.diagnostics.length,
+        categories,
+        recommendations,
+        qualifications: this._describeQualifications(input),
+        generatedAt: new Date().toISOString(),
+        durationMs: performance.now() - start,
+      },
     };
+  }
+
+  /** The three states in which a score would be arithmetic rather than a verdict. */
+  private _describeUnavailability(
+    input: HealthScoreEvaluationInput
+  ): Extract<HealthScoreOutcome, { status: 'unavailable' }> | null {
+    if (!input.analysisComplete) {
+      return {
+        status: 'unavailable',
+        reason: 'incomplete-analysis',
+        message:
+          'The analysis did not finish, so this score would not reflect the whole workspace.',
+      };
+    }
+    if (input.totalAssetCount === 0) {
+      return {
+        status: 'unavailable',
+        reason: 'no-assets-discovered',
+        message:
+          'No visual assets were discovered, so there is nothing to score. Check the workspace path and .animoriaignore.',
+      };
+    }
+    if (input.evaluatedRuleCount === 0) {
+      return {
+        status: 'unavailable',
+        reason: 'no-rules-configured',
+        message:
+          'No governance rules ran, so nothing was enforced. Add a .animoriarc to define a policy.',
+      };
+    }
+    return null;
+  }
+
+  /** Caveats that limit a computed score without invalidating it. */
+  private _describeQualifications(
+    input: HealthScoreEvaluationInput
+  ): readonly HealthScoreQualification[] {
+    const qualifications: HealthScoreQualification[] = [];
+
+    if (input.skippedRuleCount > 0) {
+      qualifications.push({
+        code: 'rules-skipped',
+        message: `${input.skippedRuleCount} configured rule(s) could not be evaluated, so this score does not account for what they would have found.`,
+      });
+    }
+
+    if (input.coverageStatus === 'partial') {
+      qualifications.push({
+        code: 'partial-coverage',
+        message:
+          'The reference scan did not read every format that can hold a reference, so unreferenced-asset findings — and this score — may understate or overstate the truth.',
+      });
+    }
+
+    return qualifications;
   }
 }

@@ -1,7 +1,6 @@
 package com.sxnnyside.animoria.ui
 
 import com.intellij.icons.AllIcons
-import com.intellij.ui.AnimatedIcon
 import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.ui.SimpleTextAttributes
 import java.awt.Image
@@ -13,7 +12,7 @@ import javax.swing.tree.DefaultMutableTreeNode
 /**
  * Renders nodes inside the Animoria Gallery tree view.
  * Displays local thumbnails if generated, fallback file type icons, status labels,
- * and colored badges for unused/duplicate/overused governance statuses.
+ * and colored badges driven by each finding's severity, as Core reports it.
  */
 class AnimoriaTreeCellRenderer : ColoredTreeCellRenderer() {
     override fun customizeCellRenderer(
@@ -64,7 +63,12 @@ class AnimoriaTreeCellRenderer : ColoredTreeCellRenderer() {
                 val asset = userObject.asset
                 icon =
                     when {
-                        userObject.thumbnailLoading -> AnimatedIcon.FS()
+                        // `AnimatedIcon.FS` is marked `@ApiStatus.Internal`, which the
+                        // IntelliJ Plugin Verifier reports as an internal API usage —
+                        // the exact class of finding this plugin was rejected for
+                        // before. `AllIcons.Process.Step_passive` is a public icon and
+                        // reads the same way in a tree row: something is happening here.
+                        userObject.thumbnailLoading -> AllIcons.Process.Step_passive
                         userObject.thumbnailFailed -> AllIcons.General.Warning
                         userObject.thumbnailPath != null && File(userObject.thumbnailPath).exists() -> {
                             try {
@@ -102,7 +106,7 @@ class AnimoriaTreeCellRenderer : ColoredTreeCellRenderer() {
             is GovernanceSectionNode -> {
                 icon =
                     when (userObject.category) {
-                        "unused" -> AllIcons.Actions.Cancel
+                        "unreferenced" -> AllIcons.Actions.Cancel
                         "duplicate" -> AllIcons.Actions.Copy
                         else -> AllIcons.General.BalloonWarning
                     }
@@ -111,19 +115,25 @@ class AnimoriaTreeCellRenderer : ColoredTreeCellRenderer() {
             }
 
             is GovernanceIssueNode -> {
-                val asset = userObject.asset
+                val diagnostic = userObject.diagnostic
+                // Severity comes from Core, so the icon reflects the same judgement the
+                // CLI prints and the Problems panel shows — it is not re-derived from a
+                // locally-invented category.
                 icon =
-                    when (userObject.category) {
-                        "unused" -> AllIcons.General.Warning
-                        "duplicate" -> AllIcons.Actions.Copy
-                        else -> AllIcons.General.BalloonWarning
+                    if (diagnostic.severity == "error") {
+                        AllIcons.General.Error
+                    } else {
+                        AllIcons.General.Warning
                     }
-                append(asset.stem)
-                when (userObject.category) {
-                    "unused" -> append(" · No references found", SimpleTextAttributes.ERROR_ATTRIBUTES)
-                    "duplicate" -> append(" · Identical to ${userObject.duplicateOf.size} other(s)", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                    "overused" -> append(" · ${userObject.referenceCount} references", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                }
+                append(userObject.asset.stem)
+                append(
+                    " · ${diagnostic.evidence.summary}",
+                    if (diagnostic.severity == "error") {
+                        SimpleTextAttributes.ERROR_ATTRIBUTES
+                    } else {
+                        SimpleTextAttributes.GRAYED_ATTRIBUTES
+                    },
+                )
             }
         }
     }

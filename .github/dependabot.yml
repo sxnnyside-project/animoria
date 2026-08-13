@@ -1,0 +1,38 @@
+version: 2
+updates:
+  # Package dependencies across npm/pnpm workspace
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore"
+      prefix-development: "chore"
+    groups:
+      dev-dependencies:
+        patterns:
+          - "@types/*"
+          - "typescript"
+          - "@biomejs/*"
+          - "vitest"
+          - "@vitest/*"
+          - "vite"
+
+  # GitHub Actions workflow dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+
+  # Gradle dependencies for the JetBrains plugin
+  - package-ecosystem: "gradle"
+    directory: "/packages/animoria-jetbrains"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(jetbrains)"

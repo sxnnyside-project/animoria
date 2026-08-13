@@ -4,12 +4,25 @@
     "target": "ES2022",
     "module": "commonjs",
     "moduleResolution": "node",
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "lib": ["ES2022"],
+    "lib": [
+      "ES2022"
+    ],
     "experimentalDecorators": true,
-    "useDefineForClassFields": false
+    "useDefineForClassFields": false,
+    "paths": {
+      "@animoria/ui/bridge": [
+        "../animoria-ui/src/bridge/index.ts"
+      ],
+      "@animoria/core/contracts": [
+        "../animoria-core/src/contracts.ts"
+      ]
+    }
   },
-  "include": ["src"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

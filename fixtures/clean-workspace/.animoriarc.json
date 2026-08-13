@@ -1,0 +1,10 @@
+{
+  "rules": {
+    "no-gif": "error",
+    "no-unreferenced-assets": "error",
+    "max-file-size-kb": [
+      "error",
+      512
+    ]
+  }
+}

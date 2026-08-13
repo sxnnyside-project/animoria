@@ -8,6 +8,7 @@ describe('parseCheckArgv', () => {
   it('returns defaults for an empty argv', () => {
     expect(parseCheckArgv([], FORMATS)).toEqual({
       workspacePath: undefined,
+      workspacePaths: [],
       ci: false,
       format: undefined,
       minHealthScore: undefined,
@@ -43,6 +44,7 @@ describe('parseCheckArgv', () => {
     const options = parseCheckArgv(['--ci', './ws', '--format', 'json'], FORMATS);
     expect(options).toEqual({
       workspacePath: './ws',
+      workspacePaths: ['./ws'],
       ci: true,
       format: 'json',
       minHealthScore: undefined,
@@ -70,7 +72,13 @@ describe('parseCheckArgv', () => {
     expect(() => parseCheckArgv(['--min-health-score', '-1'], FORMATS)).toThrow(CliUsageError);
   });
 
-  it('throws CliUsageError for more than one positional argument', () => {
-    expect(() => parseCheckArgv(['./a', './b'], FORMATS)).toThrow(CliUsageError);
+  it('accepts several positional paths as several workspace roots', () => {
+    // V2. A CI gate that can only check the first root of a multi-root repository
+    // silently passes on the rest, which is the worst possible failure for a gate.
+    const options = parseCheckArgv(['./a', './b', './c'], FORMATS);
+    expect(options.workspacePaths).toEqual(['./a', './b', './c']);
+    // The first stays `workspacePath`, so every existing caller and message is
+    // unchanged.
+    expect(options.workspacePath).toBe('./a');
   });
 });

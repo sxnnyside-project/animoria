@@ -141,7 +141,7 @@ export class AssetCardRenderer {
       secondaryParts.push(`${card.referenceCount} ${label}`);
     }
     if (card.hasGovernanceIssue === true) {
-      secondaryParts.push('$(warning) Governance issue');
+      secondaryParts.push('$(warning) Governance finding');
     }
     if (card.hasGovernanceIssue === false && card.referenceCount !== null) {
       secondaryParts.push('$(check) Governance OK');

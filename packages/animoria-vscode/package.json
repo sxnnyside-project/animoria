@@ -1,7 +1,7 @@
 {
   "name": "animoria-vscode",
   "displayName": "Animoria",
-  "description": "Visual Asset Governance for developers — discover, preview, trace, and clean up animated (Lottie, dotLottie, Rive, GIF, APNG, SVG) and static (SVG, PNG, JPEG, WebP, AVIF) assets directly inside VS Code.",
+  "description": "Visual Asset Governance for developers \u2014 discover, preview, trace, and clean up animated (Lottie, dotLottie, Rive, GIF, APNG, SVG) and static (SVG, PNG, JPEG, WebP, AVIF) assets directly inside VS Code.",
   "version": "1.0.0",
   "publisher": "SxnnysideProject",
   "author": {
@@ -42,9 +42,15 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Linters", "Visualization", "Other"],
+  "categories": [
+    "Linters",
+    "Visualization",
+    "Other"
+  ],
   "qna": "marketplace",
-  "activationEvents": ["workspaceContains:**/*.json", "onStartupFinished"],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "viewsContainers": {
@@ -68,7 +74,7 @@
     "viewsWelcome": [
       {
         "view": "animoria.gallery",
-        "contents": "No visual assets found in this workspace yet.\n\nAnimoria automatically discovers animated (Lottie, dotLottie, Rive, GIF, APNG, animated SVG) and static (SVG, PNG, JPEG, WebP, AVIF) files as you add them — no configuration needed.\n\nJust added some? Indexing runs in the background and the Gallery updates on its own.\n\n[Refresh Gallery](command:animoria.refresh)"
+        "contents": "No visual assets found in this workspace yet.\n\nAnimoria automatically discovers animated (Lottie, dotLottie, Rive, GIF, APNG, animated SVG) and static (SVG, PNG, JPEG, WebP, AVIF) files as you add them \u2014 no configuration needed.\n\nJust added some? Indexing runs in the background and the Gallery updates on its own.\n\n[Refresh Gallery](command:animoria.refresh)"
       }
     ],
     "commands": [
@@ -96,6 +102,16 @@
         "icon": "$(shield)"
       },
       {
+        "command": "animoria.viewFindings",
+        "title": "Animoria: View Findings",
+        "category": "Animoria"
+      },
+      {
+        "command": "animoria.viewDuplicates",
+        "title": "Animoria: View Duplicates",
+        "category": "Animoria"
+      },
+      {
         "command": "animoria.viewGovernanceReport",
         "title": "Animoria: View Governance Report"
       },
@@ -110,8 +126,13 @@
       },
       {
         "command": "animoria.startCleanupReview",
-        "title": "Animoria: Review Cleanup Opportunities",
+        "title": "Animoria: Review Cleanup",
         "icon": "$(clear-all)"
+      },
+      {
+        "command": "animoria.restoreCleanup",
+        "title": "Animoria: Restore from Trash",
+        "icon": "$(discard)"
       },
       {
         "command": "animoria.resolveDuplicates",
@@ -155,6 +176,11 @@
           "command": "animoria.toggleViewMode",
           "when": "view == animoria.gallery",
           "group": "navigation"
+        },
+        {
+          "command": "animoria.restoreCleanup",
+          "when": "view == animoria.gallery",
+          "group": "9_restore"
         }
       ],
       "view/item/context": [
@@ -197,19 +223,96 @@
         "animoria.enableThumbnails": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Generate static thumbnail previews for animated assets in the gallery sidebar. Rendered natively — no Chrome/Chromium installation required."
-        },
-        "animoria.governance.overusedThreshold": {
-          "type": "number",
-          "default": 10,
-          "minimum": 1,
-          "markdownDescription": "Number of source file references at or above which an asset is flagged as **overused** in the Governance report."
+          "markdownDescription": "Generate static thumbnail previews for animated assets in the gallery sidebar. Rendered natively \u2014 no Chrome/Chromium installation required."
         }
       }
-    }
+    },
+    "jsonValidation": [
+      {
+        "fileMatch": "**/.animoriarc.json",
+        "url": "./schemas/animoriarc.schema.json"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "animoria.refresh",
+        "key": "ctrl+alt+r",
+        "mac": "cmd+alt+r",
+        "when": "view == animoria.gallery && focusedView == animoria.gallery"
+      },
+      {
+        "command": "animoria.search",
+        "key": "ctrl+alt+f",
+        "mac": "cmd+alt+f",
+        "when": "view == animoria.gallery && focusedView == animoria.gallery"
+      },
+      {
+        "command": "animoria.runGovernance",
+        "key": "ctrl+alt+g",
+        "mac": "cmd+alt+g",
+        "when": "view == animoria.gallery && focusedView == animoria.gallery"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "animoria.gettingStarted",
+        "title": "Get started with Animoria",
+        "description": "Discover, audit, and clean up the animated and static assets in your workspace.",
+        "steps": [
+          {
+            "id": "animoria.whatItIs",
+            "title": "Visual asset discovery, built in",
+            "description": "Animoria automatically finds Lottie, dotLottie, Rive, GIF, APNG, and animated SVG files anywhere in your workspace \u2014 and static SVG/PNG/JPEG/WebP/AVIF alongside them \u2014 and lists them in its sidebar. There is nothing to run and nothing to configure to start.\n\n[Open the Animoria sidebar](command:animoria.gallery.focus)",
+            "media": {
+              "markdown": "walkthrough/what-it-is.md"
+            }
+          },
+          {
+            "id": "animoria.whatItScans",
+            "title": "What gets scanned",
+            "description": "Every animated and static asset format Animoria recognizes is indexed automatically. Source files across common languages (TypeScript, JavaScript, Kotlin, Swift, Dart, and more) are scanned once, in a single pass, to find which assets your code actually references.",
+            "media": {
+              "markdown": "walkthrough/what-it-scans.md"
+            }
+          },
+          {
+            "id": "animoria.whatGovernanceMeans",
+            "title": "Governance: rules you opt into",
+            "description": "Governance is a set of configurable rules \u2014 unreferenced assets, byte-identical duplicates, oversized files, disallowed formats \u2014 that you enable in `.animoriarc`. Nothing is enforced until you say so.\n\n[Run governance now](command:animoria.runGovernance)",
+            "media": {
+              "markdown": "walkthrough/governance.md"
+            }
+          },
+          {
+            "id": "animoria.whatAFindingMeans",
+            "title": "Reading a finding",
+            "description": "Every finding names the rule that produced it, the evidence behind it, and how confident Animoria is \u2014 evidence is never presented as more certain than the search that produced it. Findings also appear in the Problems panel (`F8` to jump between them).",
+            "media": {
+              "markdown": "walkthrough/findings.md"
+            }
+          },
+          {
+            "id": "animoria.resolvingFindings",
+            "title": "Resolving what you find",
+            "description": "Review cleanup opportunities in one place before anything is deleted \u2014 nothing is removed without your confirmation, and deletions go through your editor's own undo history.\n\n[Review cleanup opportunities](command:animoria.startCleanupReview)",
+            "media": {
+              "markdown": "walkthrough/cleanup.md"
+            }
+          },
+          {
+            "id": "animoria.configuring",
+            "title": "Configuring your own policy",
+            "description": "Add a `.animoriarc.json` at your workspace root to enable rules, with schema-backed completion as you type. Both `.animoriarc` and Animoria itself work with zero configuration if you never create one.",
+            "media": {
+              "markdown": "walkthrough/configuring.md"
+            }
+          }
+        ]
+      }
+    ]
   },
   "scripts": {
-    "build": "tsc --noEmit && vite build",
+    "build": "node scripts/copy-ui.mjs && tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -220,13 +323,14 @@
     "publish": "vsce publish --no-dependencies"
   },
   "dependencies": {
-    "@animoria/core": "workspace:*"
+    "@animoria/core": "workspace:*",
+    "@animoria/ui": "workspace:*"
   },
   "devDependencies": {
-    "lottie-web": "5.12.2",
     "@types/node": "^25.9.2",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.9.2",
+    "lottie-web": "5.12.2",
     "typescript": "^5.9.3",
     "vite": "^8.0.16",
     "vitest": "^3.2.6"

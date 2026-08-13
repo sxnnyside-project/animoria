@@ -69,6 +69,16 @@ export class IndexingScheduler {
 
   private _pending = new Map<string, FileChangeKind>();
   private _isRunning = false;
+  /**
+   * The run currently in flight, so a caller can wait for it.
+   *
+   * `isRunning` answered "is work happening?" and nothing answered "tell me when it
+   * has stopped", so `whenIdle()` could only wait for the *reference* pass. A change
+   * a host had just notified was therefore still queued when the next
+   * `analyzeComplete()` returned, and the caller had no way to distinguish that from
+   * "nothing changed".
+   */
+  private _run: Promise<void> = Promise.resolve();
 
   constructor(options: IndexingSchedulerOptions) {
     this._apply = options.apply;
@@ -90,8 +100,23 @@ export class IndexingScheduler {
     }
 
     if (!this._isRunning) {
-      void this._runLoop();
+      this._run = this._runLoop();
     }
+  }
+
+  /**
+   * Resolves once every queued change has been applied.
+   *
+   * Loops rather than awaiting once: applying a batch can enqueue more work — a
+   * config change that invalidates assets, for instance — and returning after the
+   * first run would report idle while the follow-up was still pending.
+   */
+  async whenSettled(): Promise<void> {
+    while (this._isRunning || this._pending.size > 0) {
+      await this._run;
+      if (this._pending.size > 0 && !this._isRunning) this._run = this._runLoop();
+    }
+    await this._run;
   }
 
   /** Whether a batch is currently being applied. Exposed for diagnostics/tests. */

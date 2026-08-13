@@ -1,19 +1,22 @@
 package com.sxnnyside.animoria.governance
 
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
-import com.intellij.testFramework.LightVirtualFile
+import com.intellij.openapi.vfs.LocalFileSystem
+import com.sxnnyside.animoria.backend.AnimoriaCoroutineScope
 import com.sxnnyside.animoria.backend.CoreProcessManager
 import com.sxnnyside.animoria.backend.GovernanceReportExportData
+import com.sxnnyside.animoria.logging.AnimoriaLogger
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.put
+import java.io.File
 
 /**
  * Opens the current governance report as a read-only Markdown document in
@@ -23,13 +26,51 @@ import kotlinx.serialization.json.put
  * `viewGovernanceReport()` / `markdown.showPreview`.
  */
 object GovernanceReportEditor {
+    /**
+     * Opens the report as a real, read-only file under the IDE's own system directory.
+     *
+     * ## Why not `LightVirtualFile`
+     * It lives in `com.intellij.testFramework` — a **test-only** module. Referencing it
+     * from production plugin code means depending on a module that is not part of the
+     * supported plugin API and is not guaranteed to be present at runtime. Animoria has
+     * already been rejected once for using an internal JetBrains API; this was the same
+     * mistake still in the tree.
+     *
+     * A file under `PathManager.getSystemPath()` uses only APIs the plugin already
+     * depends on, is genuinely read-only on disk, and gives the developer something
+     * they can keep — which an in-memory document does not.
+     */
+    private fun openReport(
+        project: Project,
+        content: String,
+    ) {
+        val directory = File(PathManager.getSystemPath(), "animoria/reports/${project.locationHash}")
+        directory.mkdirs()
+
+        // One fixed name, so repeated runs reuse the same editor tab rather than
+        // stacking a new one per click — the same reason VS Code serves its report
+        // under a fixed URI.
+        val file = File(directory, "Animoria Governance Report.md")
+        file.writeText(content)
+        file.setWritable(false)
+
+        val virtualFile =
+            LocalFileSystem.getInstance().refreshAndFindFileByIoFile(file) ?: run {
+                AnimoriaLogger.warn("Animoria: the governance report could not be opened from ${file.absolutePath}")
+                return
+            }
+        virtualFile.refresh(false, false)
+        FileEditorManager.getInstance(project).openFile(virtualFile, true)
+    }
+
     fun open(project: Project) {
         val processManager = project.getService(CoreProcessManager::class.java)
-        GlobalScope.launch(Dispatchers.IO) {
+        AnimoriaCoroutineScope.of(project).launch(Dispatchers.IO) {
             try {
                 val response =
                     processManager.sendCommand(
-                        "exportGovernanceReport",
+                        // `exportGovernanceReport` is not a protocol method; `exportReport` is.
+                        "exportReport",
                         buildJsonObject { put("format", "markdown") },
                     )
                 val result = Json.decodeFromJsonElement<GovernanceReportExportData>(response)
@@ -39,12 +80,10 @@ object GovernanceReportEditor {
                         Messages.showWarningDialog(project, result.error, "Governance Report")
                         return@invokeLater
                     }
-                    val file = LightVirtualFile("Animoria Governance Report.md", result.content)
-                    file.isWritable = false
-                    FileEditorManager.getInstance(project).openFile(file, true)
+                    openReport(project, result.content)
                 }
             } catch (e: Exception) {
-                com.sxnnyside.animoria.logging.AnimoriaLogger.error("Animoria: Failed to open governance report", e)
+                AnimoriaLogger.error("Animoria: Failed to open governance report", e)
             }
         }
     }

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { WorkspaceIndexUpdate } from '../../src/indexer/types';
 import { WorkspaceIndexer } from '../../src/indexer/workspace-indexer';
+import { expectComputedHealth, expectUnavailableHealth } from '../support/health.js';
 
 const tempDirs: string[] = [];
 const indexers: WorkspaceIndexer[] = [];
@@ -38,13 +39,13 @@ function nextUpdate(indexer: WorkspaceIndexer): Promise<WorkspaceIndexUpdate> {
  */
 async function initializeAndAwaitReferenceCounts(
   indexer: WorkspaceIndexer
-): Promise<WorkspaceIndexUpdate['snapshot']> {
+): Promise<WorkspaceIndexUpdate['analysis']> {
   // `initialize()`'s own fast commit fires and is delivered to any
   // subscriber synchronously before its promise resolves, so subscribing
   // only after it resolves guarantees the next update caught here is the
   // deferred, reference-counts-populated one, not the fast one.
   await indexer.initialize();
-  return (await nextUpdate(indexer)).snapshot;
+  return (await nextUpdate(indexer)).analysis;
 }
 
 const LOTTIE_DOC = JSON.stringify({
@@ -81,8 +82,8 @@ describe('WorkspaceIndexer', () => {
     expect(snapshot.referenceCounts.has(snapshot.assets[0]!.path)).toBe(false);
 
     const settled = await nextUpdate(indexer);
-    expect(settled.snapshot.generation).toBe(2);
-    expect(settled.snapshot.referenceCounts.get(snapshot.assets[0]!.path)).toBe(0);
+    expect(settled.analysis.generation).toBe(2);
+    expect(settled.analysis.referenceCounts.get(snapshot.assets[0]!.path)).toBe(0);
   });
 
   it('does not flag every asset as unreferenced on the fast, pre-reference-count snapshot', async () => {
@@ -104,14 +105,12 @@ describe('WorkspaceIndexer', () => {
     // because reference counts haven't been established yet — that would
     // be a false positive severe enough to mislead a user into deleting
     // a referenced asset via Bulk Cleanup.
-    const fastUnused = fast.ruleReport?.diagnostics.filter(
-      (d) => d.ruleId === 'no-unreferenced-assets'
-    );
+    const fastUnused = fast.diagnostics.filter((d) => d.ruleId === 'no-unreferenced-assets');
     expect(fastUnused ?? []).toHaveLength(0);
 
     const settled = await nextUpdate(indexer);
-    expect(settled.snapshot.referenceCounts.get(join(workspace, 'hero.json'))).toBe(1);
-    const settledUnused = settled.snapshot.ruleReport?.diagnostics.filter(
+    expect(settled.analysis.referenceCounts.get(join(workspace, 'hero.json'))).toBe(1);
+    const settledUnused = settled.analysis.diagnostics.filter(
       (d) => d.ruleId === 'no-unreferenced-assets'
     );
     expect(settledUnused ?? []).toHaveLength(0);
@@ -132,7 +131,7 @@ describe('WorkspaceIndexer', () => {
     const result = await update;
 
     expect(result.upsertedAssetPaths).toEqual([assetPath]);
-    expect(result.snapshot.assets.some((a) => a.path === assetPath)).toBe(true);
+    expect(result.analysis.assets.some((a) => a.path === assetPath)).toBe(true);
   });
 
   it('removes an asset that was deleted', async () => {
@@ -152,8 +151,8 @@ describe('WorkspaceIndexer', () => {
     const result = await update;
 
     expect(result.removedAssetPaths).toEqual([assetPath]);
-    expect(result.snapshot.assets.some((a) => a.path === assetPath)).toBe(false);
-    expect(result.snapshot.referenceCounts.has(assetPath)).toBe(false);
+    expect(result.analysis.assets.some((a) => a.path === assetPath)).toBe(false);
+    expect(result.analysis.referenceCounts.has(assetPath)).toBe(false);
   });
 
   it('converges to "absent" when a delete event arrives for a path that was actually replaced', async () => {
@@ -176,7 +175,7 @@ describe('WorkspaceIndexer', () => {
     indexer.notifyFileChanged(assetPath, 'created');
     const result = await update;
 
-    expect(result.snapshot.assets.some((a) => a.path === assetPath)).toBe(true);
+    expect(result.analysis.assets.some((a) => a.path === assetPath)).toBe(true);
   });
 
   it('establishes a reference count for a brand-new asset', async () => {
@@ -196,7 +195,7 @@ describe('WorkspaceIndexer', () => {
     indexer.notifyFileChanged(assetPath, 'created');
     const result = await update;
 
-    expect(result.snapshot.referenceCounts.get(assetPath)).toBe(1);
+    expect(result.analysis.referenceCounts.get(assetPath)).toBe(1);
   });
 
   it('incrementally updates reference counts when a source file adds a reference', async () => {
@@ -217,7 +216,7 @@ describe('WorkspaceIndexer', () => {
     indexer.notifyFileChanged(sourcePath, 'changed');
     const result = await update;
 
-    expect(result.snapshot.referenceCounts.get(assetPath)).toBe(1);
+    expect(result.analysis.referenceCounts.get(assetPath)).toBe(1);
   });
 
   it('decrements reference counts when a reference is removed from a source file', async () => {
@@ -238,7 +237,7 @@ describe('WorkspaceIndexer', () => {
     indexer.notifyFileChanged(sourcePath, 'changed');
     const result = await update;
 
-    expect(result.snapshot.referenceCounts.get(assetPath)).toBe(0);
+    expect(result.analysis.referenceCounts.get(assetPath)).toBe(0);
   });
 
   it("retracts a source file's contributions entirely when it is deleted", async () => {
@@ -259,7 +258,7 @@ describe('WorkspaceIndexer', () => {
     indexer.notifyFileChanged(sourcePath, 'deleted');
     const result = await update;
 
-    expect(result.snapshot.referenceCounts.get(assetPath)).toBe(0);
+    expect(result.analysis.referenceCounts.get(assetPath)).toBe(0);
   });
 
   it('reloads .animoriarc when it changes and reflects new diagnostics', async () => {
@@ -271,7 +270,7 @@ describe('WorkspaceIndexer', () => {
       new WorkspaceIndexer({ workspacePath: workspace, settleMs: 10, maxWaitMs: 50 })
     );
     const initial = await indexer.initialize();
-    expect(initial.ruleReport?.diagnostics ?? []).toHaveLength(0);
+    expect(initial.diagnostics).toHaveLength(0);
 
     const configPath = join(workspace, '.animoriarc.json');
     await writeFile(configPath, JSON.stringify({ rules: { 'no-gif': 'error' } }));
@@ -280,21 +279,49 @@ describe('WorkspaceIndexer', () => {
     indexer.notifyFileChanged(configPath, 'created');
     const result = await update;
 
-    expect(result.snapshot.ruleReport?.diagnostics).toHaveLength(1);
-    expect(result.snapshot.ruleReport?.diagnostics[0]?.ruleId).toBe('no-gif');
+    // Asserted by rule rather than by count. The default policy also runs
+    // `no-unreferenced-assets`, and this GIF is referenced by nothing — a second,
+    // entirely correct finding. Counting diagnostics made this test an assertion
+    // about how many rules happen to be enabled, which is not what it is checking.
+    expect(result.analysis.diagnostics.map((d) => d.ruleId)).toContain('no-gif');
   });
 
-  it('computes a Health Score of 100 for a clean initial snapshot', async () => {
+  it('computes a Health Score of 100 for a clean, complete analysis', async () => {
+    const workspace = await makeWorkspace();
+    await writeFile(join(workspace, 'hero.json'), LOTTIE_DOC);
+    // Referenced, so `no-unreferenced-assets` — on by default now — has nothing to
+    // report. The asset must be genuinely clean under the *default* policy, which is
+    // what a developer with no `.animoriarc` actually sees.
+    await writeFile(join(workspace, 'app.ts'), "import hero from './hero.json';\n");
+    await writeFile(
+      join(workspace, '.animoriarc.json'),
+      JSON.stringify({ rules: { 'no-gif': 'error' } })
+    );
+
+    const indexer = trackIndexer(
+      new WorkspaceIndexer({ workspacePath: workspace, settleMs: 10, maxWaitMs: 50 })
+    );
+    const analysis = await indexer.analyzeComplete();
+
+    const health = expectComputedHealth(analysis.health);
+    expect(health.score).toBe(100);
+    expect(health.totalAssetCount).toBe(1);
+  });
+
+  it('declines to score the fast snapshot, because the analysis behind it is incomplete', async () => {
     const workspace = await makeWorkspace();
     await writeFile(join(workspace, 'hero.json'), LOTTIE_DOC);
 
     const indexer = trackIndexer(
       new WorkspaceIndexer({ workspacePath: workspace, settleMs: 10, maxWaitMs: 50 })
     );
-    const snapshot = await indexer.initialize();
+    const fast = await indexer.initializeFast();
 
-    expect(snapshot.healthScore?.score).toBe(100);
-    expect(snapshot.healthScore?.totalAssetCount).toBe(1);
+    // A score computed before reference resolution would be a number derived from
+    // rules that never ran. Refusing to produce one is the whole point of the
+    // outcome union: there is no value here to mistake for a verdict.
+    expect(fast.readiness.complete).toBe(false);
+    expect(expectUnavailableHealth(fast.health).reason).toBe('incomplete-analysis');
   });
 
   it('recomputes the Health Score reactively when a new rule violation appears', async () => {
@@ -304,8 +331,12 @@ describe('WorkspaceIndexer', () => {
     const indexer = trackIndexer(
       new WorkspaceIndexer({ workspacePath: workspace, settleMs: 10, maxWaitMs: 50 })
     );
-    const initial = await indexer.initialize();
-    expect(initial.healthScore?.score).toBe(100);
+    // The default policy runs with no configuration, so there *is* a score — and
+    // `no-gif` is off by default, so this GIF is not yet a finding. Asserting
+    // "unavailable" here encoded the regression this suite now guards against:
+    // configuration had become a prerequisite for Animoria doing anything.
+    const initial = await indexer.analyzeComplete();
+    expect(initial.health.status).toBe('computed');
 
     const configPath = join(workspace, '.animoriarc.json');
     await writeFile(configPath, JSON.stringify({ rules: { 'no-gif': 'error' } }));
@@ -314,8 +345,8 @@ describe('WorkspaceIndexer', () => {
     indexer.notifyFileChanged(configPath, 'created');
     const result = await update;
 
-    expect(result.snapshot.healthScore?.score).toBeLessThan(100);
-    expect(result.snapshot.healthScore?.categories[0]?.ruleId).toBe('no-gif');
+    expect(expectComputedHealth(result.analysis.health).score).toBeLessThan(100);
+    expect(expectComputedHealth(result.analysis.health).categories[0]?.ruleId).toBe('no-gif');
   });
 
   it('merges concurrent notifications for the same settle window into one batch', async () => {
@@ -352,7 +383,7 @@ describe('WorkspaceIndexer', () => {
     indexer.notifyFileChanged(assetPath, 'created');
     const result = await update;
 
-    expect(result.snapshot.generation).toBe(2);
+    expect(result.analysis.generation).toBe(2);
   });
 
   it('records a diagnostic entry per applied batch', async () => {

@@ -1,6 +1,14 @@
 import type { AnimoriaAsset } from '../../../types/asset.js';
+import { helpUriForRule } from '../rule-help.js';
 import { parseSeverityOnlyOption } from '../shared/rule-option-parsing.js';
-import type { GovernanceRule, RuleEvaluationContext, RuleViolation } from '../types.js';
+import {
+  DIRECT_OBSERVATION_CONFIDENCE,
+  type GovernanceRule,
+  type RuleEvaluationContext,
+  type RuleOutcome,
+  type RuleViolation,
+  evaluated,
+} from '../types.js';
 
 const RULE_ID = 'no-duplicate-names';
 
@@ -27,12 +35,13 @@ const RULE_ID = 'no-duplicate-names';
 export const noDuplicateNamesRule: GovernanceRule<void> = {
   id: RULE_ID,
   description: 'Disallows two assets sharing the same name (case-insensitive, extension ignored).',
+  helpUri: helpUriForRule(RULE_ID),
 
   parseOptions(raw) {
     return parseSeverityOnlyOption(raw, RULE_ID);
   },
 
-  evaluate(context: RuleEvaluationContext<void>): readonly RuleViolation[] {
+  evaluate(context: RuleEvaluationContext<void>): RuleOutcome {
     const groups = new Map<string, AnimoriaAsset[]>();
 
     for (const asset of context.assets) {
@@ -51,9 +60,22 @@ export const noDuplicateNamesRule: GovernanceRule<void> = {
           asset,
           message: `"${asset.name}" shares its name with ${others.length} other asset(s): ${others.join(', ')}.`,
           details: { conflictingPaths: others },
+          evidence: {
+            // A direct comparison across the indexed asset set — the conflicting
+            // files are named, so the reader can judge it without re-searching.
+            kind: 'file-metadata' as const,
+            summary: `Stem "${asset.stem}" is shared with ${others.length} other asset(s).`,
+            locations: others.map((file) => ({ file })),
+            data: { stem: asset.stem, conflictingPaths: others },
+          },
+          confidence: DIRECT_OBSERVATION_CONFIDENCE,
+          remediation: {
+            summary:
+              'Rename one of the assets so each has a distinct stem, or disable "no-duplicate-names" if the collision is intentional.',
+          },
         });
       }
     }
-    return violations;
+    return evaluated(violations);
   },
 };

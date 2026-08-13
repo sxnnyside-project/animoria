@@ -52,7 +52,7 @@ export async function validateResolutionPlan(plan: ResolutionPlan): Promise<Plan
           assetPath: asset.path,
           reason: 'stat failed — file missing or inaccessible',
           error: err,
-          recovery: 'plan rejected with an asset-missing issue',
+          recovery: 'plan rejected with an asset-missing problem',
         }
       );
       issues.push({
@@ -86,7 +86,7 @@ export async function validateResolutionPlan(plan: ResolutionPlan): Promise<Plan
           assetPath: update.file,
           reason: 'file missing or inaccessible',
           error: err,
-          recovery: 'plan rejected with a reference-missing issue',
+          recovery: 'plan rejected with a reference-missing problem',
         }
       );
       issues.push({

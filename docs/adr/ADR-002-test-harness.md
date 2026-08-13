@@ -1,55 +1,89 @@
-# ADR-002: Extension test harness — vitest + module-aliased `vscode` mock
+# ADR-002: Extension Test Harness — Vitest + Module-Aliased `vscode` Mock
 
-**Status:** Accepted
-**Scope:** `packages/animoria-vscode`
-**Related:** `TASK-H1.1`, resolves the infrastructure portion of `F-TEST-01`, `F-RUN-01`, `F-RUN-02`, `F-RUN-04`.
+**Status:** Accepted  
+**Scope:** `packages/animoria-vscode`  
+**Related:** `ADR-001`, `ADR-003`, `TASK-H1.1`, `F-TEST-01`, `F-RUN-01`, `F-RUN-02`, `F-RUN-04`
+
+---
+
+## Context & Problem Statement
+
+Testing VS Code extensions typically requires either spinning up an entire Electron/VS Code instance via `@vscode/test-electron` or relying on lightweight in-memory mocks.
+
+The Animoria VS Code extension (`packages/animoria-vscode`) requires a fast, deterministic, and CI-friendly unit test suite for core extension logic (command registration, `WorkspaceEdit` generation, cleanup executors, file watchers, and webview message passing) without incurring the heavy overhead and flakiness of launching full headless Electron instances.
+
+---
 
 ## Decision
 
-`packages/animoria-vscode` tests run under vitest, the same runner already used by `@animoria/core`, against a hand-built `vscode` module mock (`tests/mocks/vscode.ts`) that vitest resolves in place of the real `vscode` package via `resolve.alias` in `vitest.config.ts`. `@vscode/test-electron` was evaluated and rejected for this layer.
+**`packages/animoria-vscode` unit tests run under Vitest against a custom, in-process `vscode` module mock (`tests/mocks/vscode.ts`), resolved via Vitest's `resolve.alias` in `vitest.config.ts`.**
 
-## Options considered
+`@vscode/test-electron` was evaluated and rejected for this layer.
 
-### Option A — `@vscode/test-electron`
+---
 
-Downloads a real VS Code build and runs tests inside an actual Extension Host process.
+## Options Evaluated
 
-- **Fidelity:** highest possible — the real `vscode` API, real webviews, real `WorkspaceEdit` application semantics.
-- **Speed:** slow. Each run launches a full Electron/VS Code instance; a CI run needs a display server (`xvfb-run` or equivalent) and pays VS Code's own startup cost on every invocation.
-- **Determinism:** lower. Real Electron/VS Code instances are more prone to environment-dependent flakiness (window focus, timing, platform differences between local macOS and CI Linux runners) than an in-process mock.
-- **CI compatibility:** works, but adds a second, heavier execution mode (`xvfb`, a VS Code download step, longer job time) that the rest of the monorepo's toolchain (`turbo`, plain `vitest run`) doesn't otherwise need.
-- **Signal-to-cost:** highest signal per test, but at a cost that scales badly — every additional test pays the same fixed per-run overhead, and the fast, TDD-friendly loop the rest of the monorepo has (`pnpm test` in ~1s for `@animoria/core`'s 384 tests) would not extend to this package.
+### Option 1: Headless Electron Host (`@vscode/test-electron`)
 
-### Option B — `apps/animoria-sandbox/src/mocks/mock-extension-host.ts`
+* **Concept:** Download a full VS Code binary on every test run and launch tests inside a headless Extension Host.
+* **Pros:**
+  * Highest fidelity: executes real VS Code APIs, real webview DOM, and live `WorkspaceEdit` applications.
+* **Cons & Blockers:**
+  * **Slow & Heavy:** Spawns a full Electron binary for every test invocation; requires `xvfb-run` on Linux CI runners.
+  * **Nondeterministic / Flaky:** Prone to OS window focus, timing differences, and CI environment flakiness.
+  * **Poor Developer Experience:** Does not scale for rapid TDD loops (~180ms in-process mock vs ~10-15s Electron startup).
 
-Investigated first per the task's explicit instruction to reuse or extend it rather than create a competing mock.
+### Option 2: Extending Sandbox Webview Mock (`apps/animoria-sandbox/src/mocks/mock-extension-host.ts`)
 
-- This class mocks the **webview side** of the sandbox app: it listens for `window.postMessage` calls from the Lit UI running inside a plain browser tab and answers with fake `scanProgress`/`scanComplete`/`assetDeleted` events, entirely to let `apps/animoria-sandbox` be developed without an IDE host at all.
-- It does not mock the `vscode` module namespace — no `commands`, `workspace`, `WorkspaceEdit`, `Uri`, `FileSystemWatcher`, `OutputChannel`, etc. Its message vocabulary is also a different, narrower protocol than the real extension's webview panels use.
-- **Conclusion:** this is a different layer solving a different problem (developing the shared Lit components outside any host) and has no surface overlap with what `packages/animoria-vscode`'s unit tests need (a `vscode` API to import against). Extending it to also mock the `vscode` namespace would conflate two unrelated concerns into one file and still leave every test needing to reach through a browser-`postMessage` indirection it doesn't otherwise use. It is left untouched.
-- The instruction to avoid a _competing_ mock is honored at the right layer: this ADR does not introduce a second webview-message simulator. `tests/mocks/vscode.ts` mocks the extension-host-side `vscode` API surface, which has no existing implementation anywhere in the repo to duplicate.
+* **Concept:** Attempt to reuse the sandbox webview mock used for Lit component preview.
+* **Pros:**
+  * Reuses an existing mock file in the repository.
+* **Cons & Blockers:**
+  * **Different Layer:** The sandbox mock only simulates browser `postMessage` events for developing webview UI components in isolation. It lacks the entire `vscode.*` namespace (`commands`, `workspace`, `WorkspaceEdit`, `Uri`, `FileSystemWatcher`, etc.).
+  * **Coupling:** Conflating webview browser message mocking with extension host API mocking creates brittle abstractions.
 
-### Option C (chosen) — vitest + `tests/mocks/vscode.ts`, aliased via `vitest.config.ts`
+### Option 3: Vitest + In-Memory Module Alias (`tests/mocks/vscode.ts`) (Chosen)
 
-A minimal, hand-written implementation of the exact `vscode` namespace surface the extension's source code actually imports (enumerated by grepping every `vscode.*` call site — see `tests/mocks/vscode.ts`'s module doc comment). Vitest's `resolve.alias` maps the bare `vscode` specifier to this file, the same way `@vscode/test-electron` isn't needed to make `import * as vscode from 'vscode'` resolve — vitest just points it somewhere real instead of somewhere Electron-only.
+* **Concept:** Implement a minimal, strict mock of the imported `vscode` namespace, mapped via `vitest.config.ts` alias.
+* **Pros:**
+  * **Ultra-Fast Execution:** Full test suite runs in ~180ms in-process.
+  * **Deterministic:** Pure in-memory state (`Map`s, `EventEmitter`s) reset cleanly per test via `resetTestWorkspace()`.
+  * **Zero CI Overhead:** Integrates seamlessly into the existing `pnpm test` → `turbo test` → `vitest run` pipeline without extra dependencies.
+  * **Zero Production Code Changes:** Production code imports `vscode` normally without test flags or artificial seams.
+* **Cons:**
+  * Does not prove real window/rendering behaviors (addressed complementarily via manual regression testing passes).
 
-- **Fidelity:** narrower than a real Extension Host — no real window rendering, no real Electron IPC. Sufficient for everything this epic's remaining tasks need: command registration/execution, `WorkspaceEdit` construction and application against an in-memory filesystem, file-watcher event simulation, `QuickPick`/dialog result injection, `OutputChannel` capture, and webview `postMessage`/`onDidReceiveMessage` round-tripping in both directions.
-- **Speed:** in-process, no subprocess or Electron cost — the full new suite (10 tests) runs in ~180ms, in line with `@animoria/core`'s existing sub-second suite.
-- **Determinism:** high — pure in-memory state (`Map`s, `EventEmitter`s), reset per test via `resetTestWorkspace()`; no timing- or environment-dependent behavior.
-- **CI compatibility:** zero new CI infrastructure — the existing `pnpm test` → `turbo test` → per-package `vitest run` pipeline picks it up automatically once the package exposes a `test` script, exactly like `@animoria/core` already does.
-- **Extensibility:** adding a new capability is adding one function/class to `tests/mocks/vscode.ts` — no separate test-runner configuration or CI job to touch.
-- **Signal-to-cost:** the right default for the bulk of this epic's remaining work (`CleanupExecutor`, `workspace-edit-builder.ts`, `AnimoriaDuplicateResolver`'s apply path, the watcher/indexer bridge) — all of it is logic that reads and writes through the `vscode` API surface, not logic that depends on real window/rendering behavior.
+---
+
+## Technical Blockers & Justification
+
+| Feature / Criteria | Vitest + Alias Mock (Chosen) | `@vscode/test-electron` | Sandbox Webview Mock |
+| :--- | :--- | :--- | :--- |
+| **Execution Time** | ⚡ ~180ms | ⏳ ~10–15s per run | ⚡ ~100ms |
+| **CI Dependencies** |  None (in-process) | ❌ Heavy (`xvfb`, download step) |  None |
+| **`vscode` API Fidelity** |  Covers all imported APIs |  100% full runtime | ❌ None (webview only) |
+| **TDD / Watch Mode** |  Instant feedback (`vitest`) | ❌ Slow & awkward | ⚠️ Browser-only |
+| **Deterministic State** |  Isolated per test | ⚠️ Prone to timing/focus |  Isolated |
+
+---
 
 ## Consequences
 
-- **What this harness does not prove.** A test passing against `tests/mocks/vscode.ts` proves the extension's logic drives the `vscode` API correctly according to this mock's understanding of that API's contract — it does not prove the real VS Code Extension Host behaves identically, and it does not exercise real webview rendering. This is why `TASK-H5.1` (live Extension-Host regression pass) exists as a separate, complementary verification step in the hardening epic — this harness and that manual pass answer different questions and neither substitutes for the other.
-- **If a future task genuinely needs real-host fidelity** (e.g. verifying actual Local History rollback behavior for `TASK-H2.1`, which by its nature cannot be answered by any mock), that specific verification should be done manually or, if it recurs often enough to justify the fixed cost, as a narrowly-scoped `@vscode/test-electron` suite added later — not as a wholesale replacement of this harness.
-- **No production code was changed to enable testing.** The alias technique means `src/**/*.ts` imports `vscode` exactly as it does today; no test-mode flags, conditional branches, or injected seams were added. The only new production-adjacent code is `buildWorkspaceEdit` itself, which was already structured as a standalone, side-effect-free function before this task (see its own doc comment) — the harness took advantage of an existing seam rather than requiring a new one.
+### Positive
+1. **Sub-second Feedback:** Developers and CI run the entire monorepo test suite across packages in a few seconds.
+2. **Unified Test Stack:** `@animoria/core`, `animoria-vscode`, and `animoria-sandbox` all share the same Vitest runner and reporting formats.
+3. **Extensible:** Adding support for new VS Code APIs only requires adding standard mock interfaces to `tests/mocks/vscode.ts`.
 
-## How future tests use this harness
+### Negative / Accepted Trade-offs
+1. Mock tests prove logic contracts against the mock implementation, not Electron rendering. Live host verification is preserved for manual release passes.
 
-1. Import `vscode` normally in both test and source files — the alias handles resolution.
-2. Call `resetTestWorkspace()` (from `tests/harness.ts`) in `beforeEach` whenever a test touches shared mock state (workspace folders, configuration, the in-memory filesystem, or the command registry) — the mock is a module-level singleton, like the real API, so state leaks across tests without an explicit reset.
-3. Configure scenario state directly through `mockVscodeState` (from `tests/harness.ts`) before invoking the code under test — e.g. seed `mockVscodeState.fileSystem` before testing a delete path, or set `mockVscodeState.quickPickResult` before testing a command that awaits `showQuickPick`.
-4. For file watchers and webviews, use the returned fake object's `simulate(...)` / `simulateMessageFromWebview(...)` test-only methods (see `tests/harness.smoke.test.ts` for one example of each) to drive events the way a real watcher or webview would.
-5. If a call site needs a `vscode` API this mock doesn't yet implement, add it to `tests/mocks/vscode.ts` — keep it narrow (only what a real call site needs) rather than attempting to mirror the full `vscode` typings up front.
+---
+
+## How Future Tests Use This Harness
+
+1. **Import `vscode` normally** in test and source files; the Vitest alias handles resolution automatically.
+2. **Reset State:** Call `resetTestWorkspace()` in `beforeEach` to reset workspace folders, configuration, in-memory files, and command registries.
+3. **Configure Scenario State:** Use `mockVscodeState` (from `tests/harness.ts`) to inject files, fake quick-pick selections, or command results.
+4. **Simulate Events:** Use `simulate(...)` or `simulateMessageFromWebview(...)` on returned fake objects to drive watcher or webview events.
+5. **Add New APIs:** When using a new `vscode.*` API, add only the required methods to `tests/mocks/vscode.ts`.

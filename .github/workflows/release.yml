@@ -9,24 +9,90 @@ permissions:
   contents: write
 
 jobs:
+  # ── Version consistency is verified before anything is built or published ────
+  # The tag is the single source of truth. Every versioned artifact — the VS Code
+  # extension, @animoria/core, and the JetBrains plugin — must agree with it.
+  #
+  # This job exists because the JetBrains plugin version was previously a hardcoded
+  # literal in build.gradle.kts that no check compared against the tag: every release
+  # after the first therefore republished the same version, the Marketplace rejected
+  # it as a duplicate, and (because the publish step was `continue-on-error`) the
+  # release reported success while the plugin silently never updated.
+  verify-versions:
+    name: Verify version consistency
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.VERSION }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Verify every versioned artifact matches the tag
+        env:
+          TAG_VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          set -euo pipefail
+          fail=0
+
+          check() {
+            local name="$1" actual="$2"
+            if [ "$actual" != "$TAG_VERSION" ]; then
+              echo "::error::Version mismatch: $name=$actual, tag=$TAG_VERSION"
+              fail=1
+            else
+              echo "OK: $name=$actual"
+            fi
+          }
+
+          check "animoria-vscode/package.json" \
+            "$(node -p "require('./packages/animoria-vscode/package.json').version")"
+          check "animoria-core/package.json" \
+            "$(node -p "require('./packages/animoria-core/package.json').version")"
+
+          # The Gradle build reads ANIMORIA_VERSION; assert it resolves to the tag
+          # rather than to its local-development fallback.
+          RESOLVED_GRADLE_VERSION="${ANIMORIA_VERSION:-$TAG_VERSION}"
+          check "jetbrains (ANIMORIA_VERSION)" "$RESOLVED_GRADLE_VERSION"
+
+          if grep -qE '^version\s*=\s*"[0-9]' packages/animoria-jetbrains/build.gradle.kts; then
+            echo "::error::build.gradle.kts pins a literal release version; it must derive from ANIMORIA_VERSION"
+            fail=1
+          fi
+
+          exit $fail
+
   build-native-daemon:
     name: Build native daemon (${{ matrix.os }})
+    needs: verify-versions
     strategy:
+      # Five triples, not three. `build:sea` produces a binary for the runner's own
+      # platform and architecture, so the matrix *is* the supported platform list:
+      # a triple missing here is a triple where the JetBrains plugin falls back to
+      # requiring a system Node install, which most users do not have.
+      #
+      #   ubuntu-latest    -> linux-x64
+      #   ubuntu-24.04-arm -> linux-arm64   (CI runners, Asahi, ARM workstations)
+      #   macos-latest     -> darwin-arm64  (Apple Silicon)
+      #   macos-13         -> darwin-x64    (Intel Macs, still widely deployed)
+      #   windows-latest   -> win32-x64
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-13, windows-latest]
     runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@a3252b78c470c02df07e9d59298aecedc3ccdd6d # v3.0.0
         with:
           version: 11
 
@@ -38,9 +104,35 @@ jobs:
 
       - name: Build self-contained native executable
         run: pnpm --filter @animoria/core build:sea
+        env:
+          # Makes missing macOS signing credentials a hard failure rather than a
+          # silent downgrade to an ad-hoc signature, which Gatekeeper blocks on
+          # every downloaded copy. `build-sea.mjs` fails deterministically when
+          # this is set and the credentials are absent — a release cannot ship an
+          # unlaunchable daemon just because a secret was not configured.
+          ANIMORIA_RELEASE_SIGNING: required
+          ANIMORIA_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          ANIMORIA_NOTARIZE_APPLE_ID: ${{ secrets.MACOS_NOTARIZE_APPLE_ID }}
+          ANIMORIA_NOTARIZE_TEAM_ID: ${{ secrets.MACOS_NOTARIZE_TEAM_ID }}
+          ANIMORIA_NOTARIZE_PASSWORD: ${{ secrets.MACOS_NOTARIZE_PASSWORD }}
+
+      - name: Verify the produced binary runs
+        # Extraction and launch, checked on the platform that built it. An artifact
+        # that unpacks but cannot execute is the failure mode this catches — and
+        # the one a plugin discovers only in a user's IDE.
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN=$(find packages/animoria-core/sea -type f \( -name 'animoria-core' -o -name 'animoria-core.exe' \) | head -1)
+          if [ -z "$BIN" ]; then
+            echo "::error::build:sea produced no executable"
+            exit 1
+          fi
+          chmod +x "$BIN" || true
+          "$BIN" --version
 
       - name: Upload native daemon artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: native-daemon-${{ matrix.os }}
           # An explicit directory (not a glob) preserves its immediate
@@ -53,25 +145,29 @@ jobs:
   release:
     name: Publish Extension and Plugin
     runs-on: ubuntu-latest
-    needs: build-native-daemon
+    needs: [verify-versions, build-native-daemon]
+    env:
+      # Consumed by packages/animoria-jetbrains/build.gradle.kts. Without it the
+      # Gradle build falls back to 0.0.0-dev, which the publish step below refuses.
+      ANIMORIA_VERSION: ${{ needs.verify-versions.outputs.version }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: 'zulu'
           java-version: '17'
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@a3252b78c470c02df07e9d59298aecedc3ccdd6d # v3.0.0
         with:
           version: 11
 
@@ -80,7 +176,7 @@ jobs:
         run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
 
       - name: Cache pnpm store
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -95,21 +191,33 @@ jobs:
       - name: Run tests
         run: pnpm test
 
+      # Every release-critical gate, and none of them `continue-on-error`. A release
+      # that cannot produce a correct artifact must fail rather than ship one.
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Verify the VS Code extension carries the shared UI bundle
+        run: |
+          set -euo pipefail
+          # Same class of defect as the plugin jar: an extension without the bundle
+          # opens a blank webview. `copy-ui.mjs` already fails the build when the
+          # bundle is absent; this asserts the output rather than trusting the step.
+          for f in packages/animoria-vscode/media/animoria-ui.js packages/animoria-vscode/media/tokens.css; do
+            if [ ! -f "$f" ]; then
+              echo "::error::$f is missing — the extension's panel would be blank"
+              exit 1
+            fi
+          done
+
       - name: Install vsce and ovsx
         run: npm install -g @vscode/vsce ovsx
 
-      - name: Extract version from tag
+      - name: Resolve version
         id: version
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
-
-      - name: Verify package.json version matches tag
-        run: |
-          PKG_VERSION=$(node -p "require('./packages/animoria-vscode/package.json').version")
-          TAG_VERSION=${{ steps.version.outputs.VERSION }}
-          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
-            echo "Version mismatch: package.json=$PKG_VERSION tag=$TAG_VERSION"
-            exit 1
-          fi
+        run: echo "VERSION=${{ needs.verify-versions.outputs.version }}" >> $GITHUB_OUTPUT
 
       - name: Package extension
         working-directory: packages/animoria-vscode
@@ -126,7 +234,7 @@ jobs:
         run: ovsx publish animoria-${{ steps.version.outputs.VERSION }}.vsix -p ${{ secrets.OVSX_PAT }}
 
       - name: Download native daemon artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: native-daemon-*
           path: packages/animoria-jetbrains/src/main/resources/native
@@ -139,17 +247,52 @@ jobs:
           find packages/animoria-jetbrains/src/main/resources/native \
             -type f -name 'animoria-core' -exec chmod +x {} \;
 
-      - name: Build JetBrains Plugin
+      - name: Build and verify JetBrains Plugin
         run: |
-          mkdir -p packages/animoria-jetbrains/src/main/resources/assets
-          cp -r apps/animoria-sandbox/dist/* packages/animoria-jetbrains/src/main/resources/assets/
+          set -euo pipefail
           cd packages/animoria-jetbrains
           chmod +x ./gradlew
-          ./gradlew buildPlugin
+          # The shared UI bundle is copied in by the `copySharedUi` Gradle task, which
+          # `processResources` depends on and which *fails* when the bundle is
+          # missing. It used to be a `cp` of the sandbox's dist into `resources/assets`,
+          # which no longer exists and which nothing read even when it did — the
+          # plugin shipped a directory of dead files and a blank panel.
+          #
+          # `verifyPlugin` runs on every pull request; it must also run here, so a
+          # release can never ship a plugin that CI would have rejected.
+          ./gradlew buildPlugin verifyPlugin
 
+      - name: Verify the plugin jar carries the shared UI bundle
+        run: |
+          set -euo pipefail
+          # A plugin without the bundle installs, launches, and renders an empty
+          # rectangle with nothing in the log. That is a release-blocking defect and
+          # it is invisible to `verifyPlugin`, so it is asserted here.
+          JAR=$(find packages/animoria-jetbrains/build -name 'instrumented-*.jar' | head -1)
+          if [ -z "$JAR" ]; then
+            echo "::error::No instrumented plugin jar was produced"
+            exit 1
+          fi
+          for entry in web/animoria-ui.global.js web/tokens.css; do
+            if ! unzip -l "$JAR" | grep -q "$entry"; then
+              echo "::error::$entry is missing from the plugin jar — the tool window would be blank"
+              exit 1
+            fi
+          done
+
+      - name: Assert built plugin carries the release version
+        run: |
+          set -euo pipefail
+          EXPECTED="${{ steps.version.outputs.VERSION }}"
+          if ! ls packages/animoria-jetbrains/build/distributions/*-"$EXPECTED".zip >/dev/null 2>&1; then
+            echo "::error::No plugin distribution found for version $EXPECTED"
+            ls -la packages/animoria-jetbrains/build/distributions/ || true
+            exit 1
+          fi
+
+      # NOT `continue-on-error`. A failed Marketplace publish must fail the release:
+      # silently swallowing it is what allowed the plugin to stop updating unnoticed.
       - name: Publish to JetBrains Marketplace
-        continue-on-error: true
-
         env:
           JETBRAINS_PUBLISH_TOKEN: ${{ secrets.JETBRAINS_PUBLISH_TOKEN }}
         run: |
@@ -157,7 +300,7 @@ jobs:
           ./gradlew publishPlugin
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: |
             packages/animoria-vscode/animoria-${{ steps.version.outputs.VERSION }}.vsix

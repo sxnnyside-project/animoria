@@ -1,4 +1,11 @@
 import type { AnimoriaAsset } from '../../types/asset.js';
+import type { UnrewritableReference } from './reference-rewrite.js';
+
+export type {
+  ReferenceRewrite,
+  RewriteRefusalReason,
+  UnrewritableReference,
+} from './reference-rewrite.js';
 
 /**
  * Contracts for the Assist Duplicate Resolution domain.
@@ -50,9 +57,33 @@ export interface DuplicateCandidate {
  * survive; see `canonical-suggestion.js` for the default this data
  * supports and the comparison UI for how it's presented.
  */
+/**
+ * What made a set of assets "the same".
+ *
+ * Three distinct relations are easy to conflate and must not be:
+ * - **`content-hash`** — the files are byte-identical. Certain, and the only basis
+ *   on which one copy can be deleted in favour of another.
+ * - **`filename`** — the files share a name. A *naming* collision that confuses
+ *   developers and searches; it says nothing about the bytes, and two files named
+ *   `logo.json` may be completely different images.
+ *
+ * They are reported by different rules (`no-duplicate-content` and
+ * `no-duplicate-names`) precisely because acting on them differs: one is safe to
+ * deduplicate, the other is safe only to rename.
+ */
+export type DuplicateMatchKind = 'content-hash' | 'filename';
+
 export interface DuplicateGroup {
   /** Content hash shared by every candidate — stable identity for this group across a single analysis run. */
   readonly id: string;
+  /**
+   * How membership was established. Present so a consumer never has to infer the
+   * basis from which field happens to be populated — see {@link DuplicateMatchKind}
+   * for why the distinction is load-bearing.
+   */
+  readonly matchKind: DuplicateMatchKind;
+  /** The shared content hash. Identical to {@link id} for content-hash groups; named separately so the basis is explicit rather than implied by a field being reused as an identifier. */
+  readonly contentHash: string;
   /** Every asset sharing this content hash, in deterministic order (highest reference count first, then shortest path, then alphabetical). */
   readonly candidates: readonly DuplicateCandidate[];
   /** Byte size shared by every candidate (content-identical assets are necessarily the same size). */
@@ -80,8 +111,12 @@ export interface ReferenceUpdate {
   readonly line: number;
   /** The exact current line content this update expects to find and replace. */
   readonly oldText: string;
-  /** The line content after substituting the canonical asset's name/stem. */
+  /** The line content after repointing its reference target at the canonical asset. */
   readonly newText: string;
+  /** The reference target as it is spelled in the source today. */
+  readonly oldTarget: string;
+  /** The target that replaces it — a complete path recomputed from the referencing file. */
+  readonly newTarget: string;
 }
 
 /**
@@ -100,12 +135,42 @@ export interface ReferenceUpdate {
  */
 export interface ResolutionPlan {
   readonly group: DuplicateGroup;
+  /**
+   * The root the canonical asset lives in, when the caller supplied one.
+   *
+   * A duplicate group may span roots — two byte-identical files in different
+   * projects — so "which root am I keeping the copy in?" is a question the plan must
+   * answer rather than one a client re-derives from a path. `null` for a caller with
+   * no workspace context (the CLI's single-root path).
+   */
+  readonly root: { readonly id: string; readonly name: string } | null;
   /** The asset the developer chose to keep. Always a member of `group.candidates`. */
   readonly canonicalAsset: AnimoriaAsset;
-  /** Every other candidate — these files will be deleted on execution. */
+  /** Every other candidate — these files move to Core trash on execution, never a permanent delete. */
   readonly assetsToDelete: readonly AnimoriaAsset[];
-  /** Every source line that will be rewritten to reference `canonicalAsset` instead of a deleted duplicate. */
+  /** Every source line that will be rewritten to reference `canonicalAsset` instead of a removed duplicate. */
   readonly referenceUpdates: readonly ReferenceUpdate[];
+  /**
+   * Every reference that points at a removed duplicate but which Animoria refuses
+   * to rewrite mechanically, each with the reason.
+   *
+   * This list existing — and being non-empty — is a feature, not a shortfall. A
+   * reference Animoria cannot repoint with certainty is one a developer must
+   * handle, and saying so plainly is the only honest option: the alternative is a
+   * plausible-looking edit derived from a string coincidence. See
+   * {@link ResolutionPlan.safety} for what a non-empty list means for execution.
+   */
+  readonly unrewritableReferences: readonly UnrewritableReference[];
+  /**
+   * Whether executing this plan leaves the workspace fully repointed.
+   *
+   * `complete` — every reference to every removed asset will be rewritten.
+   * `partial` — some references cannot be rewritten mechanically; executing the
+   * plan will leave them pointing at files that have moved to trash, so the
+   * developer must fix them by hand. A client must surface this distinction
+   * before asking for confirmation.
+   */
+  readonly safety: 'complete' | 'partial';
   /** Bytes recovered by this specific plan (`assetsToDelete` summed). */
   readonly estimatedSavingsBytes: number;
 }

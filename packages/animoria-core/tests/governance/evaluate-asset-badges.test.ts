@@ -25,15 +25,15 @@ describe('evaluateAssetBadges', () => {
     expect(evaluateAssetBadges(asset(), {})).toEqual([]);
   });
 
-  it('flags an asset with zero references as orphaned', () => {
+  it('flags an asset with zero references as unreferenced', () => {
     const a = asset();
     const badges = evaluateAssetBadges(a, { referenceCounts: new Map([[a.path, 0]]) });
     expect(badges).toHaveLength(1);
-    expect(badges[0]!.kind).toBe('orphaned');
+    expect(badges[0]!.kind).toBe('unreferenced');
     expect(badges[0]!.severity).toBe('warning');
   });
 
-  it('does not flag an asset with references as orphaned', () => {
+  it('does not flag an asset with references as unreferenced', () => {
     const a = asset();
     const badges = evaluateAssetBadges(a, { referenceCounts: new Map([[a.path, 3]]) });
     expect(badges).toHaveLength(0);
@@ -53,17 +53,17 @@ describe('evaluateAssetBadges', () => {
     expect(badges[0]!.severity).toBe('info');
   });
 
-  it('flags an asset with rule diagnostics as rule-violation', () => {
+  it('flags an asset with rule diagnostics as rule-finding', () => {
     const a = asset();
     const badges = evaluateAssetBadges(a, {
       diagnosticsByAssetPath: new Map([[a.path, [diagnostic({ asset: a })]]]),
     });
     expect(badges).toHaveLength(1);
-    expect(badges[0]!.kind).toBe('rule-violation');
+    expect(badges[0]!.kind).toBe('rule-finding');
     expect(badges[0]!.severity).toBe('error');
   });
 
-  it('uses "warning" severity for rule-violation when no diagnostic is error-severity', () => {
+  it('uses "warning" severity for rule-finding when no diagnostic is error-severity', () => {
     const a = asset();
     const badges = evaluateAssetBadges(a, {
       diagnosticsByAssetPath: new Map([[a.path, [diagnostic({ asset: a, severity: 'warning' })]]]),
@@ -78,7 +78,7 @@ describe('evaluateAssetBadges', () => {
       duplicateAssetPaths: new Set([a.path]),
       diagnosticsByAssetPath: new Map([[a.path, [diagnostic({ asset: a })]]]),
     });
-    expect(badges.map((b) => b.kind)).toEqual(['orphaned', 'duplicate', 'rule-violation']);
+    expect(badges.map((b) => b.kind)).toEqual(['unreferenced', 'duplicate', 'rule-finding']);
   });
 
   it('never inspects assets other than the one it was called for', () => {

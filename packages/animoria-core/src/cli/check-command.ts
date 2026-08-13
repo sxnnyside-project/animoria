@@ -1,7 +1,8 @@
 import { stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { WorkspaceIndexer } from '../indexer/workspace-indexer.js';
+import { CONFIG_FILE_PSEUDO_RULE_ID } from '../indexer/workspace-indexer.js';
+import { WorkspaceSession } from '../workspace/workspace-session.js';
 import { logDebug } from '../logging/logger.js';
 import { parseCheckArgv } from './argv-parser.js';
 import { CliUsageError } from './cli-usage-error.js';
@@ -74,27 +75,45 @@ export async function runCheckCommand(argv: readonly string[]): Promise<CheckCom
     throw err;
   }
 
-  const workspacePath = resolve(options.workspacePath ?? process.cwd());
+  // `process.cwd()` is the correct default for a CLI — it is what the user typed
+  // `animoria check` *in* — and is deliberately the only place Animoria reads it.
+  const rootPaths = (
+    options.workspacePaths.length > 0 ? options.workspacePaths : [process.cwd()]
+  ).map((path) => resolve(path));
 
-  const workspaceError = await validateWorkspaceDirectory(workspacePath);
-  if (workspaceError) {
-    return { exitCode: CLI_EXIT_CODES.WORKSPACE_ERROR, output: workspaceError };
+  for (const rootPath of rootPaths) {
+    const workspaceError = await validateWorkspaceDirectory(rootPath);
+    if (workspaceError) {
+      return { exitCode: CLI_EXIT_CODES.WORKSPACE_ERROR, output: workspaceError };
+    }
   }
 
   const start = performance.now();
-  const indexer = new WorkspaceIndexer({ workspacePath });
+  const session = new WorkspaceSession(rootPaths);
 
   try {
-    const snapshot = await indexer.initialize();
-    const configLoadWarnings = indexer.getDiagnostics()[0]?.warnings ?? [];
+    // The *complete* path, not the fast one. `initializeFast` returns before
+    // reference evidence exists, which made every reference-dependent rule decline
+    // to run — and this command reported the resulting empty diagnostic list as a
+    // pass. A one-shot consumer that renders a verdict and exits must wait for the
+    // evidence its rules depend on.
+    const aggregate = await session.initialize();
 
-    const report = buildGovernanceCheckReport(
-      snapshot,
-      workspacePath,
-      performance.now() - start,
-      { minHealthScore: options.minHealthScore },
-      configLoadWarnings
-    );
+    // One report per root, then the worst outcome decides the exit code. Merging
+    // the roots into one report would have to pick one root's `.animoriarc` to
+    // describe, and the roots may govern themselves differently.
+    const durationMs = performance.now() - start;
+    const perRoot = aggregate.roots.map(({ root, analysis }) => ({
+      root,
+      report: buildGovernanceCheckReport(analysis, durationMs, {
+        minHealthScore: options.minHealthScore,
+      }),
+      analysis,
+    }));
+
+    // A gate passes only when every root passes. Reporting the first root's verdict
+    // for the workspace is how a CI gate comes to approve a change it never examined.
+    const report = perRoot[0]!.report;
 
     const formatName =
       options.format ?? (options.ci ? DEFAULT_FORMAT_CI : DEFAULT_FORMAT_INTERACTIVE);
@@ -107,12 +126,32 @@ export async function runCheckCommand(argv: readonly string[]): Promise<CheckCom
       throw new Error(`No renderer registered for format "${formatName}".`);
     }
 
-    const output = renderer.render(report);
-    const exitCode =
-      configLoadWarnings.length > 0
-        ? CLI_EXIT_CODES.CONFIGURATION_ERROR
-        : report.outcome.passed
-          ? CLI_EXIT_CODES.SUCCESS
+    const output =
+      perRoot.length === 1
+        ? renderer.render(perRoot[0]!.report)
+        : perRoot
+            .map((entry) => `# ${entry.root.name}\n\n${renderer.render(entry.report)}`)
+            .join('\n\n');
+
+    // A `.animoriarc` that would not load is neither a pass nor a governance
+    // violation: the rules the team configured never ran, so the run says nothing
+    // about the assets. The analysis reports it; this only maps it to an exit code.
+    const hasConfigFileProblem = perRoot.some((entry) =>
+      entry.analysis.configErrors.some((e) => e.ruleId === CONFIG_FILE_PSEUDO_RULE_ID)
+    );
+    // Every root must pass, and any root's incompleteness makes the run incomplete.
+    const allPassed = perRoot.every((entry) => entry.report.outcome.passed);
+    const anyIncomplete = perRoot.some((entry) => entry.report.outcome.incomplete);
+    const exitCode = hasConfigFileProblem
+      ? CLI_EXIT_CODES.CONFIGURATION_ERROR
+      : allPassed
+        ? CLI_EXIT_CODES.SUCCESS
+        : // A run that failed only because a configured gate could not be evaluated
+          // is not a governance violation — nothing was found to be wrong. It gets
+          // its own code so a pipeline can tell "your assets need attention" from
+          // "Animoria could not check them".
+          anyIncomplete
+          ? CLI_EXIT_CODES.INCOMPLETE_ANALYSIS
           : CLI_EXIT_CODES.GOVERNANCE_VIOLATIONS;
 
     return { exitCode, output };
@@ -122,7 +161,7 @@ export async function runCheckCommand(argv: readonly string[]): Promise<CheckCom
       output: `Animoria check failed unexpectedly: ${err instanceof Error ? err.message : String(err)}`,
     };
   } finally {
-    indexer.dispose();
+    session.dispose();
   }
 }
 

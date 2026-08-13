@@ -1,6 +1,6 @@
 import { lineMatchesAsset } from '@animoria/core';
 import type { AnimoriaAsset, AnimoriaStaticAsset } from '@animoria/core';
-import type { WorkspaceIndexSnapshot } from '@animoria/core';
+import type { WorkspaceAnalysis } from '@animoria/core';
 import * as vscode from 'vscode';
 
 // ─── AssetResolver ────────────────────────────────────────────────────────────
@@ -31,7 +31,7 @@ export class AssetResolver {
   static resolveFromPosition(
     document: vscode.TextDocument,
     position: vscode.Position,
-    snapshot: WorkspaceIndexSnapshot
+    snapshot: WorkspaceAnalysis
   ): AnimoriaAsset | null {
     const line = document.lineAt(position.line).text;
 

@@ -1,4 +1,4 @@
-import { type HealthScoreReport, type HealthState, describeHealthState } from '@animoria/core';
+import { type HealthScoreOutcome, type HealthState, describeHealthState } from '@animoria/core';
 import * as vscode from 'vscode';
 
 /**
@@ -51,20 +51,36 @@ export interface PresentedHealthScore {
  * description, and a richer tooltip — the three levels of detail a VS
  * Code `TreeItem` supports, from "glance" to "hover for more."
  */
-export function presentHealthScore(report: HealthScoreReport): PresentedHealthScore {
+export function presentHealthScore(outcome: HealthScoreOutcome): PresentedHealthScore {
+  // A workspace Core could not score gets a row that says so. The row used to be
+  // hidden entirely when no score existed, which read as "nothing to report" — the
+  // same silence a perfectly healthy workspace produces.
+  if (outcome.status === 'unavailable') {
+    return {
+      label: 'Health Score: not available',
+      description: outcome.reason.replace(/-/g, ' '),
+      tooltip: outcome.message,
+      icon: new vscode.ThemeIcon('question'),
+    };
+  }
+
+  const report = outcome.report;
   const state = describeHealthState(report.score);
   const stateLabel = HEALTH_STATE_LABELS[state];
   const icon = new vscode.ThemeIcon(HEALTH_STATE_ICONS[state]);
 
   const label = `Health Score: ${Math.round(report.score)}/100 · ${stateLabel}`;
-  const opportunityWord = report.totalDiagnosticCount === 1 ? 'opportunity' : 'opportunities';
-  const description = `${report.totalDiagnosticCount} governance ${opportunityWord}`;
+  const findingWord = report.totalDiagnosticCount === 1 ? 'finding' : 'findings';
+  const description = `${report.totalDiagnosticCount} governance ${findingWord}`;
 
   const topRecommendation = report.recommendations[0]?.message;
   const tooltipLines = [
     label,
     `${report.totalAssetCount} asset(s) analyzed`,
     description,
+    // Caveats first: a score computed while a configured rule declined to run is a
+    // floor on the problems present, not a full accounting of them.
+    ...report.qualifications.map((q) => `⚠ ${q.message}`),
     topRecommendation ? `Top priority: ${topRecommendation}` : 'No issues detected.',
   ];
 

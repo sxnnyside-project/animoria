@@ -110,11 +110,114 @@ export class Position {
   ) {}
 }
 
-export class Range {
+/**
+ * `Selection` extends `Range` in the real API. Modelled here because the host
+ * bridge sets `editor.selection` when it navigates to a reference — a mock without
+ * it fails on shape rather than on behaviour.
+ */
+export class Selection {
   constructor(
-    public readonly start: Position,
-    public readonly end: Position
+    public readonly anchor: Position,
+    public readonly active: Position
   ) {}
+
+  get start(): Position {
+    return this.anchor;
+  }
+
+  get end(): Position {
+    return this.active;
+  }
+}
+
+/** Mirrors `vscode.TextEditorRevealType`. Only the member the bridge uses. */
+export const TextEditorRevealType = {
+  Default: 0,
+  InCenter: 1,
+  InCenterIfOutsideViewport: 2,
+  AtTop: 3,
+} as const;
+
+export class Range {
+  readonly start: Position;
+  readonly end: Position;
+
+  // Mirrors the real overloads: `(Position, Position)` and
+  // `(startLine, startChar, endLine, endChar)`. `DiagnosticPublisher` uses the
+  // numeric form, so a Position-only mock would fail on shape rather than on
+  // behaviour.
+  constructor(start: Position, end: Position);
+  constructor(startLine: number, startCharacter: number, endLine: number, endCharacter: number);
+  constructor(a: Position | number, b: Position | number, c?: number, d?: number) {
+    if (typeof a === 'number') {
+      this.start = new Position(a, b as number);
+      this.end = new Position(c as number, d as number);
+    } else {
+      this.start = a;
+      this.end = b as Position;
+    }
+  }
+}
+
+export enum DiagnosticSeverity {
+  Error = 0,
+  Warning = 1,
+  Information = 2,
+  Hint = 3,
+}
+
+export class Location {
+  constructor(
+    public readonly uri: Uri,
+    public readonly range: Range | Position
+  ) {}
+}
+
+export class DiagnosticRelatedInformation {
+  constructor(
+    public readonly location: Location,
+    public readonly message: string
+  ) {}
+}
+
+export class Diagnostic {
+  source?: string;
+  code?: string | number | { value: string | number; target: Uri };
+  relatedInformation?: DiagnosticRelatedInformation[];
+
+  constructor(
+    public readonly range: Range,
+    public readonly message: string,
+    public readonly severity: DiagnosticSeverity = DiagnosticSeverity.Error
+  ) {}
+}
+
+/**
+ * Records what was published, per file, so a test can assert on the Problems
+ * panel's contents rather than on the calls that produced them.
+ */
+export class FakeDiagnosticCollection {
+  readonly entries = new Map<string, Diagnostic[]>();
+  disposed = false;
+
+  constructor(public readonly name: string) {}
+
+  set(uri: Uri, diagnostics: Diagnostic[]): void {
+    this.entries.set(uri.fsPath, diagnostics);
+  }
+
+  get(uri: Uri): Diagnostic[] | undefined {
+    return this.entries.get(uri.fsPath);
+  }
+
+  clear(): void {
+    this.entries.clear();
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    this.entries.clear();
+  }
 }
 
 export class Hover {
@@ -164,7 +267,10 @@ export class Uri {
   }
 
   static parse(value: string): Uri {
-    return new Uri('file', value, value);
+    // Keeps the scheme, so a test can tell an `https:` help link apart from a
+    // `file:` asset path — `DiagnosticPublisher` puts both on the same diagnostic.
+    const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(value)?.[1] ?? 'file';
+    return new Uri(scheme, value, value);
   }
 
   static joinPath(base: Uri, ...segments: string[]): Uri {
@@ -185,6 +291,7 @@ export class Uri {
 export class WorkspaceEdit {
   readonly fileDeletions: Uri[] = [];
   readonly fileRenames: { from: Uri; to: Uri }[] = [];
+  readonly fileCreations: { uri: Uri; contents?: Uint8Array }[] = [];
   readonly textEdits: { uri: Uri; range: Range; newText: string }[] = [];
 
   deleteFile(uri: Uri, _options?: { ignoreIfNotExists?: boolean }): void {
@@ -197,6 +304,13 @@ export class WorkspaceEdit {
     _options?: { overwrite?: boolean; ignoreIfExists?: boolean }
   ): void {
     this.fileRenames.push({ from, to });
+  }
+
+  createFile(
+    uri: Uri,
+    options?: { overwrite?: boolean; ignoreIfExists?: boolean; contents?: Uint8Array }
+  ): void {
+    this.fileCreations.push({ uri, contents: options?.contents });
   }
 
   replace(uri: Uri, range: Range, newText: string): void {
@@ -318,7 +432,12 @@ interface FakeState {
 }
 
 /** Mutable state a test configures before exercising extension code. Reset between tests via `resetVscodeMock()`. */
-export const __mockState: FakeState = {
+const nodeReadFile = async (path: string): Promise<Uint8Array> => {
+  const { readFile } = await import('node:fs/promises');
+  return readFile(path);
+};
+
+export const __mockState: FakeState & { lastShownEditor?: unknown } = {
   workspaceFolders: undefined,
   configuration: {},
   fileSystem: new Map(),
@@ -378,7 +497,26 @@ export const window = {
   ) => Thenable<string | undefined>,
   showErrorMessage: async (_message: string): Promise<string | undefined> => undefined,
   showSaveDialog: async (): Promise<Uri | undefined> => __mockState.saveDialogResult,
-  showTextDocument: async (): Promise<void> => undefined,
+  /**
+   * Returns a minimal editor rather than `undefined`: the host bridge navigates by
+   * setting `selection` and calling `revealRange` on the result, so a mock that
+   * returns nothing tests only that the call did not throw.
+   */
+  showTextDocument: async (): Promise<{
+    selection: Selection | undefined;
+    revealRange: (range: Range, type?: number) => void;
+    _revealed: { range: Range | undefined; type: number | undefined };
+  }> => {
+    const editor = {
+      selection: undefined as Selection | undefined,
+      _revealed: { range: undefined as Range | undefined, type: undefined as number | undefined },
+      revealRange(range: Range, type?: number) {
+        editor._revealed = { range, type };
+      },
+    };
+    __mockState.lastShownEditor = editor;
+    return editor;
+  },
   createQuickPick<T>(): {
     placeholder: string;
     items: T[];
@@ -441,6 +579,13 @@ export const languages = {
   registerHoverProvider(_selector: unknown, _provider: unknown): Disposable {
     return new Disposable(() => {});
   },
+  /** The most recently created collection, so a test can inspect what was published. */
+  _lastDiagnosticCollection: undefined as FakeDiagnosticCollection | undefined,
+  createDiagnosticCollection(name: string): FakeDiagnosticCollection {
+    const collection = new FakeDiagnosticCollection(name);
+    languages._lastDiagnosticCollection = collection;
+    return collection;
+  },
 };
 
 export const env = {
@@ -480,12 +625,18 @@ export const workspace = {
   onDidChangeWorkspaceFolders(_listener: () => unknown): Disposable {
     return new Disposable(() => {});
   },
-  openTextDocument: async (options: {
-    content: string;
-    language?: string;
-  }): Promise<{ uri: Uri; getText(): string }> => {
+  // Two call shapes in the real API: `openTextDocument({ content })` creates an
+  // untitled document, `openTextDocument(uri)` opens a file. The host bridge uses
+  // the second when it navigates to a reference.
+  openTextDocument: async (
+    optionsOrUri: { content: string; language?: string } | Uri
+  ): Promise<{ uri: Uri; getText(): string }> => {
+    if (optionsOrUri instanceof Uri) {
+      const content = __mockState.fileSystem.get(optionsOrUri.fsPath) ?? '';
+      return { uri: optionsOrUri, getText: () => content };
+    }
     const uri = Uri.file(`untitled:${Date.now()}`);
-    return { uri, getText: () => options.content };
+    return { uri, getText: () => optionsOrUri.content };
   },
   async applyEdit(edit: WorkspaceEdit): Promise<boolean> {
     for (const del of edit.fileDeletions) {
@@ -497,6 +648,9 @@ export const workspace = {
       if (content !== undefined) {
         __mockState.fileSystem.set(to.fsPath, content);
       }
+    }
+    for (const { uri, contents } of edit.fileCreations) {
+      __mockState.fileSystem.set(uri.fsPath, Buffer.from(contents ?? new Uint8Array()));
     }
     for (const change of edit.textEdits) {
       const existing = __mockState.fileSystem.get(change.uri.fsPath)?.toString('utf-8') ?? '';
@@ -516,8 +670,22 @@ export const workspace = {
     },
     async readFile(uri: Uri): Promise<Uint8Array> {
       const value = __mockState.fileSystem.get(uri.fsPath);
-      if (!value) throw new Error(`ENOENT (mock): ${uri.fsPath}`);
-      return value;
+      if (value) return value;
+
+      // Falls through to the real filesystem.
+      //
+      // The mock modelled writes only, so any code path that *reads* a file the test
+      // wrote with `node:fs` — a fixture Lottie, a thumbnail, an asset's own bytes —
+      // saw ENOENT. The preview bridge reads all three, so a suite exercising it
+      // against this mock would confirm the fallback behaviour and never once reach
+      // the code that produces a preview. That is the mock-integrity failure this
+      // repository has already been bitten by: a test passing because the double
+      // behaves differently from production.
+      try {
+        return await nodeReadFile(uri.fsPath);
+      } catch {
+        throw new Error(`ENOENT (mock): ${uri.fsPath}`);
+      }
     },
     async createDirectory(_uri: Uri): Promise<void> {
       // Directories are not modeled in the mock filesystem — file entries

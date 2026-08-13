@@ -5,11 +5,11 @@ import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.openapi.wm.WindowManager
+import com.sxnnyside.animoria.backend.AnimoriaCoroutineScope
 import com.sxnnyside.animoria.backend.CoreProcessManager
 import com.sxnnyside.animoria.backend.JetBrainsAsset
 import com.sxnnyside.animoria.backend.SnippetData
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -33,7 +33,7 @@ object GenerateSnippetAction {
     ) {
         val processManager = project.getService(CoreProcessManager::class.java)
 
-        GlobalScope.launch(Dispatchers.IO) {
+        AnimoriaCoroutineScope.of(project).launch(Dispatchers.IO) {
             try {
                 val response =
                     processManager.sendCommand(

@@ -12,7 +12,6 @@ import com.intellij.openapi.project.Project
  *
  * Mirrors the VS Code configuration schema:
  * - `animoria.enableThumbnails` → [enableThumbnails]
- * - `animoria.governance.overusedThreshold` → [overusedThreshold]
  *
  * ## API
  * Access via `AnimoriaSettings.getInstance(project)`.
@@ -31,11 +30,25 @@ class AnimoriaSettings : PersistentStateComponent<AnimoriaSettings.State> {
     data class State(
         /** Generate and display static thumbnail previews for animated assets. */
         var enableThumbnails: Boolean = true,
+        // ── Shared UI view preferences ──
+        //
+        // Persisted here rather than in the webview, because the shared UI has no
+        // storage and must not acquire any: a component that remembers things across
+        // hosts is a component that behaves differently in each of them. The host
+        // owns persistence and echoes the stored value back, so what the panel renders
+        // is always what was actually saved.
+        var playbackSpeed: Double = 1.0,
+        var previewBackground: String = "transparent",
+        var locale: String = "en",
+        var assetViewMode: String = "flat",
         /**
-         * Number of source-file references at or above which an asset is
-         * flagged as overused in the Governance report.
+         * Cleanup candidates the developer has set aside.
+         *
+         * A host preference, not a Core fact: Core reports that an asset is
+         * unreferenced and that stays true. What this records is that this developer,
+         * in this project, has already decided about it.
          */
-        var overusedThreshold: Int = 10,
+        var dismissedCleanupPaths: MutableList<String> = mutableListOf(),
     )
 
     private var state = State()
@@ -47,7 +60,43 @@ class AnimoriaSettings : PersistentStateComponent<AnimoriaSettings.State> {
     }
 
     val enableThumbnails: Boolean get() = state.enableThumbnails
-    val overusedThreshold: Int get() = state.overusedThreshold
+
+    var playbackSpeed: Double
+        get() = state.playbackSpeed
+        set(value) {
+            state.playbackSpeed = value
+        }
+
+    var previewBackground: String
+        get() = state.previewBackground
+        set(value) {
+            state.previewBackground = value
+        }
+
+    var locale: String
+        get() = state.locale
+        set(value) {
+            state.locale = value
+        }
+
+    var assetViewMode: String
+        get() = state.assetViewMode
+        set(value) {
+            state.assetViewMode = value
+        }
+
+    val dismissedCleanupPaths: List<String> get() = state.dismissedCleanupPaths.toList()
+
+    fun setDismissed(
+        assetPath: String,
+        dismissed: Boolean,
+    ) {
+        if (dismissed) {
+            if (assetPath !in state.dismissedCleanupPaths) state.dismissedCleanupPaths.add(assetPath)
+        } else {
+            state.dismissedCleanupPaths.remove(assetPath)
+        }
+    }
 
     companion object {
         fun getInstance(project: Project): AnimoriaSettings = project.getService(AnimoriaSettings::class.java)

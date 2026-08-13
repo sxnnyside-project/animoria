@@ -5,6 +5,15 @@ export interface CheckCommandOptions {
   /** Workspace path to check. `undefined` means "use the current working directory". */
   readonly workspacePath: string | undefined;
   /**
+   * Every positional path, in order.
+   *
+   * A workspace may have several roots (V2), and `check` is the CI gate — a
+   * pipeline that can only check one root of a multi-root repository silently
+   * passes on the other two. `workspacePath` remains the first, so every existing
+   * caller and message is unchanged.
+   */
+  readonly workspacePaths: readonly string[];
+  /**
    * Whether `--ci` was passed. Signals a non-interactive environment —
    * see `check-command.js` for the (deliberately narrow) way this
    * affects behavior. Never affects pass/fail: exit codes must stay
@@ -54,6 +63,7 @@ export function parseCheckArgv(
   knownFormats: readonly string[]
 ): CheckCommandOptions {
   let workspacePath: string | undefined;
+  const workspacePaths: string[] = [];
   let ci = false;
   let format: string | undefined;
   let minHealthScore: number | undefined;
@@ -103,15 +113,17 @@ export function parseCheckArgv(
       continue;
     }
 
+    // Additional positionals are additional roots, not an error. `check` is the CI
+    // gate: one that can only check the first root of a multi-root repository
+    // silently passes on the rest, which is the worst possible failure for a gate.
+    workspacePaths.push(token);
     if (workspacePath === undefined) {
       workspacePath = token;
-    } else {
-      throw new CliUsageError(`Unexpected extra argument: "${token}"`);
     }
     i++;
   }
 
-  return { workspacePath, ci, format, minHealthScore };
+  return { workspacePath, workspacePaths, ci, format, minHealthScore };
 }
 
 /**

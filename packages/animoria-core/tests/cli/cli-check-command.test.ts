@@ -119,7 +119,7 @@ describe('runCheckCommand', () => {
     const result = await runCheckCommand([workspace, '--format', 'json']);
     const parsed = JSON.parse(result.output);
 
-    expect(parsed.totalAssetCount).toBe(1);
+    expect(parsed.analysis.assets).toHaveLength(1);
     expect(parsed.outcome.passed).toBe(true);
   });
 
@@ -136,14 +136,21 @@ describe('runCheckCommand', () => {
 
     expect(second.exitCode).toBe(first.exitCode);
     const [a, b] = [JSON.parse(first.output), JSON.parse(second.output)];
-    a.generatedAt = undefined;
-    b.generatedAt = undefined;
-    a.durationMs = undefined;
-    b.durationMs = undefined;
-    delete a.healthScore?.generatedAt;
-    delete b.healthScore?.generatedAt;
-    delete a.healthScore?.durationMs;
-    delete b.healthScore?.durationMs;
+    // Timestamps and elapsed times are the only fields allowed to differ between
+    // two runs over identical input; everything else being equal is what makes
+    // the check usable as a CI gate.
+    for (const report of [a, b]) {
+      report.generatedAt = undefined;
+      report.durationMs = undefined;
+      report.analysis.generatedAt = undefined;
+      report.analysis.durationMs = undefined;
+      if (report.analysis.health?.report) {
+        report.analysis.health.report.generatedAt = undefined;
+        report.analysis.health.report.durationMs = undefined;
+      }
+      for (const asset of report.analysis.assets) asset.mtime = undefined;
+      for (const diagnostic of report.analysis.diagnostics) diagnostic.asset.mtime = undefined;
+    }
     expect(a).toEqual(b);
   });
 

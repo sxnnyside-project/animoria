@@ -49,9 +49,13 @@ sandbox-build: core-build
     pnpm --filter animoria-sandbox build
 
 jetbrains-build: core-build
-    cd packages/animoria-jetbrains && ./gradlew buildPlugin
+    pnpm --filter @animoria/ui build
+    pnpm --filter @animoria/core build:sea
+    node scripts/copy-sea-into-jetbrains.mjs
+    cd packages/animoria-jetbrains && ./gradlew buildPlugin -x buildSearchableOptions
 
 jetbrains-run: core-build
+    pnpm --filter @animoria/ui build
     pnpm --filter @animoria/core build:sea
     node scripts/copy-sea-into-jetbrains.mjs
     cd packages/animoria-jetbrains && ./gradlew runIde

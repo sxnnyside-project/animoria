@@ -64,7 +64,7 @@ export class AnimoriaHoverProvider implements vscode.HoverProvider {
     position: vscode.Position,
     _token: vscode.CancellationToken
   ): vscode.ProviderResult<vscode.Hover> {
-    const snapshot = this._indexer.getSnapshot();
+    const snapshot = this._indexer.getAnalysis();
 
     // ── Step 1: Resolve asset from index ─────────────────────────────────────
     const asset = AssetResolver.resolveFromPosition(document, position, snapshot);
@@ -74,9 +74,7 @@ export class AnimoriaHoverProvider implements vscode.HoverProvider {
     const referenceCount = snapshot.referenceCounts.get(asset.path) ?? null;
     const thumbnailPath = this._treeProvider.getThumbnail(asset.path) ?? null;
 
-    const hasGovernanceIssue = snapshot.ruleReport
-      ? snapshot.ruleReport.diagnostics.some((d) => d.asset.path === asset.path)
-      : null;
+    const hasGovernanceIssue = snapshot.diagnostics.some((d) => d.asset.path === asset.path);
 
     // ── Step 3: Build presentation model ──────────────────────────────────────
     const card = buildAssetCardModel(asset, {

@@ -1,41 +1,52 @@
+import { existsSync } from 'node:fs';
 import { basename, extname, relative } from 'node:path';
 import { performance } from 'node:perf_hooks';
+import type {
+  AnalysisFailure,
+  AnalysisReadiness,
+  WorkspaceAnalysis,
+} from '../analysis/workspace-analysis.js';
+import type { UsageReference } from '../types/asset.js';
 import { Animoria } from '../animoria.js';
 import { ConfigLoader } from '../governance/config-loader.js';
+import { detectDuplicateGroups } from '../governance/duplicates/duplicate-group-detector.js';
+import type { DuplicateGroup } from '../governance/duplicates/types.js';
 import {
   HealthScoreEngine,
   type HealthScoreReport,
   type HealthScoreWeights,
 } from '../governance/health-score.js';
+import type { HealthScoreOutcome } from '../governance/health-score.js';
 import { type RuleEngineReport, RulesEngine } from '../governance/rules-engine.js';
 import { compileIgnorePatterns, loadAnimoriaIgnore } from '../ignore/animoria-ignore.js';
+import { isDefaultPolicy, resolveRulePolicy } from '../governance/rules/default-policy.js';
 import type { AnimoriaAsset } from '../types/asset.js';
 import { SUPPORTED_ASSET_EXTENSIONS } from '../types/formats.js';
+import type { ScanCoverage } from '../types/scan-coverage.js';
+import { deriveCoverageStatus, describeUnscannedExtensions } from '../types/scan-coverage.js';
 import {
   DEFAULT_USAGE_SCAN_EXTENSIONS,
   UsageScanner,
+  buildReferenceIndex,
   scanFileForAssetReferences,
 } from '../usage/index.js';
-import { runWithConcurrency } from '../utils/concurrency.js';
+import type { ReferenceIndexSummary } from '../usage/reference-index.js';
 import { ChangeCoalescer } from './change-coalescer.js';
 import { Emitter } from './emitter.js';
 import { IndexingScheduler } from './indexing-scheduler.js';
 import { resolveAndParseAsset } from './single-file-resolver.js';
-import type {
-  FileChangeKind,
-  IndexerDiagnosticEntry,
-  WorkspaceIndexSnapshot,
-  WorkspaceIndexUpdate,
-} from './types.js';
+import type { FileChangeKind, IndexerDiagnosticEntry, WorkspaceIndexUpdate } from './types.js';
 
 export type {
   FileChangeEvent,
   FileChangeKind,
   IndexerDiagnosticEntry,
-  WorkspaceIndexSnapshot,
   WorkspaceIndexUpdate,
 } from './types.js';
 export { Emitter } from './emitter.js';
+
+/** Sentinel rule id for a problem with the `.animoriarc` file itself rather than one rule in it. */
+export const CONFIG_FILE_PSEUDO_RULE_ID = '<.animoriarc>';
 
 const ANIMORIARC_BASENAME_PREFIX = '.animoriarc';
 const ANIMORIAIGNORE_BASENAME = '.animoriaignore';
@@ -96,7 +107,7 @@ export interface WorkspaceIndexerConfig {
  *    scan this class ever does: a full asset scan/parse (via `Animoria`),
  *    an initial reference-count pass (one `UsageScanner` run per parsed
  *    asset), an `.animoriarc` load, and an initial `RulesEngine` run. It
- *    resolves with the first {@link WorkspaceIndexSnapshot} and also
+ *    resolves with the first {@link WorkspaceAnalysis} and also
  *    fires it through {@link onDidUpdate}.
  * 3. For the rest of the instance's life, feed it filesystem signals via
  *    {@link notifyFileChanged} as they arrive — one call per raw event,
@@ -166,15 +177,75 @@ export class WorkspaceIndexer {
   private readonly _referenceCounts = new Map<string, number>();
   /** source file path -> (asset path -> reference count contributed by that file) */
   private readonly _fileContributions = new Map<string, Map<string, number>>();
-  private _rulesConfig: Readonly<Record<string, unknown>> = {};
+  private _rulesConfig: Readonly<Record<string, unknown>> = resolveRulePolicy(undefined);
+  /** Whether the policy in force is Animoria's own, with no project override. */
+  private _usingDefaultPolicy = true;
   private _ignorePatterns: string[] = [];
   private _isIgnored: (relativePath: string) => boolean = compileIgnorePatterns([]);
   private _ruleReport: RuleEngineReport | null = null;
-  private _healthScore: HealthScoreReport | null = null;
+  private _health: HealthScoreOutcome = {
+    status: 'unavailable',
+    reason: 'incomplete-analysis',
+    message: 'The workspace has not been analyzed yet.',
+  };
+  /**
+   * Byte-identical asset groups, recomputed only when the asset set changes.
+   *
+   * Hashing reads every asset's bytes, so it belongs with the other async work
+   * rather than inside the synchronous rule pass that runs on every batch.
+   */
+  private _duplicateGroups: readonly DuplicateGroup[] = [];
+  private _duplicatesResolved = false;
+  private _referenceIndexSummary: ReferenceIndexSummary | null = null;
+  /**
+   * Where each asset is actually used, not merely how often.
+   *
+   * The scan computed these locations and threw all but the count away, so the one
+   * question a developer asks about an unreferenced-asset finding — *where is it
+   * used?* — could only be answered by scanning again. Usage References is the
+   * highest-priority capability after the core flow (D-04), and it cannot exist while
+   * the only thing that survives the scan is an integer.
+   *
+   * Bounded by the workspace's total reference count, which the scan already held in
+   * memory a moment earlier.
+   */
+  private _referencesByAsset = new Map<string, readonly UsageReference[]>();
+  /** Wall-clock duration of the most recently applied batch, surfaced on the analysis. */
+  private _lastBatchDurationMs = 0;
+  /**
+   * File-level `.animoriarc` problems — malformed JSON/YAML, wrong top-level shape.
+   *
+   * Distinct from a rule-level config error (a bad value for a known rule) but
+   * surfaced through the same field on the analysis, so no consumer has to merge two
+   * sources to answer "is this workspace's policy loadable?". The CLI used to do that
+   * merge itself, which meant the daemon and VS Code never saw these at all.
+   */
+  private _configLoadWarnings: readonly string[] = [];
+  /**
+   * Whether reference evidence has been established. Gates whether
+   * `referenceCounts` is passed to the rule engine at all: an empty map means
+   * "confirmed zero references", while omitting the signal means "not known yet",
+   * and only the second is honest before the reference pass completes.
+   */
+  private _referencesResolved = false;
+  /**
+   * Whether a full asset scan has completed at least once.
+   *
+   * `readiness.assetsIndexed` was previously the constant `true`, which made the
+   * field unable to express the one state it existed to describe.
+   */
+  private _assetsIndexed = false;
+  private _scanCoverage: ScanCoverage | null = null;
+  /** The in-flight background reference pass started by {@link initializeFast}, if any. */
+  private _backgroundReferencePass: Promise<void> | undefined;
+  /** Aborts background analysis on {@link dispose}, so no work outlives this instance. */
+  private readonly _lifetime = new AbortController();
   private readonly _healthScoreEngine: HealthScoreEngine;
   private _generation = 0;
   private readonly _diagnostics: IndexerDiagnosticEntry[] = [];
   private _isDisposed = false;
+  /** Set when a scan could not run at all — see `WorkspaceAnalysis.failure`. */
+  private _failure: AnalysisFailure | null = null;
 
   private readonly _coalescer: ChangeCoalescer;
   private readonly _scheduler: IndexingScheduler;
@@ -203,86 +274,176 @@ export class WorkspaceIndexer {
   }
 
   /**
-   * Performs the initial full scan and produces the first snapshot. Must
-   * be called exactly once, before any {@link notifyFileChanged} calls
-   * are expected to have a meaningful effect (calls made before
-   * `initialize` resolves are still queued correctly by the coalescer —
-   * they simply won't be applied until the initial state exists).
+   * Performs the initial scan and produces the first snapshot, **without** waiting
+   * for reference evidence.
+   *
+   * The returned snapshot has `readiness.referencesResolved === false`: it is the
+   * list a tree view paints from, not a basis for a governance verdict. Reference
+   * resolution continues in the background and fires a second `onDidUpdate` when it
+   * lands. Consumers that need a verdict must call {@link initializeComplete}.
    */
-  async initialize(): Promise<WorkspaceIndexSnapshot> {
+  async initializeFast(): Promise<WorkspaceAnalysis> {
+    const fastSnapshot = await this._scanAssets();
+    this._backgroundReferencePass = this._establishInitialReferenceCounts(
+      this._lifetime.signal
+    ).catch(() => {
+      // Failures are already recorded as batch warnings; a rejected background
+      // promise must not become an unhandled rejection in the host process.
+    });
+    return fastSnapshot;
+  }
+
+  /**
+   * Performs the initial scan **and** establishes reference evidence before
+   * resolving.
+   *
+   * ## Why one-shot consumers must use this
+   * `initializeFast` deliberately returns early, which is correct for a reactive
+   * host and wrong for anything that renders a verdict and exits. The CLI used to
+   * call the fast path, so `no-unreferenced-assets` found no reference signal,
+   * declined to run, and the check reported `PASS` — on a workspace whose assets
+   * were entirely unreferenced.
+   *
+   * On return, `readiness.complete` is `true` and no analysis work remains
+   * scheduled: a caller may dispose the indexer immediately without losing results.
+   *
+   * @param options.signal Aborts the reference pass. The snapshot still resolves,
+   *   with `readiness.referencesResolved === false` and `scanCoverage.complete === false`,
+   *   so an interrupted run is reported as interrupted rather than as clean.
+   */
+  async initializeComplete(options?: {
+    signal?: AbortSignal;
+  }): Promise<WorkspaceAnalysis> {
+    await this._scanAssets();
+    await this._establishInitialReferenceCounts(options?.signal);
+    return this._buildAnalysis();
+  }
+
+  /**
+   * @deprecated Use {@link initializeFast} (reactive hosts) or
+   * {@link initializeComplete} (one-shot consumers). Retained so existing callers
+   * keep their current behaviour while they migrate.
+   */
+  // MIGRATION-COMPAT(C3): delete when no caller remains — gate: Wave 3.
+  async initialize(): Promise<WorkspaceAnalysis> {
+    return this.initializeFast();
+  }
+
+  /** Scans and parses assets, loads config, runs rules, and commits the first snapshot. */
+  private async _scanAssets(): Promise<WorkspaceAnalysis> {
     await this._reloadIgnore();
     const animoria = new Animoria({
       workspacePath: this._workspacePath,
       exclude: this._ignorePatterns,
     });
-    const result = await animoria.run();
+
+    let result: Awaited<ReturnType<Animoria['run']>>;
+    try {
+      result = await animoria.run();
+      this._failure = null;
+    } catch (err) {
+      // A scan that throws used to leave `_assetsIndexed` false forever, which every
+      // client rendered as an empty workspace — telling the developer they have no
+      // animated assets because Animoria could not look. Recording the failure is
+      // what lets `deriveAnalysisLifecycle` return `failed` instead of `initializing`.
+      this._failure = {
+        reason: existsSync(this._workspacePath) ? 'scan-failed' : 'workspace-missing',
+        message: existsSync(this._workspacePath)
+          ? `Animoria could not scan this workspace: ${
+              err instanceof Error ? err.message : String(err)
+            }`
+          : `Workspace not found: ${this._workspacePath}`,
+      };
+      return this._commit({
+        upsertedAssetPaths: [],
+        removedAssetPaths: [],
+        warnings: [this._failure.message],
+        startedAt: performance.now(),
+      });
+    }
 
     for (const asset of result.assets) {
       this._assets.set(asset.path, asset);
     }
+    this._assetsIndexed = true;
 
     const warnings: string[] = [];
     await this._reloadConfig(warnings);
-    this._runRules(false);
+    this._runRules();
 
-    // Commit and return as soon as assets are scanned/parsed — this is
-    // the snapshot the tree view paints from. Reference counting (one
-    // full-source-tree `UsageScanner` run per parsed asset) is by far the
-    // most expensive part of the initial index and is not needed to show
-    // the asset list: every asset's reference count is simply absent from
-    // `referenceCounts` until the background pass below fills it in and
-    // fires a second `onDidUpdate`, at which point governance/health
-    // state (computed with real counts) supersedes this snapshot's.
-    // Previously this method awaited an *unbounded* `Promise.all` over
-    // every parsed asset before resolving at all, so a workspace of a
-    // few hundred assets fired that many concurrent source-tree scans
-    // before the tree view could paint a single item.
-    const fastSnapshot = this._commit({
+    return this._commit({
       upsertedAssetPaths: result.assets.map((a) => a.path),
       removedAssetPaths: [],
       warnings,
       startedAt: performance.now(),
     });
-
-    void this._establishInitialReferenceCounts();
-
-    return fastSnapshot;
   }
 
   /**
-   * Background completion of the initial reference-count pass, run after
-   * {@link initialize} has already committed and returned its fast
-   * snapshot. Bounded to {@link REFERENCE_COUNT_CONCURRENCY} concurrent
-   * `UsageScanner` runs rather than firing one per asset at once.
+   * Establishes reference evidence for every indexed asset in a single pass.
    *
-   * Deliberately does not go through the scheduler-serialized
-   * `_applyBatch` path `initialize` and incremental updates use — doing
-   * so would mean a real filesystem event has to wait for this
-   * comparatively slow pass to finish before it can be applied, which
-   * defeats the point of deferring this work in the first place. Instead
-   * this re-checks, per asset, that it is still present in `_assets`
-   * before writing its reference count, so a concurrently-applied
-   * removal is never resurrected by a stale in-flight scan result — the
-   * one invariant that actually matters here, without needing full
-   * serialization against `_applyBatch`.
+   * ## One pass, not one per asset
+   * This previously ran one `UsageScanner` per asset, each of which globbed the
+   * workspace and read every source file again — `A` directory walks and `A × F`
+   * file reads for `A` assets and `F` files. `buildReferenceIndex` inverts that to
+   * one walk and one read per file (see its own documentation), which is what takes
+   * the reference workload from 28,270 ms to 65 ms.
+   *
+   * Awaitable and cancellable, so {@link initializeComplete} can guarantee that no
+   * analysis work outlives it.
    */
-  private async _establishInitialReferenceCounts(): Promise<void> {
+  private async _establishInitialReferenceCounts(signal?: AbortSignal): Promise<void> {
     const startedAt = performance.now();
-    const parsedAssets = Array.from(this._assets.values()).filter((a) => a.status === 'parsed');
-    // Nothing to scan means reference counts are already correctly empty
-    // and the fast commit's rule report already reflects that (rules ran
-    // with `referenceCountsReady: false`, not "0 references confirmed") —
-    // firing a second, informationally-identical commit here would just
-    // be a wasted generation bump and `onDidUpdate` notification.
-    if (parsedAssets.length === 0) return;
+    const assets = Array.from(this._assets.values()).filter((a) => a.status === 'parsed');
 
-    await runWithConcurrency(parsedAssets, REFERENCE_COUNT_CONCURRENCY, async (asset) => {
-      if (!this._assets.has(asset.path)) return; // removed while this scan was in flight
-      await this._establishReferenceCount(asset);
-      if (!this._assets.has(asset.path)) this._referenceCounts.delete(asset.path);
+    if (assets.length === 0) {
+      // No assets means reference evidence is trivially complete, not missing —
+      // recording that is what lets rules run (and correctly report nothing) rather
+      // than decline for want of a signal. The same holds for duplicates: there is
+      // nothing to hash, which is a finished search, not an absent one.
+      this._referencesResolved = true;
+      this._duplicatesResolved = true;
+      this._duplicateGroups = [];
+      this._scanCoverage = emptyCoverage(this._workspacePath);
+      this._referenceIndexSummary = null;
+      this._referencesByAsset.clear();
+      this._runRules();
+      return;
+    }
+
+    const index = await buildReferenceIndex({
+      workspacePath: this._workspacePath,
+      assets,
+      extensions: [...this._usageScanExtensions],
+      exclude: this._ignorePatterns,
+      ...(this._scopeResolver ? { scopeResolver: this._scopeResolver } : {}),
+      ...(signal ? { signal } : {}),
     });
 
     if (this._isDisposed) return;
+
+    this._referenceCounts.clear();
+    this._fileContributions.clear();
+    this._referencesByAsset.clear();
+    for (const asset of assets) {
+      if (!this._assets.has(asset.path)) continue; // removed while the scan was in flight
+      const references = index.referencesFor(asset.path);
+      this._referenceCounts.set(asset.path, references.length);
+      this._referencesByAsset.set(asset.path, references);
+      for (const ref of references) {
+        const contribution = this._fileContributions.get(ref.file) ?? new Map<string, number>();
+        contribution.set(asset.path, (contribution.get(asset.path) ?? 0) + 1);
+        this._fileContributions.set(ref.file, contribution);
+      }
+    }
+
+    // 'unknown' means the scan was interrupted; anything else means it ran to
+    // completion and its result — however partial — is real evidence rules may use.
+    this._referencesResolved = index.coverage.status !== 'unknown';
+    this._scanCoverage = index.coverage;
+    this._referenceIndexSummary = index.summary;
+
+    await this._refreshDuplicateGroups();
 
     this._runRules();
     this._commit({
@@ -304,8 +465,42 @@ export class WorkspaceIndexer {
   }
 
   /** The current, immutable state of the index. */
-  getSnapshot(): WorkspaceIndexSnapshot {
-    return this._buildSnapshot();
+  /**
+   * The current, immutable state of the workspace — the one value every client
+   * consumes. See {@link WorkspaceAnalysis}.
+   *
+   * Returns whatever is known *now*, which may be incomplete; check
+   * `readiness.complete` before rendering a verdict, or use {@link analyzeComplete}.
+   */
+  getAnalysis(): WorkspaceAnalysis {
+    return this._buildAnalysis();
+  }
+
+  /**
+   * The current analysis, once every part of it has been established.
+   *
+   * For an on-demand consumer — a daemon command answering a request, a one-shot
+   * run — that needs a verdict rather than a live view. Awaits any background pass
+   * still in flight instead of returning a snapshot whose reference-dependent rules
+   * have not run.
+   *
+   * ## Why it scans when nothing has been scanned
+   * This used to assume an earlier `initializeFast`/`initializeComplete`. Called on
+   * a fresh indexer it returned an analysis over an empty asset map — structurally
+   * indistinguishable from a genuinely empty workspace, and therefore capable of
+   * reporting a workspace full of violations as having nothing to check. The
+   * method now establishes whatever it needs, so its name is true regardless of
+   * call order.
+   */
+  async analyzeComplete(): Promise<WorkspaceAnalysis> {
+    if (!this._assetsIndexed) {
+      await this._scanAssets();
+    }
+    await this.whenIdle();
+    if (!this._referencesResolved || !this._duplicatesResolved) {
+      await this._establishInitialReferenceCounts(this._lifetime.signal);
+    }
+    return this._buildAnalysis();
   }
 
   /**
@@ -315,6 +510,37 @@ export class WorkspaceIndexer {
    * scan) can share the exact same exclusions rather than reloading and
    * re-parsing `.animoriaignore` themselves.
    */
+  /**
+   * Every place one asset is referenced, as Core established it.
+   *
+   * Empty for an asset with no references *and* for an asset whose reference scan has
+   * not completed — the two are told apart by `readiness.referencesResolved` on the
+   * analysis, which is the same distinction every other consumer of this data reads.
+   * A client must never present an incomplete scan as "used nowhere".
+   */
+  usageReferencesFor(assetPath: string): readonly UsageReference[] {
+    return this._referencesByAsset.get(assetPath) ?? [];
+  }
+
+  /**
+   * Every asset referenced from one source file, with the lines that reference it.
+   *
+   * The reverse lookup, and the reason it lives here: a host asking "what does this
+   * editor line refer to?" would otherwise have to match asset names against source
+   * text itself, which is precisely the client-side reimplementation of
+   * `reference-patterns.ts` the layer rule forbids — and which the deleted JetBrains
+   * hover listener did, by substring, while documenting that it was not authoritative.
+   */
+  referencesInFile(filePath: string): readonly { assetPath: string; reference: UsageReference }[] {
+    const found: { assetPath: string; reference: UsageReference }[] = [];
+    for (const [assetPath, references] of this._referencesByAsset) {
+      for (const reference of references) {
+        if (reference.file === filePath) found.push({ assetPath, reference });
+      }
+    }
+    return found;
+  }
+
   getIgnorePatterns(): readonly string[] {
     return this._ignorePatterns;
   }
@@ -340,11 +566,44 @@ export class WorkspaceIndexer {
     return this._diagnostics.slice();
   }
 
-  /** Stops accepting new changes and releases internal timers/listeners. */
+  /**
+   * Stops accepting new changes and releases internal timers, listeners, and any
+   * in-flight background analysis.
+   *
+   * Aborting the reference pass matters: it previously ran fire-and-forget with no
+   * cancellation, so a disposed indexer kept walking the source tree — competing for
+   * the event loop of a caller that believed indexing had finished (measured at
+   * ~1.4 s of interference on a 60-asset workspace).
+   */
   dispose(): void {
     this._isDisposed = true;
+    this._lifetime.abort();
     this._coalescer.dispose();
     this._onDidUpdate.dispose();
+  }
+
+  /**
+   * Resolves once no background analysis remains in flight.
+   *
+   * Exposed for tests asserting that {@link initializeComplete} leaves nothing
+   * scheduled, and for hosts that want to await a quiescent index before exiting.
+   */
+  async whenIdle(): Promise<void> {
+    // Drain, do not merely wait.
+    //
+    // This awaited only the background reference pass, so a change the host had just
+    // notified was still sitting inside the coalescer's settle window when
+    // `analyzeComplete()` returned. The analysis handed back did not contain it, and
+    // nothing in the result said so — a host that deleted an asset and immediately
+    // re-read the workspace was told the asset was still there.
+    //
+    // The settle window exists to avoid re-indexing on every keystroke, not to hide
+    // work from a caller who has explicitly asked for a settled answer.
+    while (this._coalescer.hasPendingChanges() || this._scheduler.isRunning) {
+      this._coalescer.flushNow();
+      await this._scheduler.whenSettled();
+    }
+    await this._backgroundReferencePass;
   }
 
   // ── Batch application ───────────────────────────────────────────────────
@@ -389,6 +648,12 @@ export class WorkspaceIndexer {
       } catch (err) {
         warnings.push(`Failed to update references for "${path}": ${describeError(err)}`);
       }
+    }
+
+    // Content identity can only change when the asset set does, so hashing is
+    // skipped entirely for a batch that only touched source files.
+    if (this._duplicatesResolved && (upserted.size > 0 || removed.size > 0)) {
+      await this._refreshDuplicateGroups();
     }
 
     this._runRules();
@@ -485,7 +750,7 @@ export class WorkspaceIndexer {
     }
 
     const assets = Array.from(this._assets.values()).filter((a) => a.status === 'parsed');
-    const scanned = await scanFileForAssetReferences(path, assets);
+    const scanned = await scanFileForAssetReferences(path, assets, this._workspacePath);
 
     const previous = this._fileContributions.get(path);
     const affectedAssetPaths = new Set<string>([...(previous?.keys() ?? []), ...scanned.keys()]);
@@ -501,6 +766,11 @@ export class WorkspaceIndexer {
         const current = this._referenceCounts.get(assetPath) ?? 0;
         this._referenceCounts.set(assetPath, Math.max(0, current + delta));
       }
+
+      // Locations move with the count, always. Maintaining one and not the other is
+      // how a panel comes to say "3 usages" above a list of two — and the reason the
+      // count was the only thing kept was that nothing had ever needed the rest.
+      this._replaceFileReferences(assetPath, path, scanned.get(assetPath) ?? []);
     }
 
     if (nextContribution.size > 0) {
@@ -517,13 +787,37 @@ export class WorkspaceIndexer {
     for (const [assetPath, count] of previous) {
       const current = this._referenceCounts.get(assetPath) ?? 0;
       this._referenceCounts.set(assetPath, Math.max(0, current - count));
+      this._replaceFileReferences(assetPath, sourceFilePath, []);
     }
     this._fileContributions.delete(sourceFilePath);
+  }
+
+  /**
+   * Swaps one source file's contribution to one asset's reference list.
+   *
+   * Everything from another file is preserved: a rescan of `app.ts` says nothing
+   * about the same asset's usage in `main.ts`, and rebuilding the whole list from one
+   * file's result would silently drop it.
+   */
+  private _replaceFileReferences(
+    assetPath: string,
+    sourceFilePath: string,
+    references: readonly UsageReference[]
+  ): void {
+    const others = (this._referencesByAsset.get(assetPath) ?? []).filter(
+      (reference) => reference.file !== sourceFilePath
+    );
+    const next = [...others, ...references];
+    if (next.length === 0) this._referencesByAsset.delete(assetPath);
+    else this._referencesByAsset.set(assetPath, next);
   }
 
   private _forgetAsset(assetPath: string): void {
     this._assets.delete(assetPath);
     this._referenceCounts.delete(assetPath);
+    // Retained state that outlives its subject is how a panel comes to list usages of
+    // a file the developer deleted ten minutes ago.
+    this._referencesByAsset.delete(assetPath);
     for (const contributions of this._fileContributions.values()) {
       contributions.delete(assetPath);
     }
@@ -540,6 +834,7 @@ export class WorkspaceIndexer {
     const result = await scanner.search();
 
     this._referenceCounts.set(asset.path, result.references.length);
+    this._referencesByAsset.set(asset.path, result.references);
 
     for (const ref of result.references) {
       const contribution = this._fileContributions.get(ref.file) ?? new Map<string, number>();
@@ -548,17 +843,48 @@ export class WorkspaceIndexer {
     }
   }
 
+  /**
+   * Recomputes byte-identical asset groups.
+   *
+   * Hashing reads every parsed asset in full, so this is deliberately not part of
+   * the synchronous rule pass that runs on every batch — it is refreshed alongside
+   * the reference scan, and again only when the asset set itself changed.
+   */
+  private async _refreshDuplicateGroups(): Promise<void> {
+    const parsed = Array.from(this._assets.values()).filter((a) => a.status === 'parsed');
+    this._duplicateGroups = await detectDuplicateGroups(parsed, this._referenceCounts);
+    this._duplicatesResolved = true;
+  }
+
+  /**
+   * Loads `.animoriarc` over the default policy — never instead of it.
+   *
+   * Every branch here used to end in a rules config that was either the file's
+   * contents verbatim or `{}`, and `{}` meant *no rules ran at all*. A workspace with
+   * no configuration got a working index, a working reference scan, and a governance
+   * surface reporting that it had nothing to say, above a Health Score that read
+   * "not available — add a `.animoriarc` to define a policy".
+   *
+   * Configuration is an override layer. `resolveRulePolicy` puts it back in that
+   * position, including on the invalid path: a malformed config is a reason to warn
+   * and fall back to the defaults, not a reason to silently stop checking anything.
+   */
   private async _reloadConfig(warnings: string[] = []): Promise<void> {
     const result = await new ConfigLoader(this._workspacePath).load();
     if (result.status === 'loaded') {
-      this._rulesConfig = result.config.rules;
+      this._rulesConfig = resolveRulePolicy(result.config.rules);
+      this._usingDefaultPolicy = isDefaultPolicy(result.config.rules);
+      this._configLoadWarnings = [];
     } else if (result.status === 'invalid') {
-      this._rulesConfig = {};
-      for (const diagnostic of result.diagnostics) {
-        warnings.push(`${result.filePath}: ${diagnostic.message}`);
-      }
+      this._rulesConfig = resolveRulePolicy(undefined);
+      this._usingDefaultPolicy = true;
+      const problems = result.diagnostics.map((d) => `${result.filePath}: ${d.message}`);
+      this._configLoadWarnings = problems;
+      warnings.push(...problems);
     } else {
-      this._rulesConfig = {};
+      this._rulesConfig = resolveRulePolicy(undefined);
+      this._usingDefaultPolicy = true;
+      this._configLoadWarnings = [];
     }
   }
 
@@ -568,25 +894,32 @@ export class WorkspaceIndexer {
   }
 
   /**
-   * @param referenceCountsReady When `false` (the fast, pre-reference-count
-   *   snapshot `initialize` commits before the background pass finishes),
-   *   `referenceCounts` is omitted from the signals passed to
-   *   `RulesEngine` entirely — not passed as an empty map. `no-unreferenced
-   *   -assets.rule.ts` treats a *missing* map as "this signal isn't
-   *   available yet, skip" and bails out, but treats an asset *absent from
-   *   a present* map as a confirmed zero reference count. Passing the
-   *   real (empty) `_referenceCounts` map here before it's populated would
-   *   flag every asset in the workspace as unused for the few seconds
-   *   until the background pass lands — a false-positive flash, not a
-   *   performance nicety.
+   * Re-runs the rule engine and the Health Score over current state.
+   *
+   * Reference evidence is supplied only once it genuinely exists. The distinction
+   * matters and is not a performance nicety: `no-unreferenced-assets` treats a
+   * *missing* map as "this signal is unavailable — skip and say so", but an asset
+   * *absent from a present* map as a confirmed zero. Passing the still-empty map
+   * early would flag every asset in the workspace as unreferenced; omitting it
+   * causes the rule to report itself as skipped, which is the truthful state.
    */
-  private _runRules(referenceCountsReady = true): void {
+  private _runRules(): void {
     const assets = Array.from(this._assets.values());
     this._ruleReport = new RulesEngine({
       workspacePath: this._workspacePath,
       assets,
       rulesConfig: this._rulesConfig,
-      signals: referenceCountsReady ? { referenceCounts: this._referenceCounts } : {},
+      signals: {
+        ...(this._referencesResolved
+          ? {
+              referenceCounts: this._referenceCounts,
+              ...(this._scanCoverage ? { scanCoverage: this._scanCoverage } : {}),
+            }
+          : {}),
+        // Supplied only once hashing has actually run; absent means
+        // `no-duplicate-content` declares itself skipped rather than reporting none.
+        ...(this._duplicatesResolved ? { duplicateGroups: this._duplicateGroups } : {}),
+      },
     }).run();
 
     // Health Score is a pure, synchronous consumer of the diagnostics
@@ -594,19 +927,53 @@ export class WorkspaceIndexer {
     // themselves (see HealthScoreEngine's own docs). Recomputing it here
     // is deliberate: it is cheap enough to do on every batch rather than
     // only when a consumer happens to ask for it.
-    this._healthScore = this._healthScoreEngine.evaluate({
+    this._health = this._healthScoreEngine.evaluate({
       diagnostics: this._ruleReport.diagnostics,
       totalAssetCount: assets.length,
+      evaluatedRuleCount: this._ruleReport.evaluatedRuleIds.length,
+      skippedRuleCount: this._ruleReport.skippedRules.length,
+      analysisComplete: this._referencesResolved && this._duplicatesResolved,
+      ...(this._scanCoverage ? { coverageStatus: this._scanCoverage.status } : {}),
     });
   }
 
-  private _buildSnapshot(): WorkspaceIndexSnapshot {
+  private _buildAnalysis(): WorkspaceAnalysis {
+    const readiness: AnalysisReadiness = {
+      assetsIndexed: this._assetsIndexed,
+      referencesResolved: this._referencesResolved,
+      duplicatesResolved: this._duplicatesResolved,
+      complete: this._assetsIndexed && this._referencesResolved && this._duplicatesResolved,
+    };
+
     return {
-      assets: Array.from(this._assets.values()),
-      ruleReport: this._ruleReport,
-      healthScore: this._healthScore,
-      referenceCounts: new Map(this._referenceCounts),
+      workspacePath: this._workspacePath,
+      generatedAt: new Date().toISOString(),
       generation: this._generation,
+      durationMs: this._lastBatchDurationMs,
+      readiness,
+      assets: Array.from(this._assets.values()),
+      coverage: this._scanCoverage,
+      referenceCounts: new Map(this._referenceCounts),
+      referenceIndex: this._referenceIndexSummary,
+      diagnostics: this._ruleReport?.diagnostics ?? [],
+      evaluatedRuleIds: this._ruleReport?.evaluatedRuleIds ?? [],
+      skippedRules: this._ruleReport?.skippedRules ?? [],
+      configErrors: [
+        // File-level problems first: a `.animoriarc` that would not parse explains
+        // why every rule-level entry below it is missing.
+        ...this._configLoadWarnings.map((message) => ({
+          ruleId: CONFIG_FILE_PSEUDO_RULE_ID,
+          errors: [message],
+        })),
+        ...(this._ruleReport?.configErrors ?? []),
+      ],
+      duplicateGroups: this._duplicateGroups,
+      health: this._health,
+      // Asked of the coalescer rather than inferred from timestamps: it is the one
+      // component that knows for certain whether signals have arrived that no
+      // committed batch reflects.
+      freshness: this._coalescer.hasPendingChanges() ? 'stale' : 'current',
+      failure: this._failure,
     };
   }
 
@@ -615,10 +982,11 @@ export class WorkspaceIndexer {
     removedAssetPaths: readonly string[];
     warnings: readonly string[];
     startedAt: number;
-  }): WorkspaceIndexSnapshot {
+  }): WorkspaceAnalysis {
     this._generation += 1;
     const durationMs = performance.now() - batch.startedAt;
-    const snapshot = this._buildSnapshot();
+    this._lastBatchDurationMs = durationMs;
+    const analysis = this._buildAnalysis();
 
     this._diagnostics.push({
       generation: this._generation,
@@ -634,16 +1002,40 @@ export class WorkspaceIndexer {
     }
 
     this._onDidUpdate.fire({
-      snapshot,
+      analysis,
       upsertedAssetPaths: batch.upsertedAssetPaths,
       removedAssetPaths: batch.removedAssetPaths,
       durationMs,
     });
 
-    return snapshot;
+    return analysis;
   }
 }
 
 function describeError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Coverage for a workspace with no assets to scan for.
+ *
+ * `complete: true` is deliberate — the scan did not fail, there was simply nothing
+ * to look for. That distinction is what lets `no-unreferenced-assets` evaluate (and
+ * correctly report nothing) instead of declining for want of a signal.
+ */
+function emptyCoverage(workspacePath: string): ScanCoverage {
+  const scannedExtensions = [...DEFAULT_USAGE_SCAN_EXTENSIONS];
+  const unscannedExtensions = describeUnscannedExtensions(scannedExtensions);
+  return {
+    // `'none'`, not `'complete'`: nothing was read, so there is no reference evidence
+    // — which is exactly what a consumer must be able to see before treating "zero
+    // references" as a finding rather than an artefact.
+    status: deriveCoverageStatus(0, unscannedExtensions, true),
+    scannedExtensions,
+    unscannedExtensions,
+    filesScanned: 0,
+    referencesDetected: 0,
+    excludedPatterns: [],
+    scopePath: workspacePath,
+  };
 }

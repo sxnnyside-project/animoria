@@ -94,7 +94,7 @@ describe('WorkspaceIndexer — .animoriaignore', () => {
     indexer.notifyFileChanged(join(workspace, '.animoriaignore'), 'created');
     const update = await settled;
 
-    expect(update.snapshot.assets.map((a) => a.path)).not.toContain(join(workspace, 'hero.json'));
+    expect(update.analysis.assets.map((a) => a.path)).not.toContain(join(workspace, 'hero.json'));
     expect(update.removedAssetPaths).toContain(join(workspace, 'hero.json'));
   });
 
@@ -110,7 +110,7 @@ describe('WorkspaceIndexer — .animoriaignore', () => {
     indexer.notifyFileChanged(join(workspace, 'draft-hero.json'), 'created');
     const update = await settled;
 
-    expect(update.snapshot.assets.map((a) => a.path)).not.toContain(
+    expect(update.analysis.assets.map((a) => a.path)).not.toContain(
       join(workspace, 'draft-hero.json')
     );
   });
@@ -138,6 +138,6 @@ describe('WorkspaceIndexer — .animoriaignore', () => {
     indexer.notifyFileChanged(join(workspace, 'hero.json'), 'created');
     const update = await assetIndexed;
 
-    expect(update.snapshot.assets.map((a) => a.path)).toContain(join(workspace, 'hero.json'));
+    expect(update.analysis.assets.map((a) => a.path)).toContain(join(workspace, 'hero.json'));
   });
 });

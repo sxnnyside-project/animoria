@@ -1,5 +1,12 @@
+import { helpUriForRule } from '../rule-help.js';
 import { describe, parseSeverityWithOptions } from '../shared/rule-option-parsing.js';
-import type { GovernanceRule, RuleEvaluationContext, RuleViolation } from '../types.js';
+import {
+  DIRECT_OBSERVATION_CONFIDENCE,
+  type GovernanceRule,
+  type RuleEvaluationContext,
+  type RuleOutcome,
+  evaluated,
+} from '../types.js';
 
 const RULE_ID = 'max-file-size-kb';
 
@@ -25,6 +32,7 @@ export interface MaxFileSizeOptions {
 export const maxFileSizeRule: GovernanceRule<MaxFileSizeOptions> = {
   id: RULE_ID,
   description: 'Disallows assets larger than a configured size threshold.',
+  helpUri: helpUriForRule(RULE_ID),
 
   parseOptions(raw) {
     return parseSeverityWithOptions<MaxFileSizeOptions>(raw, RULE_ID, (value) => {
@@ -38,19 +46,32 @@ export const maxFileSizeRule: GovernanceRule<MaxFileSizeOptions> = {
     });
   },
 
-  evaluate(context: RuleEvaluationContext<MaxFileSizeOptions>): readonly RuleViolation[] {
+  evaluate(context: RuleEvaluationContext<MaxFileSizeOptions>): RuleOutcome {
     const { limitKb } = context.options;
     const limitBytes = limitKb * 1024;
 
-    return context.assets
-      .filter((asset) => asset.sizeBytes > limitBytes)
-      .map((asset) => {
-        const actualKb = Math.round(asset.sizeBytes / 1024);
-        return {
-          asset,
-          message: `"${asset.name}" is ${actualKb}KB, exceeding the ${limitKb}KB limit.`,
-          details: { limitKb, actualKb },
-        };
-      });
+    // Size is recorded on every indexed asset, so this rule never lacks evidence.
+    return evaluated(
+      context.assets
+        .filter((asset) => asset.sizeBytes > limitBytes)
+        .map((asset) => {
+          const actualKb = Math.round(asset.sizeBytes / 1024);
+          return {
+            asset,
+            message: `"${asset.name}" is ${actualKb}KB, exceeding the ${limitKb}KB limit.`,
+            details: { limitKb, actualKb },
+            evidence: {
+              // A measured file property compared against a configured threshold.
+              kind: 'file-metadata' as const,
+              summary: `${actualKb}KB on disk, against a configured limit of ${limitKb}KB.`,
+              data: { limitKb, actualKb, sizeBytes: asset.sizeBytes },
+            },
+            confidence: DIRECT_OBSERVATION_CONFIDENCE,
+            remediation: {
+              summary: `Compress or replace the asset, or raise "max-file-size-kb" above ${actualKb} in .animoriarc.`,
+            },
+          };
+        })
+    );
   },
 };

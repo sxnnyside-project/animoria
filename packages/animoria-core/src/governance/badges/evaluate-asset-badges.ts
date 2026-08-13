@@ -23,8 +23,8 @@ import type { AssetBadge, AssetBadgeContext } from './types.js';
  * No existing badge kind's logic, and no presentation-layer code
  * anywhere, needs to change.
  *
- * @returns Badges in a fixed, deterministic order (`'orphaned'` →
- *   `'duplicate'` → `'rule-violation'`) regardless of the order facts
+ * @returns Badges in a fixed, deterministic order (`'unreferenced'` →
+ *   `'duplicate'` → `'rule-finding'`) regardless of the order facts
  *   were supplied in `context` — callers that render multiple badges
  *   per asset get a stable visual order for free.
  */
@@ -37,7 +37,7 @@ export function evaluateAssetBadges(
   const referenceCount = context.referenceCounts?.get(asset.path);
   if (referenceCount === 0) {
     badges.push({
-      kind: 'orphaned',
+      kind: 'unreferenced',
       severity: 'warning',
       message: `"${asset.name}" has no detected references in source code.`,
     });
@@ -55,12 +55,12 @@ export function evaluateAssetBadges(
   if (diagnostics && diagnostics.length > 0) {
     const errorCount = diagnostics.filter((d) => d.severity === 'error').length;
     badges.push({
-      kind: 'rule-violation',
+      kind: 'rule-finding',
       severity: errorCount > 0 ? 'error' : 'warning',
       message:
         diagnostics.length === 1
           ? diagnostics[0]!.message
-          : `${diagnostics.length} governance rule violation(s) found for "${asset.name}".`,
+          : `${diagnostics.length} governance rule finding(s) for "${asset.name}".`,
     });
   }
 

@@ -21,7 +21,11 @@ function diagnostic(overrides: Partial<RuleDiagnostic> = {}): RuleDiagnostic {
 
 describe('determineCheckOutcome', () => {
   it('passes with no diagnostics and no health score policy', () => {
-    expect(determineCheckOutcome([], null)).toEqual({ passed: true, failureReasons: [] });
+    expect(determineCheckOutcome([], null)).toEqual({
+      passed: true,
+      failureReasons: [],
+      incomplete: false,
+    });
   });
 
   it('fails when any diagnostic is "error" severity', () => {

@@ -1,3 +1,8 @@
 # Synthetic test fixtures — not real production assets, excluded from governance.
 # See packages/animoria-core/tests/fixtures/README.md.
 packages/animoria-core/tests/fixtures/
+
+# Golden fixture workspaces exist to exercise Animoria against known-bad states
+# (unreferenced assets, duplicates, malformed files). They are test data, not this
+# repository considering its own assets.
+fixtures/

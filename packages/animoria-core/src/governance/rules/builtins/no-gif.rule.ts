@@ -1,5 +1,12 @@
+import { helpUriForRule } from '../rule-help.js';
 import { parseSeverityOnlyOption } from '../shared/rule-option-parsing.js';
-import type { GovernanceRule, RuleEvaluationContext, RuleViolation } from '../types.js';
+import {
+  DIRECT_OBSERVATION_CONFIDENCE,
+  type GovernanceRule,
+  type RuleEvaluationContext,
+  type RuleOutcome,
+  evaluated,
+} from '../types.js';
 
 const RULE_ID = 'no-gif';
 
@@ -19,17 +26,33 @@ const RULE_ID = 'no-gif';
 export const noGifRule: GovernanceRule<void> = {
   id: RULE_ID,
   description: 'Disallows GIF assets in favor of more efficient animated formats.',
+  helpUri: helpUriForRule(RULE_ID),
 
   parseOptions(raw) {
     return parseSeverityOnlyOption(raw, RULE_ID);
   },
 
-  evaluate(context: RuleEvaluationContext<void>): readonly RuleViolation[] {
-    return context.assets
-      .filter((asset) => asset.format === 'gif')
-      .map((asset) => ({
-        asset,
-        message: `"${asset.name}" is a GIF. Consider migrating it to Lottie or Rive for smaller file size and better fidelity.`,
-      }));
+  evaluate(context: RuleEvaluationContext<void>): RuleOutcome {
+    // Format is a direct property of every indexed asset, so this rule can always
+    // run — it depends on no external signal and therefore never skips.
+    return evaluated(
+      context.assets
+        .filter((asset) => asset.format === 'gif')
+        .map((asset) => ({
+          asset,
+          message: `"${asset.name}" is a GIF. Consider migrating it to Lottie or Rive for smaller file size and better fidelity.`,
+          evidence: {
+            // The asset's own parsed format — no search, no inference.
+            kind: 'file-metadata' as const,
+            summary: `Format is "${asset.format}".`,
+            data: { format: asset.format },
+          },
+          confidence: DIRECT_OBSERVATION_CONFIDENCE,
+          remediation: {
+            summary:
+              'Convert the asset to Lottie or Rive, or set "no-gif": "off" in .animoriarc if GIF is intentional here.',
+          },
+        }))
+    );
   },
 };

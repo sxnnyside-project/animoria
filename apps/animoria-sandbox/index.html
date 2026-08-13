@@ -5,19 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Animoria Sandbox</title>
     <style>
-      * { box-sizing: border-box; margin: 0; padding: 0; }
+      /* Only the page reset. Every colour, size and font comes from the shared
+         token contract (`@animoria/ui/tokens.css`), so the harness cannot drift
+         from what an IDE renders by styling itself here. */
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; height: 100%; }
       body {
-        background: #1e1e1e;
-        color: #cccccc;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        height: 100vh;
-        display: flex;
-        flex-direction: column;
+        background: var(--animoria-bg-primary);
+        color: var(--animoria-text-primary);
+        font-family: var(--animoria-font-family);
       }
     </style>
   </head>
   <body>
-    <animoria-app></animoria-app>
+    <sandbox-app></sandbox-app>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -35,8 +35,17 @@
  * plugin's `native/<platform>-<arch>/` resources.
  */
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { platform, arch } from 'node:os';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { arch, platform } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as esbuild from 'esbuild';
@@ -106,6 +115,47 @@ async function main() {
 
   if (!existsSync(join(distDir, 'cli.js'))) {
     console.error('dist/cli.js not found — run `pnpm build` first.');
+    process.exit(1);
+  }
+
+  /*
+   * The freshness check that was missing.
+   *
+   * This script bundles `dist/`, and only ever asserted that `dist/` *existed*. A
+   * `dist/` compiled before the most recent source change produced a binary that was
+   * a valid daemon of an older Core — one that speaks the current protocol perfectly
+   * and refuses a method the client now depends on.
+   *
+   * That is precisely what shipped. A JetBrains plugin calling `getUsageReferences`
+   * received `"getUsageReferences" is declared but not implemented in this build`,
+   * which describes the binary accurately and says nothing about why: the binary was
+   * built from a `dist/` older than the source that implements it. Nothing in the
+   * chain — not this script, not Gradle, not the packaging step — compared the two.
+   */
+  const newest = (dir, extensions) => {
+    let latest = 0;
+    const visit = (current) => {
+      for (const entry of readdirSync(current, { withFileTypes: true })) {
+        const full = join(current, entry.name);
+        if (entry.isDirectory()) visit(full);
+        else if (extensions.some((extension) => entry.name.endsWith(extension))) {
+          latest = Math.max(latest, statSync(full).mtimeMs);
+        }
+      }
+    };
+    visit(dir);
+    return latest;
+  };
+
+  const newestSource = newest(join(rootDir, 'src'), ['.ts']);
+  const newestBuild = newest(distDir, ['.js']);
+  if (newestSource > newestBuild) {
+    console.error(
+      'dist/ is older than src/ — this would package a daemon that silently lacks\n' +
+        'capabilities the source implements, and clients would report them as\n' +
+        '"declared but not implemented in this build".\n\n' +
+        'Run: pnpm --filter @animoria/core build'
+    );
     process.exit(1);
   }
 
@@ -191,8 +241,7 @@ async function main() {
   execFileSync('npx', postjectArgs, { stdio: 'inherit' });
 
   if (platform() === 'darwin') {
-    console.log('Re-applying an ad-hoc code signature...');
-    execFileSync('codesign', ['--sign', '-', outputPath], { stdio: 'inherit' });
+    signDarwinBinary(outputPath);
   }
 
   console.log(`Done: ${outputPath}`);
@@ -202,3 +251,89 @@ main().catch((err) => {
   console.error('build-sea failed:', err);
   process.exit(1);
 });
+
+/**
+ * Signs the macOS binary, and refuses to pretend an unsigned one is releasable.
+ *
+ * ## Why this is not just `codesign --sign -`
+ * An ad-hoc signature satisfies the loader on the machine that produced it and
+ * nothing else: Gatekeeper rejects an ad-hoc-signed binary downloaded from the
+ * internet, so a plugin shipping one fails to launch its daemon on every user's
+ * Mac with an error that names quarantine rather than Animoria. Ad-hoc signing is
+ * correct for a local build and wrong for a release, and the difference has to be
+ * decided by something other than which credentials happened to be present.
+ *
+ * `ANIMORIA_RELEASE_SIGNING=required` — set by the release workflow — makes
+ * missing credentials a hard failure. Without it, a local build signs ad-hoc and
+ * says so. What is never allowed is a *release* silently downgrading to ad-hoc,
+ * which is how an unlaunchable artifact reaches a marketplace.
+ */
+function signDarwinBinary(outputPath) {
+  const identity = process.env.ANIMORIA_SIGNING_IDENTITY;
+  const releaseRequired = process.env.ANIMORIA_RELEASE_SIGNING === 'required';
+
+  if (!identity) {
+    if (releaseRequired) {
+      throw new Error(
+        'Release signing is required but ANIMORIA_SIGNING_IDENTITY is not set. ' +
+          'A release must not ship an ad-hoc-signed macOS binary: Gatekeeper blocks it ' +
+          'on every downloaded copy. Set ANIMORIA_SIGNING_IDENTITY (and the notarization ' +
+          'credentials) in the release environment, or build without ' +
+          'ANIMORIA_RELEASE_SIGNING for a local, ad-hoc-signed binary.'
+      );
+    }
+    console.log('Re-applying an ad-hoc code signature (local build; not distributable)...');
+    execFileSync('codesign', ['--sign', '-', outputPath], { stdio: 'inherit' });
+    return;
+  }
+
+  console.log(`Signing with Developer ID identity: ${identity}`);
+  execFileSync(
+    'codesign',
+    ['--sign', identity, '--options', 'runtime', '--timestamp', '--force', outputPath],
+    { stdio: 'inherit' }
+  );
+
+  // Notarization is a separate, network-bound step against Apple's service. It is
+  // attempted only when its own credentials are present, and its absence during a
+  // required-signing build is fatal for the same reason an unsigned binary is.
+  const appleId = process.env.ANIMORIA_NOTARIZE_APPLE_ID;
+  const teamId = process.env.ANIMORIA_NOTARIZE_TEAM_ID;
+  const password = process.env.ANIMORIA_NOTARIZE_PASSWORD;
+
+  if (!appleId || !teamId || !password) {
+    if (releaseRequired) {
+      throw new Error(
+        'Release signing is required but notarization credentials are incomplete ' +
+          '(ANIMORIA_NOTARIZE_APPLE_ID, ANIMORIA_NOTARIZE_TEAM_ID, ANIMORIA_NOTARIZE_PASSWORD). ' +
+          'A signed-but-unnotarized binary is still blocked by Gatekeeper on first launch.'
+      );
+    }
+    console.log('Notarization credentials absent; skipping notarization (local build).');
+    return;
+  }
+
+  console.log('Submitting for notarization...');
+  const zipPath = `${outputPath}.zip`;
+  execFileSync('ditto', ['-c', '-k', '--keepParent', outputPath, zipPath], { stdio: 'inherit' });
+  execFileSync(
+    'xcrun',
+    [
+      'notarytool',
+      'submit',
+      zipPath,
+      '--apple-id',
+      appleId,
+      '--team-id',
+      teamId,
+      '--password',
+      password,
+      '--wait',
+    ],
+    { stdio: 'inherit' }
+  );
+  rmSync(zipPath, { force: true });
+  // A bare executable cannot carry a stapled ticket the way a bundle can, so
+  // Gatekeeper validates it online against the notarization record submitted above.
+  console.log('Notarization complete.');
+}

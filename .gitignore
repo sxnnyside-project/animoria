@@ -1,13 +1,22 @@
-node_modules
-dist
-.turbo
+# Dependencies and build outputs
+node_modules/
+dist/
+.turbo/
 *.vsix
+*.tgz
+*.zip
+*.tsbuildinfo
 .animoria-cache.json
 
-# Animoria generated artifacts
+# Test coverage and reports
+coverage/
+.nyc_output/
+*.lcov
+
+# Animoria local runtime and trash staging
 .animoria/
 
-# Gradle, Java, and IDEs
+# Gradle, Java, and JetBrains build artifacts
 .gradle/
 **/build/
 **/bin/
@@ -15,19 +24,31 @@ dist
 .idea/
 *.class
 *.log
-.DS_Store
 
-# JetBrains plugin assets bundle — regenerated from animoria-sandbox/dist
-# by `pnpm package:jetbrains` (see package.json)
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# The stray sandbox harness `package:jetbrains` used to copy into the plugin jar,
+# where no Kotlin code read it. The shared UI itself is packaged by Gradle's
+# `copySharedUi` task into `build/generated-resources/web/`, not from the source tree.
 packages/animoria-jetbrains/src/main/resources/assets/
 
-# Self-contained native CLI binaries — regenerated per-platform by
-# `pnpm --filter @animoria/core build:sea` (see scripts/build-sea.mjs)
+# Self-contained native CLI binaries — regenerated per-platform by `scripts/build-sea.mjs`
 packages/animoria-core/sea/
 packages/animoria-jetbrains/src/main/resources/native/
 
-# Editor — personal settings, not project config
+# Editor and AI tooling local caches
 .vscode/settings.json
-
-# Claude Code — local AI agent workspace state
+.vscode/*.log
 .claude/
+.gemini/
+.antigravity/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Shared UI generated bundle for VS Code
+packages/animoria-vscode/media/

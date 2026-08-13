@@ -53,6 +53,18 @@ export const CLI_EXIT_CODES = {
   WORKSPACE_ERROR: 3,
   CONFIGURATION_ERROR: 4,
   INTERNAL_ERROR: 5,
+  /**
+   * A rule the workspace configured at `'error'` severity could not be evaluated,
+   * because evidence it depends on was unavailable.
+   *
+   * Distinct from every other code, and deliberately not folded into
+   * {@link GOVERNANCE_VIOLATIONS}: nothing was found to be wrong with the
+   * repository, so reporting a violation would be a fabrication — but the gate the
+   * team asked for did not run, so reporting success would be worse. This is the
+   * "I could not check what you asked me to check" outcome, and a pipeline should
+   * treat it as a failure of the tool or environment, not of the assets.
+   */
+  INCOMPLETE_ANALYSIS: 6,
 } as const;
 
 /** A value from {@link CLI_EXIT_CODES}. */

@@ -8,3 +8,5 @@ export * from './rive-parser.js';
 export * from './raster-animated-parser.js';
 export * from './svg-animated-parser.js';
 export * from './sanitizer.js';
+export { readLottieDocument } from './lottie-document.js';
+export type { LottieDocument } from './lottie-document.js';

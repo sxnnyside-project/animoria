@@ -3,6 +3,7 @@ import { HealthScoreEngine } from '../../src/governance/health-score';
 import { RulesEngine } from '../../src/governance/rules-engine';
 import type { RuleDiagnostic } from '../../src/governance/rules-engine';
 import type { AnimoriaAsset } from '../../src/types/asset';
+import { expectComputedHealth } from '../support/health.js';
 
 function asset(overrides: Partial<AnimoriaAsset> = {}): AnimoriaAsset {
   return {
@@ -23,14 +24,40 @@ function diagnostic(overrides: Partial<RuleDiagnostic> = {}): RuleDiagnostic {
     severity: 'error',
     asset: asset(),
     message: 'test diagnostic',
+    evidence: { kind: 'file-metadata', summary: 'test evidence' },
+    confidence: 'certain',
+    remediation: { summary: 'test remediation' },
+    helpUri: 'https://example.invalid/no-gif',
     ...overrides,
   };
+}
+
+/**
+ * Evaluates and narrows to the computed report.
+ *
+ * Every case in this file describes scoring arithmetic, which presupposes that a
+ * score exists at all. `analysisComplete` and `evaluatedRuleCount` are therefore
+ * satisfied here on purpose; whether the engine correctly *declines* to score is
+ * the subject of `health-score-availability.test.ts`.
+ */
+function score(
+  engine: HealthScoreEngine,
+  input: { diagnostics: readonly RuleDiagnostic[]; totalAssetCount: number }
+) {
+  return expectComputedHealth(
+    engine.evaluate({
+      ...input,
+      evaluatedRuleCount: 1,
+      skippedRuleCount: 0,
+      analysisComplete: true,
+    })
+  );
 }
 
 describe('HealthScoreEngine', () => {
   it('scores a perfectly clean report as exactly 100', () => {
     const engine = new HealthScoreEngine();
-    const report = engine.evaluate({ diagnostics: [], totalAssetCount: 42 });
+    const report = score(engine, { diagnostics: [], totalAssetCount: 42 });
 
     expect(report.score).toBe(100);
     expect(report.totalAssetCount).toBe(42);
@@ -48,7 +75,7 @@ describe('HealthScoreEngine', () => {
       },
     });
 
-    const report = engine.evaluate({
+    const report = score(engine, {
       diagnostics: [diagnostic({ ruleId: 'no-gif' }), diagnostic({ ruleId: 'no-gif' })],
       totalAssetCount: 5,
     });
@@ -65,8 +92,8 @@ describe('HealthScoreEngine', () => {
       diagnostic({ ruleId: 'allowed-formats' }),
     ];
 
-    const first = engine.evaluate({ diagnostics, totalAssetCount: 10 });
-    const second = engine.evaluate({ diagnostics, totalAssetCount: 10 });
+    const first = score(engine, { diagnostics, totalAssetCount: 10 });
+    const second = score(engine, { diagnostics, totalAssetCount: 10 });
 
     expect(second.score).toBe(first.score);
     expect(second.categories.map((c) => c.ruleId)).toEqual(first.categories.map((c) => c.ruleId));
@@ -78,20 +105,20 @@ describe('HealthScoreEngine', () => {
     const diagnostics = Array.from({ length: 100 }, () =>
       diagnostic({ ruleId: 'allowed-formats', severity: 'error' })
     );
-    const report = engine.evaluate({ diagnostics, totalAssetCount: 100 });
+    const report = score(engine, { diagnostics, totalAssetCount: 100 });
     expect(report.score).toBeGreaterThanOrEqual(0);
     expect(report.score).toBeLessThanOrEqual(100);
   });
 
   it('weights an unreferenced-asset penalty by asset size (default weighting policy)', () => {
     const engine = new HealthScoreEngine();
-    const small = engine.evaluate({
+    const small = score(engine, {
       diagnostics: [
         diagnostic({ ruleId: 'no-unreferenced-assets', asset: asset({ sizeBytes: 1024 }) }),
       ],
       totalAssetCount: 1,
     });
-    const large = engine.evaluate({
+    const large = score(engine, {
       diagnostics: [
         diagnostic({
           ruleId: 'no-unreferenced-assets',
@@ -113,7 +140,7 @@ describe('HealthScoreEngine', () => {
       },
     });
 
-    const report = engine.evaluate({
+    const report = score(engine, {
       diagnostics: [diagnostic({ ruleId: 'no-gif' }), diagnostic({ ruleId: 'allowed-formats' })],
       totalAssetCount: 2,
     });
@@ -129,7 +156,7 @@ describe('HealthScoreEngine', () => {
         severityMultiplier: { error: 1, warning: 0.5 },
       },
     });
-    const report = engine.evaluate({
+    const report = score(engine, {
       diagnostics: [diagnostic({ ruleId: 'brand-new-future-rule' })],
       totalAssetCount: 1,
     });
@@ -148,7 +175,7 @@ describe('HealthScoreEngine', () => {
 
     const ruleReport = rulesEngine.run();
     const healthEngine = new HealthScoreEngine();
-    const healthReport = healthEngine.evaluate({
+    const healthReport = score(healthEngine, {
       diagnostics: ruleReport.diagnostics,
       totalAssetCount: 1,
     });
@@ -167,7 +194,7 @@ describe('HealthScoreEngine', () => {
     });
 
     const ruleReport = rulesEngine.run();
-    const healthReport = new HealthScoreEngine().evaluate({
+    const healthReport = score(new HealthScoreEngine(), {
       diagnostics: ruleReport.diagnostics,
       totalAssetCount: 1,
     });

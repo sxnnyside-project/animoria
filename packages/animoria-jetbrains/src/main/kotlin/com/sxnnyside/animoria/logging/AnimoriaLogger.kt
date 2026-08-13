@@ -70,9 +70,16 @@ object AnimoriaLogger {
                 .getNotificationGroup(NOTIFICATION_GROUP_ID)
                 .createNotification(message, type)
                 .notify(null)
-        } catch (_: Exception) {
-            // Best-effort only — a missing/misconfigured notification group must
-            // never prevent the underlying Logger call above from succeeding.
+        } catch (error: Exception) {
+            // Best-effort only — a missing or misconfigured notification group must
+            // never prevent the Logger call above from succeeding, which has already
+            // happened by the time this runs.
+            //
+            // Recorded through `log` rather than `warn`, both because `warn` would
+            // re-enter this method and because an entirely empty catch is the shape
+            // this codebase now refuses on principle: the audit found one hiding a
+            // contract mismatch that had silenced the whole plugin.
+            log.warn("Animoria: could not post a notification — ${error.message}")
         }
     }
 }

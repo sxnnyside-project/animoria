@@ -1,0 +1,18 @@
+<html>
+<body>
+Reports Animoria's governance findings on the asset file they concern —
+unreferenced assets, byte-identical duplicates, oversized files, and disallowed
+formats.
+<p>
+Every finding carries the evidence behind it, how confident Animoria is, and how
+much of the workspace the reference scan actually read. Findings are produced by
+<code>@animoria/core</code> from the rules configured in <code>.animoriarc</code>;
+this inspection presents them and computes nothing of its own.
+</p>
+<p>
+No quick fixes are offered: every remediation for these findings removes a file,
+and removal goes through Animoria's review-and-confirm flow, which shows a preview
+and stages the removal into a recoverable trash session.
+</p>
+</body>
+</html>

@@ -18,6 +18,14 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      '@animoria/ui/bridge': new URL(
+        '../../packages/animoria-ui/src/bridge/index.ts',
+        import.meta.url
+      ).pathname,
+      '@animoria/core/contracts': new URL(
+        '../../packages/animoria-core/src/contracts.ts',
+        import.meta.url
+      ).pathname,
       '@animoria/core': new URL('../../packages/animoria-core/src/index.ts', import.meta.url)
         .pathname,
     },

@@ -8,6 +8,7 @@
   "files": {
     "ignore": [
       "**/dist/**",
+      "packages/animoria-vscode/media/**",
       "**/node_modules/**",
       "**/build/**",
       "**/fixtures/**",

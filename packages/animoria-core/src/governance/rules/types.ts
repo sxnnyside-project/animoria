@@ -1,4 +1,6 @@
 import type { AnimoriaAsset } from '../../types/asset.js';
+import type { ScanCoverage } from '../../types/scan-coverage.js';
+import type { DuplicateGroup } from '../duplicates/types.js';
 
 /**
  * Contracts shared by every governance rule and by the engine that runs them.
@@ -54,10 +56,26 @@ export interface GovernanceSignals {
   /**
    * Number of source-code references found for an asset, keyed by the
    * asset's absolute path. Populated by a usage scan (see
-   * `UsageScanner` / `GovernanceAnalyzer`) — rules must not compute this
-   * themselves. Absent when the caller did not run a usage scan.
+   * `buildReferenceIndex`) — rules must not compute this themselves.
+   * Absent when the caller did not run a usage scan.
    */
   readonly referenceCounts?: ReadonlyMap<string, number>;
+  /**
+   * What the usage scan that produced {@link referenceCounts} actually examined.
+   *
+   * Present whenever `referenceCounts` is. A rule that reports an *absence*
+   * ("nothing references this") must attach this to its violations so the reader
+   * can see which file types were never opened — see `../../types/scan-coverage.ts`
+   * for why an absence without its coverage is not a finding a developer can act on.
+   */
+  readonly scanCoverage?: ScanCoverage;
+  /**
+   * Byte-identical asset groups, computed once per analysis by
+   * `detectDuplicateGroups`. Absent when the caller ran no content hashing — in
+   * which case `no-duplicate-content` declares itself skipped rather than reporting
+   * that there are none.
+   */
+  readonly duplicateGroups?: readonly DuplicateGroup[];
 }
 
 /**
@@ -94,6 +112,119 @@ export interface RuleEvaluationContext<TOptions> {
  * depending on workspace configuration. A rule reports *what* is wrong;
  * the engine (driven by user configuration) decides *how loudly*.
  */
+/**
+ * Why a rule declined to run.
+ *
+ * ## Why "declined" needs to be a first-class outcome
+ * A rule that cannot do its job safely must stay silent rather than guess — but the
+ * report previously had no way to *say* it had stayed silent. `no-unreferenced-assets`
+ * returns nothing when reference evidence is unavailable, and the engine recorded that
+ * as a successful evaluation with zero violations. A CI gate consuming that report was
+ * told the rule ran and the workspace was clean, when in fact the rule had never
+ * looked. Distinguishing "checked, clean" from "never checked" is the entire point of
+ * this type.
+ */
+export interface RuleSkipReason {
+  /** Stable machine-readable code, safe to branch on. */
+  readonly code: 'missing-signal' | 'unsupported-workspace' | 'no-applicable-assets';
+  /** Human-readable explanation, safe to render standalone in a CLI or a tooltip. */
+  readonly message: string;
+}
+
+/**
+ * The result of asking a rule to evaluate a workspace.
+ *
+ * A discriminated union rather than a bare array, so "found nothing" and "did not
+ * look" are structurally different values that no consumer can conflate by accident.
+ */
+export type RuleOutcome =
+  | { readonly status: 'evaluated'; readonly violations: readonly RuleViolation[] }
+  | { readonly status: 'skipped'; readonly reason: RuleSkipReason };
+
+/** Convenience constructor for the common "here are my findings" outcome. */
+export function evaluated(violations: readonly RuleViolation[]): RuleOutcome {
+  return { status: 'evaluated', violations };
+}
+
+/** Convenience constructor for "I could not run, and here is why". */
+export function skipped(code: RuleSkipReason['code'], message: string): RuleOutcome {
+  return { status: 'skipped', reason: { code, message } };
+}
+
+/**
+ * What kind of observation a finding rests on.
+ *
+ * Lets a consumer reason about a finding's basis without reading its prose: a
+ * `content-hash` finding is a byte-level fact, an `absence` finding is the result of
+ * a search that may have been incomplete, and the two deserve very different
+ * treatment when proposing an irreversible action.
+ */
+export type EvidenceKind = 'reference' | 'absence' | 'content-hash' | 'file-metadata' | 'config';
+
+/** A concrete place supporting a finding — a line that references an asset, a sibling duplicate. */
+export interface EvidenceLocation {
+  readonly file: string;
+  /** 1-based, when the evidence is line-level. */
+  readonly line?: number;
+  /** The matching text, trimmed. */
+  readonly excerpt?: string;
+}
+
+/**
+ * The observation behind a diagnostic, in machine-readable form.
+ *
+ * ## Why a diagnostic needs this beyond its message
+ * "hero-v2.json has no detected references in source code" is a conclusion. A client
+ * deciding whether to offer a one-click deletion, and a developer deciding whether
+ * to accept it, both need the *basis*: what was searched, what was found, and how
+ * far the search reached. Encoding that in the message would force every consumer to
+ * parse prose — and would make the answer untranslatable and unstable.
+ */
+export interface DiagnosticEvidence {
+  readonly kind: EvidenceKind;
+  /** One-line statement of the observation itself, safe to render standalone. */
+  readonly summary: string;
+  /** Concrete supporting locations. Empty for an `absence` finding, by definition. */
+  readonly locations?: readonly EvidenceLocation[];
+  /** Rule-specific specifics, e.g. `{ limitKb, actualKb }` or `{ conflictingPaths }`. */
+  readonly data?: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * How strongly the product stands behind a finding.
+ *
+ * **Must always be derived from evidence, never asserted.** A cleanup flow that
+ * offers to delete a file on the strength of a `'certain'` label that was written as
+ * a literal is offering a guarantee nobody computed.
+ */
+export type Confidence = 'certain' | 'high' | 'moderate' | 'low';
+
+/**
+ * The confidence implied by an observation that required no search.
+ *
+ * A file's format, its size on disk, and whether two stems collide are properties
+ * Animoria reads directly; no amount of unscanned source could contradict them. Such
+ * findings are therefore `'certain'` *because of what the evidence is*, and naming
+ * that here keeps it distinguishable from the asserted literal it replaces — a
+ * `confidence: 'high'` stamped on absence findings that no search had earned.
+ *
+ * Findings that rest on a search must never use this. They derive their confidence
+ * from the coverage of that search — see `no-unreferenced-assets.rule.ts`.
+ */
+export const DIRECT_OBSERVATION_CONFIDENCE: Confidence = 'certain';
+
+/**
+ * What the developer can do about a finding.
+ *
+ * Only `summary` for now: machine-actionable quick fixes need a host that can offer
+ * them, and no client can until the native diagnostic surfaces land. Adding an
+ * `actions` array before anything consumes it would be contract bloat.
+ */
+export interface Remediation {
+  /** Imperative and specific: "Delete it, reference it, or add it to .animoriaignore." */
+  readonly summary: string;
+}
+
 export interface RuleViolation {
   /** The asset that fails the rule. */
   readonly asset: AnimoriaAsset;
@@ -109,6 +240,21 @@ export interface RuleViolation {
    * annotations) can act on the numbers without parsing prose.
    */
   readonly details?: Readonly<Record<string, unknown>>;
+  /** The observation this violation rests on — see {@link DiagnosticEvidence}. */
+  readonly evidence: DiagnosticEvidence;
+  /** How strongly the rule stands behind it. Derived, never asserted. */
+  readonly confidence: Confidence;
+  /** What the developer can do about it. */
+  readonly remediation: Remediation;
+  /**
+   * The reference scan behind this finding, when it has one.
+   *
+   * Present on any violation derived from searching source files — most importantly
+   * an *absence* finding, where the reach of the search is the whole basis for the
+   * claim. Carried as structured data rather than folded into {@link details}, so no
+   * consumer has to know which key a particular rule happened to use.
+   */
+  readonly coverage?: ScanCoverage;
 }
 
 /**
@@ -192,6 +338,15 @@ export interface GovernanceRule<TOptions = void> {
   /** One-sentence, user-facing description of what the rule enforces. */
   readonly description: string;
   /**
+   * Where a developer can read about this rule.
+   *
+   * Stamped onto every diagnostic the rule produces, so a CLI can print it and an
+   * IDE can turn a rule id into a clickable link without maintaining its own
+   * rule-to-documentation table — which is how the CLI's and the IDE's idea of what
+   * a rule means would drift apart.
+   */
+  readonly helpUri: string;
+  /**
    * Validates and normalizes the raw value found under this rule's key
    * in `.animoriarc`. Must never throw — reject invalid input by
    * returning `{ valid: false, errors }`.
@@ -201,8 +356,11 @@ export interface GovernanceRule<TOptions = void> {
    * Evaluates this rule against the current workspace. Called only when
    * `parseOptions` succeeded with a severity other than `'off'`.
    *
-   * @returns One violation per offending asset; an empty array means the
-   *   rule found nothing to report.
+   * @returns {@link evaluated} with one violation per offending asset (an empty
+   *   list meaning "looked, found nothing"), or {@link skipped} when a signal the
+   *   rule depends on was not supplied. A rule must never return `evaluated([])`
+   *   to mean "could not check" — that is precisely the ambiguity
+   *   {@link RuleOutcome} exists to remove.
    */
-  evaluate(context: RuleEvaluationContext<TOptions>): readonly RuleViolation[];
+  evaluate(context: RuleEvaluationContext<TOptions>): RuleOutcome;
 }

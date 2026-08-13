@@ -1,6 +1,4 @@
-import type { HealthScoreReport } from '../governance/health-score.js';
-import type { RuleEngineReport } from '../governance/rules-engine.js';
-import type { AnimoriaAsset } from '../types/asset.js';
+import type { WorkspaceAnalysis } from '../analysis/workspace-analysis.js';
 
 /**
  * Contracts for Animoria's reactive indexing pipeline.
@@ -45,52 +43,16 @@ export interface FileChangeEvent {
 }
 
 /**
- * The complete, queryable state of the workspace index at a point in
- * time.
- *
- * A snapshot is immutable — callers that want to react to future changes
- * subscribe to {@link WorkspaceIndexer.onDidUpdate} rather than polling
- * a mutable object. `generation` lets a consumer cheaply tell whether two
- * snapshots represent the same state without deep-comparing asset
- * arrays.
- */
-export interface WorkspaceIndexSnapshot {
-  /** Every currently-known asset, keyed implicitly by `asset.path`. */
-  readonly assets: readonly AnimoriaAsset[];
-  /**
-   * The most recent governance rule report, or `null` if `.animoriarc`
-   * has never resolved to any active rules (an empty-but-valid state,
-   * not an error — see `RulesEngine` in `../governance/rules-engine.js`).
-   */
-  readonly ruleReport: RuleEngineReport | null;
-  /** Source-reference count per asset path, as of this snapshot. */
-  readonly referenceCounts: ReadonlyMap<string, number>;
-  /**
-   * The Health Score computed from `ruleReport`'s diagnostics, or `null`
-   * under the same condition `ruleReport` is `null`. Recomputed
-   * alongside `ruleReport` on every applied batch — see
-   * `HealthScoreEngine` (`../governance/health-score.js`) for why this
-   * is cheap enough to do unconditionally rather than only on request.
-   */
-  readonly healthScore: HealthScoreReport | null;
-  /**
-   * Monotonically increasing counter, incremented once per applied
-   * batch (see {@link "./indexing-scheduler.js"}). Two snapshots with
-   * the same generation are guaranteed identical; this is purely an
-   * observability aid, not a correctness mechanism — the indexer never
-   * needs to compare generations to behave correctly.
-   */
-  readonly generation: number;
-}
-
-/**
  * Emitted once per settled batch of filesystem activity — never once per
  * raw event. A single Git branch switch touching 500 files produces
  * exactly one `WorkspaceIndexUpdate`, not 500.
  */
 export interface WorkspaceIndexUpdate {
-  /** The resulting state after this batch was applied. */
-  readonly snapshot: WorkspaceIndexSnapshot;
+  /**
+   * The workspace's complete state after this batch — the one value every client
+   * consumes. See {@link WorkspaceAnalysis} for why there is exactly one.
+   */
+  readonly analysis: WorkspaceAnalysis;
   /** Paths of assets that were added or re-parsed in this batch. */
   readonly upsertedAssetPaths: readonly string[];
   /** Paths of assets removed from the index in this batch. */

@@ -17,7 +17,7 @@ import * as vscode from 'vscode';
  * module for the full rationale.
  *
  * The icons below intentionally match the vocabulary used elsewhere in the
- * sidebar (`circle-slash` for unused/orphaned, `copy` for duplicate,
+ * sidebar (`circle-slash` for unreferenced, `copy` for duplicate,
  * `warning` for rule violations — the same icons `AnimoriaGovernanceSectionItem`
  * and `AnimoriaGovernanceIssueItem` already use for the same categories) —
  * this is where that vocabulary is expressed, and the only place it needs
@@ -29,9 +29,9 @@ import * as vscode from 'vscode';
  * pictograph that clashes with both Light and Dark themes).
  */
 const BADGE_ICONS: Readonly<Record<AssetBadgeKind, string>> = {
-  orphaned: '$(circle-slash)',
+  unreferenced: '$(circle-slash)',
   duplicate: '$(copy)',
-  'rule-violation': '$(warning)',
+  'rule-finding': '$(warning)',
 };
 
 /** The result of presenting a set of badges for one tree item. */

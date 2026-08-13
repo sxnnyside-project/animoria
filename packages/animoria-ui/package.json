@@ -1,0 +1,38 @@
+{
+  "name": "@animoria/ui",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Animoria's shared product UI: Lit components that render a WorkspaceAnalysis and emit host intent. No host APIs, no governance decisions.",
+  "type": "module",
+  "main": "dist/animoria-ui.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./bridge": {
+      "types": "./src/bridge/index.ts",
+      "default": "./src/bridge/index.ts"
+    },
+    "./tokens.css": "./src/styles/tokens.css",
+    "./dist/animoria-ui.js": "./dist/animoria-ui.js"
+  },
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "biome lint src",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@animoria/core": "workspace:*",
+    "lit": "^3.3.3",
+    "lottie-web": "5.12.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vite": "^8.0.16",
+    "vitest": "^3.2.6"
+  }
+}

@@ -1,7 +1,9 @@
 package com.sxnnyside.animoria.backend
 
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.module.ModuleManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.ModuleRootManager
 import com.intellij.openapi.vfs.newvfs.BulkFileListener
 import com.intellij.openapi.vfs.newvfs.events.VFileContentChangeEvent
 import com.intellij.openapi.vfs.newvfs.events.VFileCreateEvent
@@ -35,12 +37,35 @@ import com.intellij.openapi.vfs.newvfs.events.VFilePropertyChangeEvent
 class AnimoriaVFSListener(private val project: Project) : BulkFileListener {
     private val logger = Logger.getInstance(AnimoriaVFSListener::class.java)
     private val manager: CoreProcessManager get() = project.getService(CoreProcessManager::class.java)
-    private val basePath: String get() = project.basePath ?: ""
+
+    /**
+     * Every content root this project declares.
+     *
+     * `project.basePath` was used here, which meant a change in any module outside
+     * the `.idea` directory was filtered out and the daemon never heard about it —
+     * so a second module's assets were indexed once at startup and then frozen.
+     *
+     * Read per event batch rather than cached: a root can be added or removed while
+     * the IDE is open, and a stale list silently reintroduces the same gap.
+     */
+    private fun contentRoots(): List<String> =
+        runCatching {
+            ModuleManager.getInstance(project)
+                .modules
+                .flatMap { module -> ModuleRootManager.getInstance(module).contentRoots.toList() }
+                .mapNotNull { it.canonicalPath }
+        }.getOrDefault(emptyList())
+            .ifEmpty { listOfNotNull(project.basePath) }
 
     override fun after(events: List<VFileEvent>) {
+        val roots = contentRoots()
+        if (roots.isEmpty()) return
+
         for (event in events) {
             val path = event.path
-            if (!path.startsWith(basePath)) continue
+            // Segment-boundary containment, not a bare prefix test: `/workspace-old`
+            // starts with `/workspace` and is a different directory.
+            if (roots.none { path == it || path.startsWith("$it/") }) continue
             if (shouldIgnore(path)) continue
 
             val kind =

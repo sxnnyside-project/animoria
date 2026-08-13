@@ -4,13 +4,12 @@ import type {
   AnimoriaStaticAsset,
   AssetBadge,
   AssetTreeNode,
-  GovernanceCategory,
-  GovernanceIssue,
-  GovernanceReport,
-  HealthScoreReport,
+  DuplicateGroup,
+  HealthScoreOutcome,
+  MultiRootAnalysis,
   RuleDiagnostic,
-  RuleEngineReport,
   UsageReference,
+  WorkspaceAnalysis,
 } from '@animoria/core';
 import {
   UsageScanner,
@@ -19,7 +18,6 @@ import {
   evaluateAssetBadges,
 } from '@animoria/core';
 import * as vscode from 'vscode';
-import { AnimoriaPreviewPanel } from '../panels/AnimoriaPreviewPanel';
 import { presentAssetBadges, presentBadgeIconColor } from '../presentation/badge-presenter';
 import { presentHealthScore } from '../presentation/health-score-presenter';
 import { resolveScopePath } from '../utils/resolve-scope-path';
@@ -144,8 +142,8 @@ export class AnimoriaFolderItem extends vscode.TreeItem {
  * the score is turned into this widget's text and icon.
  */
 export class AnimoriaHealthScoreItem extends vscode.TreeItem {
-  constructor(report: HealthScoreReport) {
-    const presented = presentHealthScore(report);
+  constructor(outcome: HealthScoreOutcome) {
+    const presented = presentHealthScore(outcome);
     super(presented.label, vscode.TreeItemCollapsibleState.None);
     this.description = presented.description;
     this.tooltip = presented.tooltip;
@@ -160,55 +158,95 @@ export class AnimoriaGovernanceSectionItem extends vscode.TreeItem {
   constructor(
     label: string,
     count: number,
-    public readonly category: GovernanceCategory,
+    public readonly category: string,
     collapsibleState: vscode.TreeItemCollapsibleState
   ) {
     super(`${label} (${count})`, collapsibleState);
 
     const iconName =
-      category === 'unused' ? 'circle-slash' : category === 'duplicate' ? 'copy' : 'flame';
+      category === 'unreferenced' ? 'circle-slash' : category === 'duplicate' ? 'copy' : 'flame';
 
     this.iconPath = new vscode.ThemeIcon(iconName);
     this.contextValue = 'animoriaGovernanceSection';
   }
 }
 
+/** Human-readable section titles per rule. An unknown rule falls back to its id. */
+const SECTION_LABELS: Readonly<Record<string, string>> = {
+  'no-unreferenced-assets': 'Unreferenced Assets',
+  'no-duplicate-content': 'Duplicate Content',
+  'no-duplicate-names': 'Duplicate Names',
+  'max-file-size-kb': 'Oversized Assets',
+  'allowed-formats': 'Disallowed Formats',
+  'no-gif': 'GIF Assets',
+};
+
 // ── Governance issue item ─────────────────────────────────────────────────────
 
+/**
+ * One governance finding in the sidebar.
+ *
+ * Renders a {@link RuleDiagnostic} — the same value the CLI prints and the Problems
+ * panel shows. It used to render a `GovernanceIssue` from a second governance engine
+ * whose categories fed nothing into the Health Score displayed directly above it, so
+ * the sidebar could show a perfect score above a list of the workspace's problems.
+ */
 export class AnimoriaGovernanceIssueItem extends vscode.TreeItem {
-  public readonly issue: GovernanceIssue;
+  public readonly diagnostic: RuleDiagnostic;
 
-  constructor(issue: GovernanceIssue) {
-    super(issue.asset.stem, vscode.TreeItemCollapsibleState.None);
+  constructor(diagnostic: RuleDiagnostic) {
+    super(diagnostic.asset.stem, vscode.TreeItemCollapsibleState.None);
 
-    this.issue = issue;
-    this.tooltip = issue.asset.path;
-    // Duplicates get their own context value so the sidebar offers
-    // "Resolve Duplicates" (the assisted workflow) instead of the raw
-    // "Delete Asset" action available for unused/overused issues —
-    // deleting one half of a duplicate pair directly would bypass the
-    // reference-rewriting safety this workflow exists to provide.
+    this.diagnostic = diagnostic;
+    // Evidence and remediation, both straight off the diagnostic — the sidebar
+    // explains a finding with the same words every other surface uses.
+    this.tooltip = new vscode.MarkdownString(
+      [
+        `**${diagnostic.ruleId}** · ${diagnostic.severity} · confidence: ${diagnostic.confidence}`,
+        '',
+        diagnostic.message,
+        '',
+        `_${diagnostic.evidence.summary}_`,
+        '',
+        diagnostic.remediation.summary,
+        '',
+        `[Rule reference](${diagnostic.helpUri})`,
+      ].join('\n')
+    );
+
+    // Duplicates get their own context value so the sidebar offers the assisted
+    // "Resolve Duplicates" workflow rather than a raw delete — removing one half of
+    // a duplicate pair directly would bypass the reference rewriting that workflow
+    // exists to provide.
     this.contextValue =
-      issue.category === 'duplicate'
+      diagnostic.ruleId === 'no-duplicate-content'
         ? 'animoriaGovernanceIssueDuplicate'
         : 'animoriaGovernanceIssue';
 
-    if (issue.category === 'unused') {
-      this.description = 'No references found';
-      this.iconPath = new vscode.ThemeIcon('warning');
-    } else if (issue.category === 'duplicate') {
-      this.description = `Identical to ${issue.duplicateOf?.length ?? 0} other(s)`;
-      this.iconPath = new vscode.ThemeIcon('files');
-    } else {
-      this.description = `${issue.referenceCount} references`;
-      this.iconPath = new vscode.ThemeIcon('pulse');
-    }
+    this.description = describeDiagnostic(diagnostic);
+    this.iconPath = new vscode.ThemeIcon(diagnostic.severity === 'error' ? 'error' : 'warning');
 
     this.command = {
       command: 'animoria.openPreview',
       title: 'Open Preview',
-      arguments: [issue.asset],
+      arguments: [diagnostic.asset],
     };
+  }
+}
+
+/** Short, rule-appropriate description for the tree row. */
+function describeDiagnostic(diagnostic: RuleDiagnostic): string {
+  switch (diagnostic.ruleId) {
+    case 'no-unreferenced-assets':
+      return diagnostic.coverage
+        ? `No references · coverage ${diagnostic.coverage.status}`
+        : 'No references found';
+    case 'no-duplicate-content': {
+      const siblings = (diagnostic.evidence.locations ?? []).length;
+      return `Identical to ${siblings} other(s)`;
+    }
+    default:
+      return diagnostic.ruleId;
   }
 }
 
@@ -270,7 +308,7 @@ export class AnimoriaStaticAssetItem extends vscode.TreeItem {
     // — clicking a static asset opens the same Preview Panel, not a
     // different action. Static assets are governed the same way animated
     // ones are; only the panel's internal rendering differs (see
-    // `AnimoriaPreviewPanel`'s static-asset branch).
+    // the shared asset view's static-asset branch).
     this.command = {
       command: 'animoria.openPreview',
       title: 'Open Preview',
@@ -344,10 +382,14 @@ export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElem
   private _thumbnails: Map<string, string> = new Map();
   /** Assets for which thumbnail generation ran and produced no file (a real failure, not a badge-tier success). Distinct from "not yet attempted" so the tree can tell "still generating" from "gave up". */
   private _thumbnailFailures: Set<string> = new Set();
-  private _governanceReport: GovernanceReport | null = null;
   private _governanceSections: AnimoriaGovernanceSectionItem[] = [];
-  private _ruleReport: RuleEngineReport | null = null;
-  private _healthScore: HealthScoreReport | null = null;
+  private _diagnostics: readonly RuleDiagnostic[] = [];
+  private _health: HealthScoreOutcome = {
+    status: 'unavailable',
+    reason: 'incomplete-analysis',
+    message: 'The workspace has not been analyzed yet.',
+  };
+  private _duplicateGroups: readonly DuplicateGroup[] = [];
   private _referenceCounts: ReadonlyMap<string, number> = new Map();
   private _staticAssets: AnimoriaStaticAsset[] = [];
 
@@ -387,14 +429,9 @@ export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElem
     }
 
     if (element instanceof AnimoriaGovernanceSectionItem) {
-      if (!this._governanceReport) return [];
-      const issues =
-        element.category === 'unused'
-          ? this._governanceReport.unused
-          : element.category === 'duplicate'
-            ? this._governanceReport.duplicates
-            : this._governanceReport.overused;
-      return issues.map((i) => new AnimoriaGovernanceIssueItem(i));
+      return this._diagnostics
+        .filter((d) => d.ruleId === element.category)
+        .map((d) => new AnimoriaGovernanceIssueItem(d));
     }
 
     if (element instanceof AnimoriaTreeItem) {
@@ -436,7 +473,9 @@ export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElem
   }
 
   private _getRootChildren(): AnyTreeElement[] {
-    const healthItem = this._healthScore ? [new AnimoriaHealthScoreItem(this._healthScore)] : [];
+    // A score row appears only when Core produced one; when it did not, the row
+    // states why rather than showing a number nobody computed.
+    const healthItem = [new AnimoriaHealthScoreItem(this._health)];
 
     // Mirrors the Static Assets section below — the same disclosure
     // experience for both categories, collapsed by default so neither one
@@ -510,7 +549,7 @@ export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElem
 
   private _diagnosticsByAssetPath(): ReadonlyMap<string, readonly RuleDiagnostic[]> {
     const map = new Map<string, RuleDiagnostic[]>();
-    for (const diagnostic of this._ruleReport?.diagnostics ?? []) {
+    for (const diagnostic of this._diagnostics) {
       const list = map.get(diagnostic.asset.path) ?? [];
       list.push(diagnostic);
       map.set(diagnostic.asset.path, list);
@@ -519,13 +558,11 @@ export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElem
   }
 
   private _duplicateAssetPaths(): ReadonlySet<string> {
-    return new Set(this._governanceReport?.duplicates.map((issue) => issue.asset.path) ?? []);
-  }
-
-  setGovernanceReport(report: GovernanceReport): void {
-    this._governanceReport = report;
-    this._buildGovernanceSections();
-    this._onDidChangeTreeData.fire(undefined);
+    const paths = new Set<string>();
+    for (const group of this._duplicateGroups) {
+      for (const candidate of group.candidates) paths.add(candidate.asset.path);
+    }
+    return paths;
   }
 
   /**
@@ -545,7 +582,7 @@ export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElem
 
   /**
    * Feeds reactive governance signals (reference counts, Rule Engine
-   * diagnostics, Health Score) from the latest `WorkspaceIndexSnapshot`
+   * diagnostics, Health Score) from the latest `WorkspaceAnalysis`
    * into the provider. Deliberately independent of {@link setAssets} /
    * {@link updateAsset} / {@link removeAsset} — asset identity changes
    * and governance-state changes are different kinds of updates from
@@ -553,52 +590,99 @@ export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElem
    * every governance refresh to also re-derive the asset list (or vice
    * versa) even when only one actually changed.
    */
-  setGovernanceState(state: {
-    ruleReport: RuleEngineReport | null;
-    healthScore: HealthScoreReport | null;
-    referenceCounts: ReadonlyMap<string, number>;
-  }): void {
-    this._ruleReport = state.ruleReport;
-    this._healthScore = state.healthScore;
-    this._referenceCounts = state.referenceCounts;
+  /**
+   * Applies a workspace analysis.
+   *
+   * One entry point rather than the previous pair (`setGovernanceState` for rule
+   * diagnostics and the score, `setGovernanceReport` for the other engine's
+   * categories). Two intake methods meant the sidebar could hold two governance
+   * states that disagreed — which is exactly what it did.
+   */
+  setAnalysis(analysis: WorkspaceAnalysis): void {
+    this._diagnostics = analysis.diagnostics;
+    this._health = analysis.health;
+    this._referenceCounts = analysis.referenceCounts;
+    this._duplicateGroups = analysis.duplicateGroups;
+    this._buildGovernanceSections();
     this._onDidChangeTreeData.fire(undefined);
   }
 
-  private _buildGovernanceSections(): void {
-    if (!this._governanceReport) return;
-    const r = this._governanceReport;
-    this._governanceSections = [];
+  /**
+   * Applies a multi-root aggregate.
+   *
+   * ## Why the tree takes the aggregate rather than one root's analysis
+   * The sidebar describes *the workspace*. Feeding it one root's analysis at a time
+   * makes each root overwrite the last, so a three-root workspace shows whichever
+   * root was published most recently and reads as though the other two are clean.
+   *
+   * ## Health in a multi-root workspace
+   * `singleRootOutcome` is `null` when there is more than one root, and the header
+   * widget renders that as "per root" rather than inventing a workspace number.
+   * Averaging two engine-computed scores produces a third that no engine computed —
+   * the exact fabrication this migration removed everywhere else.
+   */
+  setMultiRootAnalysis(aggregate: MultiRootAnalysis): void {
+    this._diagnostics = aggregate.diagnostics.map((entry) => entry.diagnostic);
 
-    if (r.unused.length > 0) {
-      this._governanceSections.push(
-        new AnimoriaGovernanceSectionItem(
-          'Unused Assets',
-          r.unused.length,
-          'unused',
-          vscode.TreeItemCollapsibleState.Collapsed
-        )
-      );
+    this._health =
+      aggregate.health.singleRootOutcome ??
+      ({
+        status: 'unavailable',
+        reason: 'incomplete-analysis',
+        message: `This workspace has ${aggregate.roots.length} roots. Animoria scores each root separately; open a single root to see one score.`,
+      } as HealthScoreOutcome);
+
+    // Reference counts merged across roots. Paths are absolute and roots do not
+    // overlap, so no key can collide — which is precisely why identity is the
+    // canonical path rather than a display name.
+    const merged = new Map<string, number>();
+    for (const { analysis } of aggregate.roots) {
+      const refCounts = analysis.referenceCounts;
+      const entries: Iterable<readonly [unknown, unknown]> = !refCounts
+        ? []
+        : refCounts instanceof Map
+          ? refCounts.entries()
+          : Array.isArray(refCounts)
+            ? refCounts
+            : Object.entries(refCounts);
+
+      for (const [path, count] of entries) {
+        if (typeof path === 'string' && typeof count === 'number') {
+          merged.set(path, count);
+        }
+      }
     }
-    if (r.duplicates.length > 0) {
-      this._governanceSections.push(
-        new AnimoriaGovernanceSectionItem(
-          'Duplicates',
-          r.duplicates.length,
-          'duplicate',
-          vscode.TreeItemCollapsibleState.Collapsed
-        )
-      );
+    this._referenceCounts = merged;
+
+    this._duplicateGroups = aggregate.duplicateGroups;
+    this._buildGovernanceSections();
+    this._onDidChangeTreeData.fire(undefined);
+  }
+
+  /**
+   * Rebuilds the governance sections from the diagnostics present.
+   *
+   * Grouped by rule id rather than by a fixed `unused` / `duplicate` / `overused`
+   * taxonomy: a section exists precisely when a rule produced findings, so a new
+   * rule appears in the sidebar without this method learning about it.
+   */
+  private _buildGovernanceSections(): void {
+    const countByRule = new Map<string, number>();
+    for (const diagnostic of this._diagnostics) {
+      countByRule.set(diagnostic.ruleId, (countByRule.get(diagnostic.ruleId) ?? 0) + 1);
     }
-    if (r.overused.length > 0) {
-      this._governanceSections.push(
-        new AnimoriaGovernanceSectionItem(
-          'Overused Assets',
-          r.overused.length,
-          'overused',
-          vscode.TreeItemCollapsibleState.Collapsed
-        )
+
+    this._governanceSections = [...countByRule.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(
+        ([ruleId, count]) =>
+          new AnimoriaGovernanceSectionItem(
+            SECTION_LABELS[ruleId] ?? ruleId,
+            count,
+            ruleId,
+            vscode.TreeItemCollapsibleState.Collapsed
+          )
       );
-    }
   }
 
   async loadUsageRefs(item: AnimoriaTreeItem): Promise<void> {
@@ -653,13 +737,47 @@ export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElem
     this._onDidChangeTreeData.fire(undefined);
   }
 
+  /**
+   * Replaces the asset set, keeping the thumbnails that are still about something.
+   *
+   * ## The regression this fixes
+   * This cleared `_thumbnails` and `_thumbnailFailures` unconditionally, and
+   * `applyAggregate` calls it on *every* index update and every explicit refresh. An
+   * asset with neither a thumbnail nor a recorded failure renders the "still
+   * generating" spinner — so "Run Governance Analysis", which applies an aggregate and
+   * never regenerates anything, put every asset in the tree into a loading state that
+   * nothing would ever settle.
+   *
+   * A thumbnail is keyed by absolute path and describes bytes on disk. A new analysis
+   * does not invalidate it; only the asset going away does. Entries for departed
+   * assets are dropped so the maps cannot grow without bound.
+   */
   setAssets(assets: AnimoriaAsset[]): void {
     this._assets = assets;
-    this._thumbnails.clear();
-    this._thumbnailFailures.clear();
-    this._governanceReport = null;
+
+    const present = new Set(assets.map((asset) => asset.path));
+    for (const path of [...this._thumbnails.keys()]) {
+      if (!present.has(path)) this._thumbnails.delete(path);
+    }
+    for (const path of [...this._thumbnailFailures]) {
+      if (!present.has(path)) this._thumbnailFailures.delete(path);
+    }
+
     this._governanceSections = [];
     this.clearUsageCache();
+  }
+
+  /**
+   * Assets with no thumbnail and no recorded failure — the ones still showing a
+   * spinner.
+   *
+   * Exposed so the extension can settle them rather than leaving the tree to wait on
+   * a generation pass that may never come.
+   */
+  assetsAwaitingThumbnails(): readonly AnimoriaAsset[] {
+    return this._assets.filter(
+      (asset) => !this._thumbnails.has(asset.path) && !this._thumbnailFailures.has(asset.path)
+    );
   }
 
   setQuery(query: string): void {
@@ -710,9 +828,8 @@ export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElem
     this._itemMap.delete(path);
     this._onDidChangeTreeData.fire(undefined);
 
-    const panel = AnimoriaPreviewPanel.currentPanel;
-    if (panel && panel.currentAssetPath === path) {
-      panel.notifyAssetRemoved();
-    }
+    // The shared panel is driven by the index, not by this provider: it subscribes
+    // to `onDidUpdate` and re-renders from the new analysis. Poking it from here was
+    // a second notification path that could disagree with the first.
   }
 }

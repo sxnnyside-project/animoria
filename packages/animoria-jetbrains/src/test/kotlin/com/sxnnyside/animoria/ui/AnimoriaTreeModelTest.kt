@@ -1,9 +1,12 @@
 package com.sxnnyside.animoria.ui
 
-import com.sxnnyside.animoria.backend.GovernanceIssueData
-import com.sxnnyside.animoria.backend.GovernanceResultData
+import com.sxnnyside.animoria.backend.DiagnosticEvidenceData
+import com.sxnnyside.animoria.backend.EvidenceLocationData
 import com.sxnnyside.animoria.backend.JetBrainsAsset
+import com.sxnnyside.animoria.backend.RemediationData
+import com.sxnnyside.animoria.backend.RuleDiagnosticData
 import com.sxnnyside.animoria.backend.StaticAssetData
+import com.sxnnyside.animoria.backend.WorkspaceAnalysisData
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -99,45 +102,62 @@ class AnimoriaTreeModelTest {
     }
 
     @Test
-    fun `governance sections only appear for categories with at least one issue`() {
+    fun `governance sections only appear for rules with at least one diagnostic`() {
         val model = AnimoriaTreeModel()
         model.setAssets(listOf(asset("/ws/a.json", "a"), asset("/ws/b.json", "b")))
-        model.setGovernanceResult(
-            GovernanceResultData(
-                unused = listOf(GovernanceIssueData(assetPath = "/ws/a.json", assetName = "a.json", category = "unused")),
+        model.setAnalysis(
+            WorkspaceAnalysisData(
+                assets = listOf(asset("/ws/a.json", "a"), asset("/ws/b.json", "b")),
+                diagnostics = listOf(diagnostic("no-unreferenced-assets", asset("/ws/a.json", "a"))),
+                evaluatedRuleIds = listOf("no-unreferenced-assets", "no-duplicate-content"),
             ),
         )
 
+        // `no-duplicate-content` was evaluated and found nothing. A section for it
+        // would imply findings that do not exist, so evaluation alone must not
+        // create one.
         val sections = rootChildren(model).filterIsInstance<GovernanceSectionNode>()
-        assertEquals(listOf("unused"), sections.map { it.category })
+        assertEquals(listOf("no-unreferenced-assets"), sections.map { it.category })
     }
 
     @Test
-    fun `a duplicate issue carries its duplicateOf group into the tree`() {
+    fun `an issue node carries the diagnostic verbatim rather than a re-derived category`() {
         val model = AnimoriaTreeModel()
-        model.setAssets(listOf(asset("/ws/a.json", "a")))
-        model.setGovernanceResult(
-            GovernanceResultData(
-                duplicates =
+        val subject = asset("/ws/a.json", "a")
+        model.setAssets(listOf(subject))
+        val published = diagnostic("max-file-size-kb", subject, severity = "error", confidence = "certain")
+        model.setAnalysis(
+            WorkspaceAnalysisData(assets = listOf(subject), diagnostics = listOf(published)),
+        )
+
+        val node = governanceIssues(model, "max-file-size-kb").single()
+        assertEquals(published, node.diagnostic)
+        assertEquals("max-file-size-kb", node.category)
+        assertEquals("error", node.diagnostic.severity)
+        assertEquals("certain", node.diagnostic.confidence)
+    }
+
+    @Test
+    fun `a duplicate issue exposes its sibling locations from the diagnostic evidence`() {
+        val model = AnimoriaTreeModel()
+        val subject = asset("/ws/a.json", "a")
+        model.setAssets(listOf(subject))
+        model.setAnalysis(
+            WorkspaceAnalysisData(
+                assets = listOf(subject),
+                diagnostics =
                     listOf(
-                        GovernanceIssueData(
-                            assetPath = "/ws/a.json",
-                            assetName = "a.json",
-                            category = "duplicate",
-                            duplicateOf = listOf("/ws/a-copy.json"),
+                        diagnostic(
+                            "no-duplicate-content",
+                            subject,
+                            locations = listOf(EvidenceLocationData(file = "/ws/a-copy.json")),
                         ),
                     ),
             ),
         )
 
-        val root = model.root as DefaultMutableTreeNode
-        val duplicatesSection =
-            (0 until root.childCount)
-                .map { root.getChildAt(it) as DefaultMutableTreeNode }
-                .first { (it.userObject as? GovernanceSectionNode)?.category == "duplicate" }
-        val issueNode = (duplicatesSection.getChildAt(0) as DefaultMutableTreeNode).userObject as GovernanceIssueNode
-
-        assertEquals(listOf("/ws/a-copy.json"), issueNode.duplicateOf)
+        val node = governanceIssues(model, "no-duplicate-content").single()
+        assertEquals(listOf("/ws/a-copy.json"), node.duplicateOf)
     }
 
     @Test
@@ -199,5 +219,139 @@ class AnimoriaTreeModelTest {
 
         assertEquals(AnimoriaTreeModel.ViewMode.TREE, first)
         assertEquals(AnimoriaTreeModel.ViewMode.FLAT, second)
+    }
+
+    private fun diagnostic(
+        ruleId: String,
+        asset: JetBrainsAsset,
+        severity: String = "warning",
+        confidence: String = "high",
+        locations: List<EvidenceLocationData> = emptyList(),
+    ) = RuleDiagnosticData(
+        ruleId = ruleId,
+        severity = severity,
+        asset = asset,
+        message = "$ruleId on ${asset.path}",
+        evidence = DiagnosticEvidenceData(kind = "absence", summary = "observed", locations = locations),
+        confidence = confidence,
+        remediation = RemediationData(summary = "do something"),
+        helpUri = "https://example.invalid/$ruleId",
+    )
+
+    private fun governanceIssues(
+        model: AnimoriaTreeModel,
+        ruleId: String,
+    ): List<GovernanceIssueNode> {
+        val root = model.root as DefaultMutableTreeNode
+        val section =
+            (0 until root.childCount)
+                .map { root.getChildAt(it) as DefaultMutableTreeNode }
+                .first { (it.userObject as? GovernanceSectionNode)?.category == ruleId }
+        return (0 until section.childCount)
+            .map { (section.getChildAt(it) as DefaultMutableTreeNode).userObject as GovernanceIssueNode }
+    }
+}
+
+/**
+ * The gallery exists as a *mounted component*, not merely as a model.
+ *
+ * ## The defect this exists for
+ * `AnimoriaTreeModel` and `AnimoriaTreeCellRenderer` were complete — sections, folder
+ * grouping, health and governance nodes, per-asset thumbnails with pending and failed
+ * states, search, a flat/tree toggle — and **nothing ever constructed a `JTree` from
+ * them**. Their only references in the repository were the tests above. The tool
+ * window shipped findings, duplicates and cleanup, and no way to see the assets those
+ * findings are about; the "Asset" tab invited the developer to select something with
+ * nothing to select from.
+ *
+ * A unit-tested model with no surface passes every test and ships no feature. That is
+ * the exact shape of failure this repository has been bitten by repeatedly, and it is
+ * only visible from outside the class.
+ */
+class GalleryMountedTest {
+    private val mainRoot = java.io.File("src/main/kotlin")
+
+    private fun mainSources(): String =
+        mainRoot
+            .walkTopDown()
+            .filter { it.isFile && it.extension == "kt" }
+            .joinToString("\n") { file ->
+                file.readText()
+                    .replace(Regex("""/\*[\s\S]*?\*/""")) { it.value.replace(Regex("[^\n]"), " ") }
+                    .lines()
+                    .joinToString("\n") { line -> line.substringBefore("//") }
+            }
+
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("something in main builds a tree from the model")
+    fun theModelIsMounted() {
+        val source = mainSources()
+        assertTrue(
+            source.contains("Tree(model)") || Regex("""Tree\(\s*AnimoriaTreeModel""").containsMatchIn(source),
+            "AnimoriaTreeModel must be mounted in a real tree component, not only in tests",
+        )
+        assertTrue(
+            source.contains("AnimoriaTreeCellRenderer()"),
+            "the renderer must be attached to that tree",
+        )
+    }
+
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("the tool window opens the gallery")
+    fun theGalleryIsAToolWindowTab() {
+        val factory =
+            java.io.File("src/main/kotlin/com/sxnnyside/animoria/ui/AnimoriaToolWindowFactory.kt")
+                .readText()
+        assertTrue(factory.contains("AnimoriaGalleryPanel"), "the gallery must be a tool window tab")
+        assertTrue(
+            factory.contains("\"Assets\""),
+            "the gallery tab must be named for what it holds",
+        )
+    }
+
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("every thumbnail request settles")
+    fun thumbnailsSettle() {
+        // Pending renders an animated spinner. An asset left there shows it forever,
+        // which is the regression the VS Code tree had for the same reason.
+        val gallery =
+            java.io.File("src/main/kotlin/com/sxnnyside/animoria/ui/AnimoriaGalleryPanel.kt").readText()
+        assertTrue(gallery.contains("markThumbnailPending"), "a request must mark the asset pending")
+        assertTrue(gallery.contains("setThumbnail"), "success must settle it")
+        assertTrue(gallery.contains("markThumbnailFailed"), "failure must settle it too")
+    }
+
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("the gallery offers an explicit preview action")
+    fun previewIsAnExplicitAction() {
+        // Selection alone was the only way to preview, and it posted a message to a
+        // panel on a tab the developer was not looking at — so nothing appeared to
+        // happen and the control read as dead. A capability a user cannot see is a
+        // capability they do not have.
+        val gallery =
+            java.io.File("src/main/kotlin/com/sxnnyside/animoria/ui/AnimoriaGalleryPanel.kt").readText()
+
+        assertTrue(gallery.contains("\"Open Preview\""), "the gallery must offer a visible preview action")
+        assertTrue(gallery.contains("createActionToolbar"), "it belongs on a toolbar the developer can see")
+        assertTrue(gallery.contains("installPopupMenu"), "and on the context menu, where the mouse already is")
+    }
+
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("routing to a surface also brings that surface forward")
+    fun routingRevealsTheSurface() {
+        // Telling a panel what to show and *showing the panel* are two different
+        // things. A webview cannot select the IDE tab that contains it, so a host that
+        // only posts the message leaves the developer where they were.
+        val gallery =
+            java.io.File("src/main/kotlin/com/sxnnyside/animoria/ui/AnimoriaGalleryPanel.kt").readText()
+        assertTrue(
+            gallery.contains("AnimoriaToolWindows.show"),
+            "a preview request must activate the Preview tab, not only message it",
+        )
+
+        val windows =
+            java.io.File("src/main/kotlin/com/sxnnyside/animoria/ui/AnimoriaToolWindows.kt").readText()
+        assertTrue(windows.contains("setSelectedContent"), "the tab must actually be selected")
+        assertTrue(windows.contains("invokeLater"), "content selection is a UI operation")
     }
 }

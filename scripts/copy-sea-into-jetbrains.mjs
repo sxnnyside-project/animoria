@@ -13,7 +13,7 @@
  * workflow's build matrix.
  */
 import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs';
-import { platform, arch } from 'node:os';
+import { arch, platform } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 

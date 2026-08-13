@@ -1,6 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import type { AnimoriaAsset, UsageReference } from '../../types/asset.js';
 import { UsageScanner } from '../../usage/usage-scanner.js';
+import { planLineRewrite } from './reference-rewrite.js';
+import type { UnrewritableReference } from './reference-rewrite.js';
 import type { DuplicateGroup, ReferenceUpdate, ResolutionPlan } from './types.js';
 
 /** Options for {@link buildResolutionPlan}. */
@@ -9,6 +11,11 @@ export interface BuildResolutionPlanConfig {
   readonly group: DuplicateGroup;
   /** The asset the developer has chosen to keep — must be a member of `group.candidates`. */
   readonly canonicalAsset: AnimoriaAsset;
+  /**
+   * The root the canonical asset lives in. Carried onto the plan so a client never
+   * re-derives root attribution from a path — see `ResolutionPlan.root`.
+   */
+  readonly root?: { readonly id: string; readonly name: string } | null;
   /** Resolves the usage-search scope for a given asset — mirrors `GovernanceConfig.scopeResolver`. Defaults to the whole workspace. */
   readonly scopeResolver?: (asset: AnimoriaAsset) => string;
 }
@@ -44,22 +51,37 @@ export interface BuildResolutionPlanConfig {
 export async function buildResolutionPlan(
   config: BuildResolutionPlanConfig
 ): Promise<ResolutionPlan> {
-  const { workspacePath, group, canonicalAsset, scopeResolver } = config;
+  const { workspacePath, group, canonicalAsset, scopeResolver, root = null } = config;
 
   const assetsToDelete = group.candidates
     .map((c) => c.asset)
     .filter((asset) => asset.path !== canonicalAsset.path);
 
-  const referenceUpdateLists = await Promise.all(
+  const outcomes = await Promise.all(
     assetsToDelete.map((duplicate) =>
       buildReferenceUpdatesForAsset(workspacePath, duplicate, canonicalAsset, scopeResolver)
     )
   );
 
-  const referenceUpdates = referenceUpdateLists.flat();
+  const referenceUpdates = outcomes.flatMap((o) => o.updates);
+  const unrewritableReferences = outcomes.flatMap((o) => o.unrewritable);
   const estimatedSavingsBytes = assetsToDelete.reduce((sum, a) => sum + a.sizeBytes, 0);
 
-  return { group, canonicalAsset, assetsToDelete, referenceUpdates, estimatedSavingsBytes };
+  return {
+    group,
+    root,
+    canonicalAsset,
+    assetsToDelete,
+    referenceUpdates,
+    unrewritableReferences,
+    safety: unrewritableReferences.length === 0 ? 'complete' : 'partial',
+    estimatedSavingsBytes,
+  };
+}
+
+interface AssetRewriteOutcome {
+  readonly updates: ReferenceUpdate[];
+  readonly unrewritable: UnrewritableReference[];
 }
 
 async function buildReferenceUpdatesForAsset(
@@ -67,7 +89,7 @@ async function buildReferenceUpdatesForAsset(
   duplicate: AnimoriaAsset,
   canonicalAsset: AnimoriaAsset,
   scopeResolver: ((asset: AnimoriaAsset) => string) | undefined
-): Promise<ReferenceUpdate[]> {
+): Promise<AssetRewriteOutcome> {
   const scanner = new UsageScanner({
     workspacePath,
     asset: duplicate,
@@ -76,7 +98,7 @@ async function buildReferenceUpdatesForAsset(
   });
 
   const { references } = await scanner.search();
-  return buildUpdatesFromRawLines(references, duplicate, canonicalAsset);
+  return buildUpdatesFromRawLines(references, workspacePath, duplicate, canonicalAsset);
 }
 
 /**
@@ -91,11 +113,13 @@ async function buildReferenceUpdatesForAsset(
  */
 async function buildUpdatesFromRawLines(
   references: readonly UsageReference[],
+  workspacePath: string,
   duplicate: AnimoriaAsset,
   canonicalAsset: AnimoriaAsset
-): Promise<ReferenceUpdate[]> {
+): Promise<AssetRewriteOutcome> {
   const rawLinesByFile = new Map<string, string[]>();
   const updates: ReferenceUpdate[] = [];
+  const unrewritable: UnrewritableReference[] = [];
 
   for (const reference of references) {
     let lines = rawLinesByFile.get(reference.file);
@@ -107,40 +131,30 @@ async function buildUpdatesFromRawLines(
     const rawLine = lines[reference.line - 1];
     if (rawLine === undefined) continue;
 
-    const newText = substituteAssetReference(rawLine, duplicate, canonicalAsset);
-    if (newText === null) continue;
+    const outcome = planLineRewrite({
+      line: rawLine,
+      lineNumber: reference.line,
+      sourceFile: reference.file,
+      workspacePath,
+      duplicate,
+      canonical: canonicalAsset,
+    });
 
-    updates.push({ file: reference.file, line: reference.line, oldText: rawLine, newText });
+    if (outcome.kind === 'rewrite') {
+      updates.push({
+        file: outcome.rewrite.file,
+        line: outcome.rewrite.line,
+        oldText: outcome.rewrite.oldText,
+        newText: outcome.rewrite.newText,
+        oldTarget: outcome.rewrite.oldTarget,
+        newTarget: outcome.rewrite.newTarget,
+      });
+    } else if (outcome.kind === 'refused') {
+      unrewritable.push(outcome.refusal);
+    }
+    // `already-valid` needs no entry in either list: the line survives the
+    // resolution unchanged and correct, so it is neither work nor a warning.
   }
 
-  return updates;
-}
-
-/**
- * Rewrites a single line of source code to reference the canonical
- * asset instead of the duplicate, by substituting the duplicate's
- * filename and stem for the canonical asset's.
- *
- * Returns `null` when neither the duplicate's filename nor its stem
- * actually appears in the line — meaning the line matched one of
- * `UsageScanner`'s broader heuristic patterns (see
- * `usage/reference-patterns.js`) without containing literal text this
- * simple substitution can safely rewrite. Skipping those lines rather
- * than guessing is deliberate: a wrong rewrite of a reference line is
- * far worse than leaving one line for the developer to fix by hand,
- * which is why every line this *does* rewrite is still shown in the
- * plan preview before anything executes.
- */
-function substituteAssetReference(
-  line: string,
-  duplicate: AnimoriaAsset,
-  canonical: AnimoriaAsset
-): string | null {
-  if (line.includes(duplicate.name)) {
-    return line.split(duplicate.name).join(canonical.name);
-  }
-  if (line.includes(duplicate.stem)) {
-    return line.split(duplicate.stem).join(canonical.stem);
-  }
-  return null;
+  return { updates, unrewritable };
 }

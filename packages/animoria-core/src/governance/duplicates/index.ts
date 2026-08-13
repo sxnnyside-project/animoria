@@ -5,3 +5,5 @@ export * from './canonical-suggestion.js';
 export * from './resolution-plan.js';
 export * from './resolution-plan-validator.js';
 export * from './resolution-summary.js';
+export * from './reference-rewrite.js';
+export * from './resolution-executor.js';

@@ -1,18 +1,34 @@
 import { performance } from 'node:perf_hooks';
 import type { AnimoriaAsset } from '../types/asset.js';
+import type { ScanCoverage } from '../types/scan-coverage.js';
 import { createDefaultRuleRegistry } from './rules/builtins/index.js';
 import type { RuleRegistry } from './rules/rule-registry.js';
-import type { ActiveRuleSeverity, GovernanceSignals } from './rules/types.js';
+import type {
+  ActiveRuleSeverity,
+  Confidence,
+  DiagnosticEvidence,
+  GovernanceSignals,
+  Remediation,
+  RuleSkipReason,
+} from './rules/types.js';
 
 export type {
   GovernanceRule,
   RuleViolation,
+  DiagnosticEvidence,
+  EvidenceKind,
+  EvidenceLocation,
+  Confidence,
+  Remediation,
+  RuleOutcome,
+  RuleSkipReason,
   RuleEvaluationContext,
   RuleOptionsParseResult,
   RuleSeverity,
   ActiveRuleSeverity,
   GovernanceSignals,
 } from './rules/types.js';
+export { evaluated, skipped } from './rules/types.js';
 export { RuleRegistry } from './rules/rule-registry.js';
 export { createDefaultRuleRegistry } from './rules/builtins/index.js';
 
@@ -38,6 +54,22 @@ export interface RuleDiagnostic {
   readonly message: string;
   /** Structured detail specific to the rule, e.g. `{ limitKb, actualKb }`. */
   readonly details?: Readonly<Record<string, unknown>> | undefined;
+  /**
+   * The observation this diagnostic rests on.
+   *
+   * A consumer must be able to answer "why does Animoria think this?" from data
+   * alone. Every field below is stamped by the engine from what the rule reported,
+   * so no client re-derives, re-searches, or parses `message` to reconstruct it.
+   */
+  readonly evidence: DiagnosticEvidence;
+  /** How strongly the product stands behind it — derived from evidence, never asserted. */
+  readonly confidence: Confidence;
+  /** What the developer can do about it. */
+  readonly remediation: Remediation;
+  /** Where the rule is documented. */
+  readonly helpUri: string;
+  /** The reference scan behind this finding, for findings that derive from one. */
+  readonly coverage?: ScanCoverage | undefined;
 }
 
 /**
@@ -60,13 +92,36 @@ export interface RuleConfigError {
 /**
  * The complete, structured result of one {@link RulesEngine.run} call.
  */
+/**
+ * A rule that was configured and active, but declined to run because a signal it
+ * depends on was unavailable.
+ *
+ * Kept distinct from both {@link RuleDiagnostic} (a statement about an asset) and
+ * {@link RuleConfigError} (a statement about configuration): this is a statement
+ * about *coverage of the run itself*. Without it, a consumer cannot tell a clean
+ * workspace from an unchecked one.
+ */
+export interface SkippedRule {
+  readonly ruleId: string;
+  readonly severity: ActiveRuleSeverity;
+  readonly reason: RuleSkipReason;
+}
+
 export interface RuleEngineReport {
   /** Every violation found, across all active rules. */
   readonly diagnostics: readonly RuleDiagnostic[];
   /** Configuration entries that referenced an unknown rule or failed validation. */
   readonly configErrors: readonly RuleConfigError[];
-  /** Ids of rules that actually ran (excludes unknown, invalid, and `'off'` entries). */
+  /**
+   * Ids of rules that actually evaluated.
+   *
+   * **Invariant:** disjoint from {@link skippedRules}. This field previously included
+   * rules that had declined to run, which told automation the workspace had been
+   * checked when it had not.
+   */
   readonly evaluatedRuleIds: readonly string[];
+  /** Active rules that declined to run, and why. Never overlaps {@link evaluatedRuleIds}. */
+  readonly skippedRules: readonly SkippedRule[];
   /** Wall-clock duration of the run, in milliseconds. */
   readonly durationMs: number;
 }
@@ -153,6 +208,7 @@ export class RulesEngine {
     const diagnostics: RuleDiagnostic[] = [];
     const configErrors: RuleConfigError[] = [];
     const evaluatedRuleIds: string[] = [];
+    const skippedRules: SkippedRule[] = [];
 
     for (const [ruleId, rawValue] of Object.entries(this._config.rulesConfig)) {
       const rule = this._registry.get(ruleId);
@@ -169,21 +225,38 @@ export class RulesEngine {
 
       if (parsed.severity === 'off') continue;
 
-      const violations = rule.evaluate({
+      const outcome = rule.evaluate({
         workspacePath: this._config.workspacePath,
         assets: this._config.assets,
         options: parsed.options,
         signals: this._config.signals ?? {},
       });
 
+      // A rule lands in exactly one of these two buckets. Nothing may appear in both:
+      // the whole purpose of the outcome contract is that "checked and clean" and
+      // "never checked" stay distinguishable all the way out to the report.
+      if (outcome.status === 'skipped') {
+        skippedRules.push({ ruleId, severity: parsed.severity, reason: outcome.reason });
+        continue;
+      }
+
       evaluatedRuleIds.push(ruleId);
-      for (const violation of violations) {
+      for (const violation of outcome.violations) {
         diagnostics.push({
           ruleId,
           severity: parsed.severity,
           asset: violation.asset,
           message: violation.message,
           details: violation.details,
+          // Evidence, confidence and remediation come from the rule, which is the
+          // only thing that knows *why* it flagged this asset. `helpUri` comes from
+          // the rule's own declaration, so a consumer never maintains its own
+          // rule-to-docs mapping.
+          evidence: violation.evidence,
+          confidence: violation.confidence,
+          remediation: violation.remediation,
+          helpUri: rule.helpUri,
+          coverage: violation.coverage,
         });
       }
     }
@@ -192,6 +265,7 @@ export class RulesEngine {
       diagnostics,
       configErrors,
       evaluatedRuleIds,
+      skippedRules,
       durationMs: performance.now() - start,
     };
   }

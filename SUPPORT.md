@@ -5,6 +5,15 @@
 **GitHub Issues**  
 For bugs or unexpected behavior, open an [issue](https://github.com/sxnnyside-project/animoria/issues). Use the bug report template and include enough context to reproduce the problem.
 
+**Discord**  
+For questions, general discussion, or anything that isn't a bug — join the Sxnnyside Project community on Discord.
+
+---
+
+## Sponsoring
+
+If you find Animoria helpful and want to support ongoing development, consider sponsoring via [Patreon](https://www.patreon.com/cw/SxnnysideProject).
+
 ---
 
 ## Before Asking
@@ -21,4 +30,4 @@ For security vulnerabilities, see [SECURITY.md](SECURITY.md).
 
 ---
 
-_Animoria is a Sxnnyside Project Tool. Part of the [Sxnnyside Project](https://sxnnysideproject.com)._
+*Animoria is a Sxnnyside Project Tool. Part of the [Sxnnyside Project](https://sxnnysideproject.com).*
