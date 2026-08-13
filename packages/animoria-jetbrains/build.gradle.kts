@@ -1,6 +1,6 @@
 plugins {
-    kotlin("jvm") version "1.9.21"
-    id("org.jetbrains.intellij") version "1.17.2"
+    kotlin("jvm") version "2.4.10"
+    id("org.jetbrains.intellij") version "1.17.4"
     kotlin("plugin.serialization") version "1.9.21"
     id("io.gitlab.arturbosch.detekt") version "1.23.3"
     id("org.jlleitschuh.gradle.ktlint") version "12.1.0"
@@ -61,9 +61,9 @@ intellij {
 
 dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 
-    testImplementation(platform("org.junit:junit-bom:5.10.2"))
+    testImplementation(platform("org.junit:junit-bom:6.1.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")
 }
 

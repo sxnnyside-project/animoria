@@ -353,9 +353,7 @@ export type ReferenceState = 'resolved' | 'incomplete' | 'unavailable';
  * referenced in three files — which is precisely what shipped, because
  * `referenceCounts` is a `Map` and `JSON.stringify` turns one into `{}`.
  */
-export function referenceStateOf(model: {
-  readonly analysis: MultiRootAnalysis;
-}): ReferenceState {
+export function referenceStateOf(model: { readonly analysis: MultiRootAnalysis }): ReferenceState {
   const readiness = model.analysis.readiness;
   if (!readiness?.referencesResolved) return 'unavailable';
 

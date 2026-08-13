@@ -143,7 +143,7 @@ describe('@animoria/ui — no governance computation', () => {
       [/refs\s*[<>]=?\s*\d/, 'thresholds a reference count'],
       [/\.name\.includes\(\s*['"]copy/i, 'infers duplication from a filename'],
       [/confidence\s*=\s*['"](certain|high|moderate|low)['"]/, 'asserts a confidence literal'],
-      [/score\s*[+\-]\s*delta/i, 'derives a health score'],
+      [/score\s*[+-]\s*delta/i, 'derives a health score'],
     ];
 
     const violations: string[] = [];

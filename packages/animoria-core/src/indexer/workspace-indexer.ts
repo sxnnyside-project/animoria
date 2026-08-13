@@ -311,9 +311,7 @@ export class WorkspaceIndexer {
    *   with `readiness.referencesResolved === false` and `scanCoverage.complete === false`,
    *   so an interrupted run is reported as interrupted rather than as clean.
    */
-  async initializeComplete(options?: {
-    signal?: AbortSignal;
-  }): Promise<WorkspaceAnalysis> {
+  async initializeComplete(options?: { signal?: AbortSignal }): Promise<WorkspaceAnalysis> {
     await this._scanAssets();
     await this._establishInitialReferenceCounts(options?.signal);
     return this._buildAnalysis();

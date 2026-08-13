@@ -54,12 +54,12 @@
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^25.9.2",
+    "@types/node": "^26.2.0",
     "@vitest/coverage-v8": "^3.2.6",
-    "esbuild": "^0.28.1",
+    "esbuild": "^0.28.2",
     "postject": "1.0.0-alpha.6",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.6"
+    "vitest": "^4.1.10"
   },
   "vitest": {
     "include": [
@@ -67,9 +67,9 @@
     ]
   },
   "dependencies": {
-    "@dotlottie/dotlottie-js": "^1.6.3",
+    "@dotlottie/dotlottie-js": "^1.8.0",
     "fast-glob": "^3.3.3",
     "fflate": "^0.8.3",
-    "js-yaml": "^4.3.0"
+    "js-yaml": "^5.2.3"
   }
 }
