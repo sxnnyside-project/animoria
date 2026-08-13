@@ -70,6 +70,6 @@
     "@dotlottie/dotlottie-js": "^1.6.3",
     "fast-glob": "^3.3.3",
     "fflate": "^0.8.3",
-    "js-yaml": "^4.3.0"
+    "js-yaml": "^5.2.3"
   }
 }
