@@ -65,6 +65,10 @@ dependencies {
 
     testImplementation(platform("org.junit:junit-bom:6.1.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")
+    // Gradle 8.5 bundles its own older junit-platform-launcher; without pinning
+    // one explicitly here it stays on that stale version instead of the one the
+    // BOM manages, and JUnit 6's engine refuses to run under the mismatch.
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 /**

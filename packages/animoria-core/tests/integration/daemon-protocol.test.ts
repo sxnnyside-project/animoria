@@ -2,7 +2,7 @@ import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { DaemonEvent, DaemonResponse } from '../../src/daemon/protocol.js';
 import { PROTOCOL_VERSION } from '../../src/daemon/protocol.js';
 
@@ -137,6 +137,26 @@ function write(relativePath: string, content: string): string {
   writeFileSync(full, content);
   return full;
 }
+
+// On CI's shared, network-backed disks, the very first spawn of `dist/cli.js`
+// in the whole process can cost an order of magnitude more than every later
+// one (page cache is cold) — 300ms locally becomes 15s+ on some runners. That
+// cost is about the runner's disk, not about anything under test, so it is
+// paid once here, unmeasured and best-effort, instead of inflating every
+// test's timeout to cover a case none of them are actually testing.
+beforeAll(async () => {
+  const warmupDir = mkdtempSync(join(tmpdir(), 'animoria-daemon-warmup-'));
+  const warmup = DaemonHarness.spawn(warmupDir);
+  try {
+    await warmup.waitForEvent('ready');
+  } catch {
+    // Best-effort only — if warmup itself times out, the real tests below
+    // still run (and their own timeouts are the ones that matter).
+  } finally {
+    warmup.kill();
+    rmSync(warmupDir, { recursive: true, force: true });
+  }
+}, 30_000);
 
 beforeEach(() => {
   workspace = mkdtempSync(join(tmpdir(), 'animoria-daemon-e2e-'));

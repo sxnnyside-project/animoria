@@ -15,8 +15,6 @@ jobs:
         with:
           node-version: 22
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          version: 11
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Format check
@@ -30,8 +28,6 @@ jobs:
         with:
           node-version: 22
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          version: 11
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Lint
@@ -45,8 +41,6 @@ jobs:
         with:
           node-version: 22
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          version: 11
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Typecheck
@@ -60,8 +54,6 @@ jobs:
         with:
           node-version: 22
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          version: 11
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build
@@ -75,8 +67,6 @@ jobs:
         with:
           node-version: 22
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          version: 11
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Test
@@ -91,8 +81,6 @@ jobs:
         with:
           node-version: 22
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          version: 11
       - name: Set up JDK 17
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
@@ -102,6 +90,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build @animoria/core
         run: pnpm --filter @animoria/core build
+      - name: Build @animoria/ui
+        run: pnpm --filter @animoria/ui build
       - name: Compile Kotlin
         working-directory: packages/animoria-jetbrains
         run: |
@@ -109,6 +99,8 @@ jobs:
           ./gradlew compileKotlin
       # This job has always been named "build, lint, test" but never ran the tests,
       # so the Kotlin suite could not fail the build no matter what it contained.
+      # Running the suite for the first time exposed that this job never built
+      # @animoria/ui, which the JetBrains resources' copySharedUi task requires.
       - name: Test (JUnit)
         working-directory: packages/animoria-jetbrains
         run: ./gradlew test
@@ -126,8 +118,6 @@ jobs:
         with:
           node-version: 22
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          version: 11
       - name: Set up JDK 17
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:

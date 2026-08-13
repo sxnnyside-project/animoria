@@ -72,13 +72,7 @@ describe('release consistency', () => {
 
     // The matrix is the supported-platform list. A triple missing here is a
     // platform where the plugin silently requires a system Node install.
-    for (const runner of [
-      'ubuntu-latest',
-      'ubuntu-24.04-arm',
-      'macos-latest',
-      'macos-13',
-      'windows-latest',
-    ]) {
+    for (const runner of ['ubuntu-latest', 'ubuntu-24.04-arm', 'macos-latest', 'windows-latest']) {
       expect(release, runner).toContain(runner);
     }
   });

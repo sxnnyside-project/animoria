@@ -175,7 +175,10 @@ async function main() {
   execFileSync(
     'npm',
     ['install', '--prefix', nativeModulesDir, '--no-save', '--no-package-lock', 'sharp'],
-    { stdio: 'inherit' }
+    // On Windows `npm` is a `.cmd` shim, which execFileSync cannot resolve
+    // without going through a shell — without this it fails with ENOENT even
+    // though `npm` is on PATH.
+    { stdio: 'inherit', shell: process.platform === 'win32' }
   );
 
   console.log('[2/4] Writing sea-config.json and generating the startup blob...');

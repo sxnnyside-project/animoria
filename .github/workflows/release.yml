@@ -68,7 +68,7 @@ jobs:
     name: Build native daemon (${{ matrix.os }})
     needs: verify-versions
     strategy:
-      # Five triples, not three. `build:sea` produces a binary for the runner's own
+      # Four triples, not three. `build:sea` produces a binary for the runner's own
       # platform and architecture, so the matrix *is* the supported platform list:
       # a triple missing here is a triple where the JetBrains plugin falls back to
       # requiring a system Node install, which most users do not have.
@@ -76,10 +76,13 @@ jobs:
       #   ubuntu-latest    -> linux-x64
       #   ubuntu-24.04-arm -> linux-arm64   (CI runners, Asahi, ARM workstations)
       #   macos-latest     -> darwin-arm64  (Apple Silicon)
-      #   macos-13         -> darwin-x64    (Intel Macs, still widely deployed)
       #   windows-latest   -> win32-x64
+      #
+      # macos-13 (Intel) was dropped: GitHub has deprecated the image, and it
+      # burns Actions minutes on a shrinking population of Intel Macs. Its
+      # users fall back to the system-Node path noted above.
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-13, windows-latest]
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -93,14 +96,45 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          version: 11
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Build @animoria/core
         run: pnpm --filter @animoria/core build
+
+      - name: Import macOS signing certificate
+        # A fresh runner's keychain is empty — ANIMORIA_SIGNING_IDENTITY alone
+        # names an identity, it doesn't put its certificate anywhere codesign
+        # can find it. This decodes the exported .p12 into a throwaway keychain
+        # so the signing step below actually has something to sign with.
+        if: runner.os == 'macOS'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          if [ -z "$MACOS_CERTIFICATE" ]; then
+            echo "MACOS_CERTIFICATE not set; build:sea will fail its own required-signing check below."
+            exit 0
+          fi
+          KEYCHAIN_PASSWORD=$(uuidgen)
+          echo "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security import "$RUNNER_TEMP/certificate.p12" -k build.keychain -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          # Unquoted on purpose: list-keychains prints one keychain per line, and
+          # this needs each to arrive as its own argument to -s, not one blob with
+          # embedded newlines (which is what quoting it here produced before).
+          security list-keychain -d user -s build.keychain $(security list-keychains -d user | sed 's/"//g')
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          # Count only, not the label: the identity's Common Name is masked as
+          # *** everywhere else in this workflow (it comes from the
+          # MACOS_SIGNING_IDENTITY secret), so printing it here in the clear
+          # would be the one place it leaks.
+          echo "codesign identities available after import: $(security find-identity -v -p codesigning build.keychain | grep -c '^[[:space:]]*[0-9]\+)')"
 
       - name: Build self-contained native executable
         run: pnpm --filter @animoria/core build:sea
@@ -168,8 +202,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-        with:
-          version: 11
 
       - name: Get pnpm store directory
         id: pnpm-cache
