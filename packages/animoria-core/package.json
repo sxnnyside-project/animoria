@@ -67,7 +67,7 @@
     ]
   },
   "dependencies": {
-    "@dotlottie/dotlottie-js": "^1.6.3",
+    "@dotlottie/dotlottie-js": "^1.8.0",
     "fast-glob": "^3.3.3",
     "fflate": "^0.8.3",
     "js-yaml": "^4.3.0"
