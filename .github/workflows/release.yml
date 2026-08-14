@@ -4,6 +4,24 @@ on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      hotfix_jetbrains_version:
+        description: >-
+          Set to publish JetBrains only, reusing native-daemon binaries already
+          built (and, for macOS, already signed) by an earlier tag run — for
+          when that run got VS Code/Open VSX published but died before
+          JetBrains. Format: "1.0.1", no "v" prefix. Leave blank for a normal
+          manual run (does nothing; this workflow's real trigger is the tag).
+        required: false
+        type: string
+      hotfix_source_run_id:
+        description: >-
+          The run ID of the tag push whose build-native-daemon artifacts to
+          reuse (from that run's URL: .../actions/runs/<this number>). Required
+          together with hotfix_jetbrains_version.
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -349,6 +367,142 @@ jobs:
 
             ```
             code --install-extension animoria-${{ steps.version.outputs.VERSION }}.vsix
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  hotfix-jetbrains:
+    name: Hotfix — publish JetBrains only
+    # Only runs when explicitly asked for via workflow_dispatch input, never
+    # on the tag-push trigger — this must not become a second path that
+    # publishes JetBrains on every normal release.
+    if: github.event_name == 'workflow_dispatch' && inputs.hotfix_jetbrains_version != ''
+    runs-on: ubuntu-latest
+    env:
+      ANIMORIA_VERSION: ${{ inputs.hotfix_jetbrains_version }}
+
+    steps:
+      - name: Require a source run id
+        if: inputs.hotfix_source_run_id == ''
+        run: |
+          echo "::error::hotfix_source_run_id is required alongside hotfix_jetbrains_version."
+          exit 1
+
+      # Deliberately NOT the tag: the version label comes from
+      # hotfix_jetbrains_version regardless of ref, and checking out the tag
+      # would re-run this hotfix against whatever bug caused it to be needed
+      # in the first place — including a stale verify-packaged-daemon.mjs
+      # timeout that predates the very fix this job exists to apply. Runs
+      # against whichever branch you dispatch this workflow from (main, by
+      # default, in the "Run workflow" UI).
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Only what JetBrains needs — never installs vsce/ovsx, never touches
+      # either marketplace.
+      - name: Build @animoria/core and @animoria/ui
+        run: |
+          pnpm --filter @animoria/core build
+          pnpm --filter @animoria/ui build
+
+      - name: Download native daemon artifacts from the source run
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: native-daemon-*
+          path: packages/animoria-jetbrains/src/main/resources/native
+          merge-multiple: true
+          run-id: ${{ inputs.hotfix_source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Restore native daemon executable permissions
+        run: |
+          find packages/animoria-jetbrains/src/main/resources/native \
+            -type f -name 'animoria-core' -exec chmod +x {} \;
+
+      - name: Build and verify JetBrains Plugin
+        run: |
+          set -euo pipefail
+          cd packages/animoria-jetbrains
+          chmod +x ./gradlew
+          ./gradlew buildPlugin verifyPlugin
+
+      - name: Verify the plugin jar carries the shared UI bundle
+        run: |
+          set -euo pipefail
+          JAR=$(find packages/animoria-jetbrains/build -name 'instrumented-*.jar' | head -1)
+          if [ -z "$JAR" ]; then
+            echo "::error::No instrumented plugin jar was produced"
+            exit 1
+          fi
+          for entry in web/animoria-ui.global.js web/tokens.css; do
+            if ! unzip -l "$JAR" | grep -q "$entry"; then
+              echo "::error::$entry is missing from the plugin jar — the tool window would be blank"
+              exit 1
+            fi
+          done
+
+      - name: Assert built plugin carries the release version
+        run: |
+          set -euo pipefail
+          EXPECTED="${{ inputs.hotfix_jetbrains_version }}"
+          if ! ls packages/animoria-jetbrains/build/distributions/*-"$EXPECTED".zip >/dev/null 2>&1; then
+            echo "::error::No plugin distribution found for version $EXPECTED"
+            ls -la packages/animoria-jetbrains/build/distributions/ || true
+            exit 1
+          fi
+
+      - name: Publish to JetBrains Marketplace
+        env:
+          JETBRAINS_PUBLISH_TOKEN: ${{ secrets.JETBRAINS_PUBLISH_TOKEN }}
+        run: |
+          cd packages/animoria-jetbrains
+          ./gradlew publishPlugin
+
+      # Repackaged locally only as a release asset — this never calls `vsce
+      # publish`, so it cannot collide with the version already live on the
+      # VS Code Marketplace from the original run.
+      - name: Repackage VS Code extension for the release asset only
+        run: npm install -g @vscode/vsce
+      - name: Package extension (no publish)
+        working-directory: packages/animoria-vscode
+        run: vsce package --no-dependencies -o animoria-${{ inputs.hotfix_jetbrains_version }}.vsix
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        with:
+          tag_name: v${{ inputs.hotfix_jetbrains_version }}
+          files: |
+            packages/animoria-vscode/animoria-${{ inputs.hotfix_jetbrains_version }}.vsix
+            packages/animoria-jetbrains/build/distributions/*.zip
+          generate_release_notes: true
+          body: |
+            ## Animoria v${{ inputs.hotfix_jetbrains_version }}
+
+            See [CHANGELOG.md](https://github.com/sxnnyside-project/animoria/blob/main/packages/animoria-vscode/CHANGELOG.md) for details.
+
+            ### Install
+            Search **Animoria** in the VS Code Extensions panel,
+            or download the `.vsix`/`.zip` from this release and install manually:
+
+            ```
+            code --install-extension animoria-${{ inputs.hotfix_jetbrains_version }}.vsix
             ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
