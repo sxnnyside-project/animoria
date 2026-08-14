@@ -318,7 +318,7 @@ jobs:
           # A plugin without the bundle installs, launches, and renders an empty
           # rectangle with nothing in the log. That is a release-blocking defect and
           # it is invisible to `verifyPlugin`, so it is asserted here.
-          JAR=$(find packages/animoria-jetbrains/build -name 'instrumented-*.jar' | head -1)
+          JAR=$(find packages/animoria-jetbrains/build/libs -maxdepth 1 -name 'instrumented-*.jar' | head -1)
           if [ -z "$JAR" ]; then
             echo "::error::No instrumented plugin jar was produced"
             exit 1
@@ -446,7 +446,7 @@ jobs:
       - name: Verify the plugin jar carries the shared UI bundle
         run: |
           set -euo pipefail
-          JAR=$(find packages/animoria-jetbrains/build -name 'instrumented-*.jar' | head -1)
+          JAR=$(find packages/animoria-jetbrains/build/libs -maxdepth 1 -name 'instrumented-*.jar' | head -1)
           if [ -z "$JAR" ]; then
             echo "::error::No instrumented plugin jar was produced"
             exit 1
