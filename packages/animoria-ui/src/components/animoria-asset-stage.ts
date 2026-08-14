@@ -225,7 +225,7 @@ export class AnimoriaAssetStage extends LitElement {
 
   private async _mountPlayer(): Promise<void> {
     const preview = this.preview;
-    if (!preview || preview.kind !== 'lottie') return;
+    if (preview?.kind !== 'lottie') return;
 
     // The element exists only after this render, so wait for it rather than
     // querying a mount point that is not there yet.

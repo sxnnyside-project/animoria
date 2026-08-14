@@ -1,7 +1,7 @@
 {
   "name": "animoria-vscode",
   "displayName": "Animoria",
-  "description": "Visual Asset Governance for developers \u2014 discover, preview, trace, and clean up animated (Lottie, dotLottie, Rive, GIF, APNG, SVG) and static (SVG, PNG, JPEG, WebP, AVIF) assets directly inside VS Code.",
+  "description": "Visual Asset Governance for developers — discover, preview, trace, and clean up animated (Lottie, dotLottie, Rive, GIF, APNG, SVG) and static (SVG, PNG, JPEG, WebP, AVIF) assets directly inside VS Code.",
   "version": "1.0.1",
   "publisher": "SxnnysideProject",
   "author": {
@@ -74,7 +74,7 @@
     "viewsWelcome": [
       {
         "view": "animoria.gallery",
-        "contents": "No visual assets found in this workspace yet.\n\nAnimoria automatically discovers animated (Lottie, dotLottie, Rive, GIF, APNG, animated SVG) and static (SVG, PNG, JPEG, WebP, AVIF) files as you add them \u2014 no configuration needed.\n\nJust added some? Indexing runs in the background and the Gallery updates on its own.\n\n[Refresh Gallery](command:animoria.refresh)"
+        "contents": "No visual assets found in this workspace yet.\n\nAnimoria automatically discovers animated (Lottie, dotLottie, Rive, GIF, APNG, animated SVG) and static (SVG, PNG, JPEG, WebP, AVIF) files as you add them — no configuration needed.\n\nJust added some? Indexing runs in the background and the Gallery updates on its own.\n\n[Refresh Gallery](command:animoria.refresh)"
       }
     ],
     "commands": [
@@ -223,7 +223,7 @@
         "animoria.enableThumbnails": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Generate static thumbnail previews for animated assets in the gallery sidebar. Rendered natively \u2014 no Chrome/Chromium installation required."
+          "markdownDescription": "Generate static thumbnail previews for animated assets in the gallery sidebar. Rendered natively — no Chrome/Chromium installation required."
         }
       }
     },
@@ -262,7 +262,7 @@
           {
             "id": "animoria.whatItIs",
             "title": "Visual asset discovery, built in",
-            "description": "Animoria automatically finds Lottie, dotLottie, Rive, GIF, APNG, and animated SVG files anywhere in your workspace \u2014 and static SVG/PNG/JPEG/WebP/AVIF alongside them \u2014 and lists them in its sidebar. There is nothing to run and nothing to configure to start.\n\n[Open the Animoria sidebar](command:animoria.gallery.focus)",
+            "description": "Animoria automatically finds Lottie, dotLottie, Rive, GIF, APNG, and animated SVG files anywhere in your workspace — and static SVG/PNG/JPEG/WebP/AVIF alongside them — and lists them in its sidebar. There is nothing to run and nothing to configure to start.\n\n[Open the Animoria sidebar](command:animoria.gallery.focus)",
             "media": {
               "markdown": "walkthrough/what-it-is.md"
             }
@@ -278,7 +278,7 @@
           {
             "id": "animoria.whatGovernanceMeans",
             "title": "Governance: rules you opt into",
-            "description": "Governance is a set of configurable rules \u2014 unreferenced assets, byte-identical duplicates, oversized files, disallowed formats \u2014 that you enable in `.animoriarc`. Nothing is enforced until you say so.\n\n[Run governance now](command:animoria.runGovernance)",
+            "description": "Governance is a set of configurable rules — unreferenced assets, byte-identical duplicates, oversized files, disallowed formats — that you enable in `.animoriarc`. Nothing is enforced until you say so.\n\n[Run governance now](command:animoria.runGovernance)",
             "media": {
               "markdown": "walkthrough/governance.md"
             }
@@ -286,7 +286,7 @@
           {
             "id": "animoria.whatAFindingMeans",
             "title": "Reading a finding",
-            "description": "Every finding names the rule that produced it, the evidence behind it, and how confident Animoria is \u2014 evidence is never presented as more certain than the search that produced it. Findings also appear in the Problems panel (`F8` to jump between them).",
+            "description": "Every finding names the rule that produced it, the evidence behind it, and how confident Animoria is — evidence is never presented as more certain than the search that produced it. Findings also appear in the Problems panel (`F8` to jump between them).",
             "media": {
               "markdown": "walkthrough/findings.md"
             }
@@ -294,7 +294,7 @@
           {
             "id": "animoria.resolvingFindings",
             "title": "Resolving what you find",
-            "description": "Review cleanup opportunities in one place before anything is deleted \u2014 nothing is removed without your confirmation, and deletions go through your editor's own undo history.\n\n[Review cleanup opportunities](command:animoria.startCleanupReview)",
+            "description": "Review cleanup opportunities in one place before anything is deleted — nothing is removed without your confirmation, and deletions go through your editor's own undo history.\n\n[Review cleanup opportunities](command:animoria.startCleanupReview)",
             "media": {
               "markdown": "walkthrough/cleanup.md"
             }
@@ -328,10 +328,10 @@
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
-    "@types/vscode": "^1.85.0",
+    "@types/vscode": "~1.85.0",
     "@vscode/vsce": "^3.9.2",
     "lottie-web": "5.13.0",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "vite": "^8.2.1",
     "vitest": "^4.1.10"
   }

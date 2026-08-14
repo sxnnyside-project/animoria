@@ -46,8 +46,15 @@ export default defineConfig({
     },
     rollupOptions: {
       output: {
-        // No code splitting: see the note above.
-        inlineDynamicImports: true,
+        // No code splitting: see the note above — one file is one thing for a host to
+        // serve, and a stray chunk is a blank panel in whichever IDE's CSP or scheme
+        // handler does not happen to serve it.
+        //
+        // Spelled `codeSplitting: false` since Vite 8 / rolldown 1: the old
+        // `inlineDynamicImports: true` is deprecated and warns on every build. The two
+        // express the same thing, and the emitted bundles are byte-identical across the
+        // change — this is the option's new name, not a change of behaviour.
+        codeSplitting: false,
         assetFileNames: 'animoria-ui.[ext]',
       },
     },

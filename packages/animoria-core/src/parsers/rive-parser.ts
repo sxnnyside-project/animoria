@@ -9,7 +9,7 @@ export class RiveParser implements IAssetParser {
     return bufferChunk.toString('ascii', 0, 4) === 'RIVE';
   }
 
-  async parse(filePath: string, buffer: Buffer): Promise<AnimoriaMetadata> {
+  async parse(_filePath: string, buffer: Buffer): Promise<AnimoriaMetadata> {
     try {
       const rawStrings = this._extractStrings(buffer);
 

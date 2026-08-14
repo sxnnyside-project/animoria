@@ -11,11 +11,7 @@ import { Animoria } from '../animoria.js';
 import { ConfigLoader } from '../governance/config-loader.js';
 import { detectDuplicateGroups } from '../governance/duplicates/duplicate-group-detector.js';
 import type { DuplicateGroup } from '../governance/duplicates/types.js';
-import {
-  HealthScoreEngine,
-  type HealthScoreReport,
-  type HealthScoreWeights,
-} from '../governance/health-score.js';
+import { HealthScoreEngine, type HealthScoreWeights } from '../governance/health-score.js';
 import type { HealthScoreOutcome } from '../governance/health-score.js';
 import { type RuleEngineReport, RulesEngine } from '../governance/rules-engine.js';
 import { compileIgnorePatterns, loadAnimoriaIgnore } from '../ignore/animoria-ignore.js';

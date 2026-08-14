@@ -2,3 +2,7 @@
 build/
 bin/
 out/
+
+# IntelliJ Platform Gradle Plugin 2.x caches the resolved IDE and the Plugin Verifier's
+# IDE matrix here — gigabytes of downloaded JetBrains binaries, not source.
+.intellijPlatform/

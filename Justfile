@@ -60,6 +60,12 @@ jetbrains-run: core-build
     node scripts/copy-sea-into-jetbrains.mjs
     cd packages/animoria-jetbrains && ./gradlew runIde
 
+# Runs the IntelliJ Plugin Verifier against the recommended IDE matrix and fails on any
+# internal, experimental or deprecated platform API attributable to Animoria. Downloads
+# several GB of IDEs on first run and caches them under ~/.pluginVerifier.
+jetbrains-verify: jetbrains-build
+    cd packages/animoria-jetbrains && ./gradlew verifyPluginStructure verifyPlugin
+
 jetbrains-lint:
     cd packages/animoria-jetbrains && ./gradlew detekt ktlintCheck
 

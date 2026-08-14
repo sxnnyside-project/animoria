@@ -50,7 +50,7 @@ export class SvgAnimatedParser implements IAssetParser {
     return hasAnimationEvidence(chunkStr);
   }
 
-  async parse(filePath: string, buffer: Buffer): Promise<AnimoriaMetadata> {
+  async parse(_filePath: string, buffer: Buffer): Promise<AnimoriaMetadata> {
     try {
       const content = buffer.toString('utf8');
 

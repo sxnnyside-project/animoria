@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { IndexingScheduler } from '../../src/indexer/indexing-scheduler';
 import type { FileChangeKind } from '../../src/indexer/types';
 

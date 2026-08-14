@@ -33,7 +33,7 @@ export class LottieParserAdapter implements IAssetParser {
     }
   }
 
-  async parse(filePath: string, buffer: Buffer): Promise<AnimoriaMetadata> {
+  async parse(_filePath: string, buffer: Buffer): Promise<AnimoriaMetadata> {
     try {
       const raw = JSON.parse(buffer.toString('utf8'));
       const result = this._parser.parse(raw);

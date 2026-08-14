@@ -11,7 +11,7 @@ export class GifParser implements IAssetParser {
     return sig === 'GIF89a' || sig === 'GIF87a';
   }
 
-  async parse(filePath: string, buffer: Buffer): Promise<AnimoriaMetadata> {
+  async parse(_filePath: string, buffer: Buffer): Promise<AnimoriaMetadata> {
     try {
       const width = buffer.readUInt16LE(6);
       const height = buffer.readUInt16LE(8);
@@ -112,7 +112,7 @@ export class ApngParser implements IAssetParser {
     return bufferChunk.indexOf('acTL') !== -1;
   }
 
-  async parse(filePath: string, buffer: Buffer): Promise<AnimoriaMetadata> {
+  async parse(_filePath: string, buffer: Buffer): Promise<AnimoriaMetadata> {
     try {
       const width = buffer.readUInt32BE(16);
       const height = buffer.readUInt32BE(20);

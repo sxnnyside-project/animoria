@@ -142,6 +142,18 @@ jobs:
           cp -r apps/animoria-sandbox/dist/* packages/animoria-jetbrains/src/main/resources/assets/
       - name: Build and verify JetBrains plugin (dry run)
         working-directory: packages/animoria-jetbrains
+        # The two task names swapped meaning in IntelliJ Platform Gradle Plugin 2.x, so
+        # the line that used to be here now means something different from what it did:
+        #
+        #   1.x  verifyPlugin          -> descriptor/archive structure (fast, local)
+        #   2.x  verifyPluginStructure -> descriptor/archive structure (fast, local)
+        #   2.x  verifyPlugin          -> IntelliJ Plugin Verifier against the IDE matrix
+        #
+        # Both are named explicitly rather than relying on that rename being noticed.
+        # `verifyPlugin` downloads the recommended IDE matrix (~3 GB, cached between
+        # runs) and finalizes into `verifyNoForbiddenPlatformApi`, which is what fails
+        # the build on internal, experimental or deprecated platform API in Animoria's
+        # own classes. Under 1.x that gate existed but was wired to a task CI never ran.
         run: |
           chmod +x ./gradlew
-          ./gradlew buildPlugin verifyPlugin
+          ./gradlew buildPlugin verifyPluginStructure verifyPlugin
