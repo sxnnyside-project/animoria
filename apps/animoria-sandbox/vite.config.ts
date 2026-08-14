@@ -329,7 +329,6 @@ export default defineConfig({
           if (url.pathname === '/api/cleanup-proposal') {
             try {
               await ready;
-              const snap = session.getAnalysis();
               // The harness passes real dismissals through, so the read-only claim
               // stays about the *workspace* rather than about the review flow.
               const dismissedPaths = new Set(
@@ -358,7 +357,6 @@ export default defineConfig({
           if (url.pathname === '/api/cleanup-plan') {
             try {
               await ready;
-              const snap = session.getAnalysis();
               const plans = [];
               const selected = (url.searchParams.get('paths') ?? '')
                 .split('\n')

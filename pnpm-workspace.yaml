@@ -22,8 +22,18 @@ minimumReleaseAgeExclude:
   - valibot@1.4.2
   - brace-expansion@5.0.8
 
+# Floors, not pins. Each entry forces *every* copy in the graph — including the ones
+# `vitest` and `vite-node` pull in for themselves — to at least this version, so the
+# workspace resolves one vite and one esbuild rather than several.
+#
+# They also override the ranges declared in each package.json, which is worth knowing
+# before editing one: `packages/animoria-ui` asking for `vite: ^8.2.1` had no effect
+# while this said `>=6.4.2`, and the lockfile stayed on 8.0.16. Raising a declared
+# range without raising the floor here changes nothing.
 overrides:
-  vitest: '>=3.2.6'
-  esbuild: '>=0.28.1'
-  vite: '>=6.4.2'
+  vitest: '>=4.1.10'
+  esbuild: '>=0.28.2'
+  vite: '>=8.2.1'
+  # Transitive only (reached through `yazl`), and already satisfied at 22.0.1.
+  # Untouched: nothing in this pass depends on it.
   file-type: '>=21.3.1'

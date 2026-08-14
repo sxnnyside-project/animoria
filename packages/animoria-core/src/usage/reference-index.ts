@@ -17,7 +17,6 @@ import {
   matchesLine,
 } from './reference-patterns.js';
 import {
-  type ReferenceSyntax,
   candidateMatchesAsset,
   extractReferenceTargets,
   syntaxesForExtension,

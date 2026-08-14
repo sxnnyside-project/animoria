@@ -310,22 +310,35 @@ jobs:
           #
           # `verifyPlugin` runs on every pull request; it must also run here, so a
           # release can never ship a plugin that CI would have rejected.
-          ./gradlew buildPlugin verifyPlugin
+          #
+          # Under IntelliJ Platform Gradle Plugin 2.x these are two different checks:
+          # `verifyPluginStructure` reads the descriptor and archive, `verifyPlugin` is
+          # the IntelliJ Plugin Verifier run against the recommended IDE matrix. The 1.x
+          # name `verifyPlugin` meant only the first of those.
+          ./gradlew buildPlugin verifyPluginStructure verifyPlugin
 
-      - name: Verify the plugin jar carries the shared UI bundle
+      - name: Verify the plugin distribution carries the shared UI bundle
         run: |
           set -euo pipefail
           # A plugin without the bundle installs, launches, and renders an empty
           # rectangle with nothing in the log. That is a release-blocking defect and
           # it is invisible to `verifyPlugin`, so it is asserted here.
-          JAR=$(find packages/animoria-jetbrains/build/libs -maxdepth 1 -name 'instrumented-*.jar' | head -1)
-          if [ -z "$JAR" ]; then
-            echo "::error::No instrumented plugin jar was produced"
+          #
+          # This reads the distribution zip rather than a jar in `build/libs`. Two
+          # reasons, both learned from the 2.x migration: the zip is what is actually
+          # published, and `build/libs` now holds four jars (base, instrumented,
+          # searchableOptions, composed) whose names no longer start with
+          # `instrumented-`. The old glob would have matched nothing on a clean
+          # checkout and failed the release for the wrong reason.
+          ZIP=$(find packages/animoria-jetbrains/build/distributions -maxdepth 1 -name '*.zip' | head -1)
+          if [ -z "$ZIP" ]; then
+            echo "::error::No plugin distribution was produced"
+            ls -la packages/animoria-jetbrains/build/distributions/ || true
             exit 1
           fi
           for entry in web/animoria-ui.global.js web/tokens.css; do
-            if ! unzip -l "$JAR" | grep -q "$entry"; then
-              echo "::error::$entry is missing from the plugin jar — the tool window would be blank"
+            if ! unzip -l "$ZIP" | grep -q "$entry"; then
+              echo "::error::$entry is missing from the plugin distribution — the tool window would be blank"
               exit 1
             fi
           done
@@ -441,19 +454,24 @@ jobs:
           set -euo pipefail
           cd packages/animoria-jetbrains
           chmod +x ./gradlew
-          ./gradlew buildPlugin verifyPlugin
+          # See the main release job: under 2.x these are the structure check and the
+          # IntelliJ Plugin Verifier respectively, not one task under two names.
+          ./gradlew buildPlugin verifyPluginStructure verifyPlugin
 
-      - name: Verify the plugin jar carries the shared UI bundle
+      - name: Verify the plugin distribution carries the shared UI bundle
         run: |
           set -euo pipefail
-          JAR=$(find packages/animoria-jetbrains/build/libs -maxdepth 1 -name 'instrumented-*.jar' | head -1)
-          if [ -z "$JAR" ]; then
-            echo "::error::No instrumented plugin jar was produced"
+          # Reads the published zip, not `build/libs` — see the same step in the main
+          # release job for why the 2.x jar layout made the old glob unreliable.
+          ZIP=$(find packages/animoria-jetbrains/build/distributions -maxdepth 1 -name '*.zip' | head -1)
+          if [ -z "$ZIP" ]; then
+            echo "::error::No plugin distribution was produced"
+            ls -la packages/animoria-jetbrains/build/distributions/ || true
             exit 1
           fi
           for entry in web/animoria-ui.global.js web/tokens.css; do
-            if ! unzip -l "$JAR" | grep -q "$entry"; then
-              echo "::error::$entry is missing from the plugin jar — the tool window would be blank"
+            if ! unzip -l "$ZIP" | grep -q "$entry"; then
+              echo "::error::$entry is missing from the plugin distribution — the tool window would be blank"
               exit 1
             fi
           done

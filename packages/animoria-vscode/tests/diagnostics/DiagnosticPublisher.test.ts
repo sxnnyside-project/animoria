@@ -162,7 +162,12 @@ describe('DiagnosticPublisher', () => {
     const [published] = collection().get({ fsPath: subject.path } as never) ?? [];
     expect(published?.source).toBe('Animoria');
     expect(published?.code).toMatchObject({ value: 'no-unreferenced-assets' });
-    expect((published?.code as { target: { scheme: string } }).target.scheme).toBe('https');
+    // `| undefined` on the cast, and `?.` before `.target`: with the assertion written
+    // as `(published?.code as T).target`, a missing diagnostic threw a TypeError here
+    // rather than failing the expectation it was written to check.
+    expect((published?.code as { target: { scheme: string } } | undefined)?.target.scheme).toBe(
+      'https'
+    );
   });
 
   it('turns evidence locations into navigable related information', () => {

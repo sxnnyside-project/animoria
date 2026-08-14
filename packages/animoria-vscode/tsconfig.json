@@ -2,8 +2,23 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "target": "ES2022",
-    "module": "commonjs",
-    "moduleResolution": "node",
+    // TypeScript 7 removed `moduleResolution: "node"` (node10) outright — it is a
+    // hard `TS5108`, not a deprecation warning.
+    //
+    // `bundler` is the replacement that describes what actually happens here, rather
+    // than the nearest option that compiles. `tsc` never emits for this package: the
+    // build is `tsc --noEmit && vite build`, and Vite/rolldown does the resolving and
+    // the CJS emit. `bundler` is the resolution mode that matches a bundler's rules —
+    // `exports` maps are honoured, extensionless specifiers resolve — which is what
+    // rolldown already does when it builds `dist/extension.js`.
+    //
+    // `module: "preserve"` is the pair `bundler` requires (it rejects `commonjs`). It
+    // means "something downstream owns the emit format", which is exactly true, and it
+    // leaves the extension's output untouched: `vite.config.ts` still declares
+    // `formats: ['cjs']`, so `dist/extension.js` remains the CommonJS bundle VS Code
+    // loads from `main`. The source is pure ESM syntax and stays that way.
+    "module": "preserve",
+    "moduleResolution": "bundler",
     "lib": [
       "ES2022"
     ],

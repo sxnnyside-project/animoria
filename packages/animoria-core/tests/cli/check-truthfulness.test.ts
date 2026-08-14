@@ -52,14 +52,14 @@ describe('animoria check — reference-dependent rules actually run', () => {
   });
 
   it('reports the rule as evaluated, never as skipped, once evidence exists', async () => {
-    const { report, analysis } = await checkJson('unreferenced-assets');
+    const { analysis } = await checkJson('unreferenced-assets');
 
     expect(analysis.evaluatedRuleIds).toContain('no-unreferenced-assets');
     expect(analysis.skippedRules).toHaveLength(0);
   });
 
   it('guarantees the analysis behind the verdict is complete', async () => {
-    const { report, analysis } = await checkJson('unreferenced-assets');
+    const { analysis } = await checkJson('unreferenced-assets');
 
     // A verdict rendered from an incomplete analysis is exactly what produced the
     // false green; the report now states which it is.
@@ -68,7 +68,7 @@ describe('animoria check — reference-dependent rules actually run', () => {
   });
 
   it('passes a genuinely clean workspace, and says what it checked', async () => {
-    const { exitCode, report, analysis } = await checkJson('clean-workspace');
+    const { exitCode, analysis } = await checkJson('clean-workspace');
 
     expect(exitCode).toBe(CLI_EXIT_CODES.SUCCESS);
     expect(analysis.diagnostics).toHaveLength(0);
@@ -79,7 +79,7 @@ describe('animoria check — reference-dependent rules actually run', () => {
   });
 
   it('detects referenced and unreferenced assets in the same workspace', async () => {
-    const { exitCode, report, analysis } = await checkJson('mixed-governance');
+    const { exitCode, analysis } = await checkJson('mixed-governance');
 
     expect(exitCode).toBe(CLI_EXIT_CODES.GOVERNANCE_VIOLATIONS);
     const byRule = (id: string) =>
@@ -109,7 +109,7 @@ describe('animoria check — every finding names its file', () => {
 
 describe('animoria check — absence findings disclose their coverage', () => {
   it('states which extensions were scanned and which were not', async () => {
-    const { report, analysis } = await checkJson('reference-edge-cases');
+    const { analysis } = await checkJson('reference-edge-cases');
 
     // Markup, style and markdown are now read, so they must no longer appear as
     // skipped — the disclosure tracks what the scanner actually does.
@@ -125,7 +125,7 @@ describe('animoria check — absence findings disclose their coverage', () => {
   });
 
   it('reports coverage as partial while any reference-bearing format is unread', async () => {
-    const { report, analysis } = await checkJson('reference-edge-cases');
+    const { analysis } = await checkJson('reference-edge-cases');
 
     expect(analysis.coverage.status).toBe('partial');
     expect(analysis.coverage.referencesDetected).toBeGreaterThan(0);
@@ -139,7 +139,7 @@ describe('animoria check — absence findings disclose their coverage', () => {
   });
 
   it('detects references from markup, style and markdown, not only from code', async () => {
-    const { report, analysis } = await checkJson('reference-edge-cases');
+    const { analysis } = await checkJson('reference-edge-cases');
     const flagged = analysis.diagnostics.map((d: { asset: { name: string } }) => d.asset.name);
 
     // Each of these was reported as unreferenced before format handlers existed.
@@ -154,7 +154,7 @@ describe('animoria check — absence findings disclose their coverage', () => {
   });
 
   it('still declines to guess at formats it cannot read reliably', async () => {
-    const { report, analysis } = await checkJson('reference-edge-cases');
+    const { analysis } = await checkJson('reference-edge-cases');
     const flagged = analysis.diagnostics.map((d: { asset: { name: string } }) => d.asset.name);
 
     // Named inside a .json data file, where no syntax distinguishes a reference from
@@ -165,7 +165,7 @@ describe('animoria check — absence findings disclose their coverage', () => {
   });
 
   it('caps confidence at "moderate" while coverage is partial', async () => {
-    const { report, analysis } = await checkJson('reference-edge-cases');
+    const { analysis } = await checkJson('reference-edge-cases');
 
     for (const diagnostic of analysis.diagnostics) {
       expect(diagnostic.confidence).toBe('moderate');
@@ -173,7 +173,7 @@ describe('animoria check — absence findings disclose their coverage', () => {
   });
 
   it('honours an inline // animoria-ignore directive', async () => {
-    const { report, analysis } = await checkJson('reference-edge-cases');
+    const { analysis } = await checkJson('reference-edge-cases');
     const flagged = analysis.diagnostics.map((d: { asset: { name: string } }) => d.asset.name);
 
     expect(flagged).toContain('only-in-comment.json');
@@ -182,7 +182,7 @@ describe('animoria check — absence findings disclose their coverage', () => {
 
 describe('animoria check — empty and unconfigured workspaces', () => {
   it('does not present an empty workspace as perfectly healthy', async () => {
-    const { report, analysis } = await checkJson('empty-workspace');
+    const { analysis } = await checkJson('empty-workspace');
 
     expect(analysis.assets).toHaveLength(0);
     expect(analysis.health.status).toBe('unavailable');
@@ -197,14 +197,14 @@ describe('animoria check — empty and unconfigured workspaces', () => {
   });
 
   it('does not invent a violation just to force a non-zero exit', async () => {
-    const { exitCode, report, analysis } = await checkJson('empty-workspace');
+    const { exitCode, analysis } = await checkJson('empty-workspace');
 
     expect(analysis.diagnostics).toHaveLength(0);
     expect(exitCode).toBe(CLI_EXIT_CODES.SUCCESS);
   });
 
   it('reports a malformed workspace without crashing', async () => {
-    const { exitCode, report, analysis } = await checkJson('malformed-assets');
+    const { exitCode, analysis } = await checkJson('malformed-assets');
 
     expect(exitCode).not.toBe(CLI_EXIT_CODES.INTERNAL_ERROR);
     expect(analysis.assets.length).toBeGreaterThanOrEqual(0);

@@ -524,8 +524,14 @@ describe('protocol — restart is a protocol-level invariant', () => {
     await first.send('plan', 'buildCleanupPlan', {
       assetPaths: [join(workspace, 'assets/unused.json')],
     });
-    const planId = (first.responseFor('plan')?.result as { plans: { planId: string }[] }).plans[0]
-      ?.planId;
+    // The cast carries `| undefined` and the member access stays inside the optional
+    // chain. Written the other way — `(x?.result as T).plans[0]` — the `?.` short-circuits
+    // to `undefined` and the very next `.plans` throws, so a daemon that failed to answer
+    // reported itself as "Cannot read properties of undefined" instead of as a missing
+    // response. Same value on the passing path; a legible failure on the other one.
+    const planId = (
+      first.responseFor('plan')?.result as { plans: { planId: string }[] } | undefined
+    )?.plans[0]?.planId;
     first.server.stop();
 
     const second = await start([workspace]);

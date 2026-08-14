@@ -111,10 +111,6 @@ export async function runCheckCommand(argv: readonly string[]): Promise<CheckCom
       analysis,
     }));
 
-    // A gate passes only when every root passes. Reporting the first root's verdict
-    // for the workspace is how a CI gate comes to approve a change it never examined.
-    const report = perRoot[0]!.report;
-
     const formatName =
       options.format ?? (options.ci ? DEFAULT_FORMAT_CI : DEFAULT_FORMAT_INTERACTIVE);
     const renderer = renderers.get(formatName);
@@ -140,6 +136,8 @@ export async function runCheckCommand(argv: readonly string[]): Promise<CheckCom
       entry.analysis.configErrors.some((e) => e.ruleId === CONFIG_FILE_PSEUDO_RULE_ID)
     );
     // Every root must pass, and any root's incompleteness makes the run incomplete.
+    // `every`, never `perRoot[0]` — reporting the first root's verdict as the
+    // workspace's is how a CI gate comes to approve a change it never examined.
     const allPassed = perRoot.every((entry) => entry.report.outcome.passed);
     const anyIncomplete = perRoot.some((entry) => entry.report.outcome.incomplete);
     const exitCode = hasConfigFileProblem

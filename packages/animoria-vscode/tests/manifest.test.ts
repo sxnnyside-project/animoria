@@ -15,6 +15,29 @@ const ROOT = resolve(__dirname, '..');
 const manifest = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf-8'));
 
 describe('package.json — platform citizenship (V5)', () => {
+  it('types the VS Code API at exactly the version it claims to run on', () => {
+    // ## The defect this exists for
+    // `engines.vscode` said `^1.85.0` while `@types/vscode` also said `^1.85.0` — and
+    // a caret on the types resolves to *any* later 1.x. It had drifted to 1.120.0, so
+    // the extension was being typechecked against 40 releases' worth of API that its
+    // own manifest promised it could run without. Anything added after 1.85 would have
+    // compiled and then been `undefined` on the VS Code the manifest invited.
+    //
+    // `vsce` compares the two declared ranges and refuses the mismatch, but it compares
+    // *ranges* — `^1.85.0` against `^1.85.0` looks identical to it no matter what the
+    // caret actually resolved to. That is why the drift was invisible for 35 minor
+    // releases and why this assertion reads the resolved floor rather than the range.
+    //
+    // The tilde is load-bearing: it pins the API level to 1.85 so the resolution cannot
+    // wander again. Raising the floor is a deliberate act — bump both, together, and
+    // know that every user below the new floor stops receiving updates.
+    const engine: string = manifest.engines.vscode;
+    const types: string = manifest.devDependencies['@types/vscode'];
+
+    expect(types.startsWith('~')).toBe(true);
+    expect(types.replace(/^[~^]/, '')).toBe(engine.replace(/^[~^]/, ''));
+  });
+
   it('activates on exactly one event: onStartupFinished', () => {
     // `workspaceContains:**/*.json` used to sit alongside this and did nothing —
     // `onStartupFinished` already fires unconditionally for every window, so the

@@ -39,7 +39,6 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
   rmSync,
   statSync,

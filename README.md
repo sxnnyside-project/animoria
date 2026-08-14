@@ -2,7 +2,7 @@
 
 ![Animoria Banner](https://raw.githubusercontent.com/sxnnyside-project/animoria/main/docs/banner.png)
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Version](https://img.shields.io/badge/version-1.0.1-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 [![CI](https://github.com/sxnnyside-project/animoria/workflows/CI/badge.svg)](https://github.com/sxnnyside-project/animoria/actions)
 

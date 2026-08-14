@@ -3,7 +3,6 @@ import {
   StaticAssetScanner,
   ThumbnailEngine,
   WorkspaceSession,
-  buildCleanupCandidates,
   buildJsonReport,
   buildMarkdownReport,
   duplicateGroupForAsset,
@@ -16,14 +15,7 @@ import {
   restoreTrashSession,
   setLogger,
 } from '@animoria/core';
-import type {
-  AnimoriaAsset,
-  AnimoriaStaticAsset,
-  DuplicateGroup,
-  MultiRootAnalysis,
-  WorkspaceAnalysis,
-  WorkspaceIndexer,
-} from '@animoria/core';
+import type { AnimoriaAsset, AnimoriaStaticAsset, MultiRootAnalysis } from '@animoria/core';
 import * as vscode from 'vscode';
 import { DiagnosticPublisher } from './diagnostics/DiagnosticPublisher';
 import { OutputChannelLogger } from './logging/OutputChannelLogger';
@@ -33,7 +25,6 @@ import { AnimoriaTreeProvider } from './providers/AnimoriaTreeProvider';
 import type { AnimoriaGovernanceIssueItem } from './providers/AnimoriaTreeProvider';
 import { ActiveEditorTracker } from './utils/ActiveEditorTracker';
 import { buildIntegrationContext } from './utils/build-integration-context';
-import { resolveScopePath } from './utils/resolve-scope-path';
 import { AnimoriaFileWatcher } from './watchers/AnimoriaFileWatcher';
 
 /**
@@ -759,7 +750,11 @@ async function generateThumbnailsInBackground(
  * into the `DuplicateGroup` shape the shared duplicates view expects.
  */
 function resolveDuplicates(item: AnimoriaGovernanceIssueItem): void {
-  if (!item?.diagnostic || item.diagnostic.ruleId !== 'no-duplicate-content') return;
+  // `item?.` is load-bearing: this is a command handler, and VS Code invokes it with
+  // no argument when the command is run from the palette rather than the tree context
+  // menu. Collapsing this to `item.diagnostic?.…` satisfies the same lint rule and
+  // throws on that path.
+  if (item?.diagnostic?.ruleId !== 'no-duplicate-content') return;
 
   // Routed to the root that owns the asset, not to the first folder. In a
   // multi-root workspace those differ, and resolving a duplicate against the wrong
