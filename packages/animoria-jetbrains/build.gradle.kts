@@ -244,4 +244,13 @@ tasks {
     test {
         useJUnitPlatform()
     }
+
+    // `publishPlugin` reads its token from this property, not from the
+    // environment directly — release.yml sets JETBRAINS_PUBLISH_TOKEN in the
+    // step's env, but nothing wired it to Gradle until now, so the task
+    // always failed with "token property must be specified" regardless of
+    // whether the secret was actually present.
+    publishPlugin {
+        token.set(System.getenv("JETBRAINS_PUBLISH_TOKEN"))
+    }
 }
