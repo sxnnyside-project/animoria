@@ -323,7 +323,7 @@
     "publish": "vsce publish --no-dependencies"
   },
   "dependencies": {
-    "@animoria/core": "workspace:*",
+    "@animoria/contracts": "workspace:*",
     "@animoria/ui": "workspace:*"
   },
   "devDependencies": {

@@ -1,8 +1,7 @@
-import type { MultiRootAnalysis, WorkspaceAnalysis, WorkspaceSession } from '@animoria/core';
 import type { HostInbound } from '@animoria/ui/bridge';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type * as vscode from 'vscode';
-import { VsCodeHostBridge } from '../../src/panels/VsCodeHostBridge.js';
+import { VsCodeHostBridge } from '../../src/panels/vscode-host-bridge.js';
 import { mockVscodeState, resetTestWorkspace } from '../harness.js';
 
 /**

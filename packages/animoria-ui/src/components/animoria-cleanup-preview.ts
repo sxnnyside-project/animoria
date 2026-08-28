@@ -1,4 +1,5 @@
-import type { CleanupPlan, CleanupPlanSafety } from '@animoria/core/contracts';
+import type { CleanupPlan } from '../bridge/types.js';
+export type CleanupPlanSafety = 'safe' | 'partial' | 'unavailable';
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { cleanupReasonLabel, formatBytes } from '../view-model/analysis-view-model.js';
@@ -233,7 +234,9 @@ export class AnimoriaCleanupPreview extends LitElement {
     const plan = this.plan;
     if (!plan) return nothing;
 
-    const safety = AnimoriaCleanupPreview.SAFETY[plan.safety];
+    const safetyKey = (plan.safety as CleanupPlanSafety) || 'unavailable';
+    const safety =
+      AnimoriaCleanupPreview.SAFETY[safetyKey] ?? AnimoriaCleanupPreview.SAFETY.unavailable;
 
     return html`
       <div class="preview">
@@ -265,14 +268,14 @@ export class AnimoriaCleanupPreview extends LitElement {
               <div class="section-title">Will be moved to trash</div>
               <ul>
                 ${plan.entries.map(
-                  (entry) => html`
+                  (entry: any) => html`
                     <li>
                       <span class="entry-main">
                         <span class="entry-name">${entry.asset.name}</span>
                         <span class="entry-meta">${entry.asset.path}</span>
                         <span class="reasons">
                           ${entry.reasons.map(
-                            (reason) =>
+                            (reason: any) =>
                               html`<span class="reason">${cleanupReasonLabel(reason)}</span>`
                           )}
                         </span>
@@ -296,7 +299,7 @@ export class AnimoriaCleanupPreview extends LitElement {
               <div class="section-title">Refused</div>
               <ul>
                 ${plan.refusals.map(
-                  (refusal) => html`
+                  (refusal: any) => html`
                     <li class="refused">
                       <span class="entry-main">
                         <span class="entry-name">${refusal.assetPath.split(/[/\\]/).pop()}</span>

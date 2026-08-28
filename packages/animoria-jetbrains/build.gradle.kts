@@ -1,8 +1,8 @@
 plugins {
     kotlin("jvm") version "2.4.10"
     id("org.jetbrains.intellij") version "1.17.4"
-    kotlin("plugin.serialization") version "1.9.21"
-    id("io.gitlab.arturbosch.detekt") version "1.23.3"
+    kotlin("plugin.serialization") version "2.4.10"
+    id("io.gitlab.arturbosch.detekt") version "1.23.8"
     id("org.jlleitschuh.gradle.ktlint") version "12.1.0"
 }
 
@@ -36,7 +36,7 @@ java {
 }
 
 detekt {
-    toolVersion = "1.23.3"
+    toolVersion = "1.23.8"
     config.setFrom(files("config/detekt/detekt.yml"))
     buildUponDefaultConfig = true
     // Grandfathers in complexity findings that predate CI enforcement of
@@ -60,7 +60,7 @@ intellij {
 }
 
 dependencies {
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 
     testImplementation(platform("org.junit:junit-bom:6.1.3"))

@@ -261,10 +261,8 @@ class AnimoriaActionHost(private val project: Project) {
     }
 
     /**
-     * Runs a daemon round-trip under the IDE's own background-task UI.
-     *
-     * A failure surfaces as a dialog rather than only a log line: a command that
-     * silently does nothing is the state the migration exists to remove.
+     * Executes an asynchronous daemon operation within IntelliJ's background task runner,
+     * surfacing any unhandled failure via an error dialog.
      */
     private fun runInBackground(
         title: String,

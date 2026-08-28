@@ -1,4 +1,4 @@
-import type { Confidence } from '@animoria/core/contracts';
+export type Confidence = 'certain' | 'high' | 'moderate' | 'low';
 import { LitElement, css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { confidenceLabel } from '../view-model/analysis-view-model.js';

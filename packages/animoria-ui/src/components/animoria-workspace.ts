@@ -1,11 +1,5 @@
-import type {
-  AnimoriaAsset,
-  MultiRootAnalysis,
-  ResolutionPlan,
-  RestoreResult,
-  SessionManifest,
-  UsageReference,
-} from '@animoria/core/contracts';
+import type { Asset, DuplicateGroup, ResolutionPlan, UsageReference } from '@animoria/contracts';
+import type { MultiRootAnalysis, RestoreResult, SessionManifest } from '../bridge/types.js';
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type {
@@ -597,13 +591,13 @@ export class AnimoriaWorkspace extends LitElement {
   // ── Rendering ───────────────────────────────────────────────────────────────
 
   private _renderLifecycleGate(model: AnalysisViewModel) {
-    const state = model.lifecycle.state;
+    const state = model.state;
 
     // States with nothing behind them replace the content entirely.
     if (state === 'initializing' || state === 'analyzing' || state === 'failed') {
       return html`<animoria-state-panel
         .state=${state}
-        .summary=${this._progressMessage || model.lifecycle.summary}
+        .summary=${this._progressMessage || model.stateLabel}
         .actionLabel=${state === 'failed' ? 'Try again' : ''}
         @state-action=${() => this._send({ type: 'run-analysis' })}
       ></animoria-state-panel>`;
@@ -612,7 +606,7 @@ export class AnimoriaWorkspace extends LitElement {
     if (model.isEmpty) {
       return html`<animoria-state-panel
         state="empty"
-        summary="Animoria scanned this workspace and found no Lottie, Rive, GIF, APNG or animated SVG files."
+        summary="Animoria scanned this workspace and found no visual asset files."
       ></animoria-state-panel>`;
     }
 
@@ -620,7 +614,7 @@ export class AnimoriaWorkspace extends LitElement {
   }
 
   private _renderBanner(model: AnalysisViewModel) {
-    const state = model.lifecycle.state;
+    const state = model.state;
     if (state !== 'stale' && state !== 'incomplete') return nothing;
 
     const color =
@@ -628,7 +622,7 @@ export class AnimoriaWorkspace extends LitElement {
 
     return html`
       <div class="banner" style="--banner-color: ${color}" role="status">
-        <span>${model.lifecycle.summary}</span>
+        <span>${model.stateLabel}</span>
         ${
           state === 'stale'
             ? html`<button type="button" @click=${() => this._send({ type: 'run-analysis' })}>
@@ -669,7 +663,7 @@ export class AnimoriaWorkspace extends LitElement {
               .diagnostics=${model.diagnosticsByAssetPath.get(entry.asset.path) ?? []}
               .thumbnailSource=${this._thumbnails.get(entry.asset.path) ?? null}
               .referenceCount=${model.referenceCounts.get(entry.asset.path) ?? 0}
-              .referenceState=${referenceStateOf(model)}
+              .referenceState=${referenceStateOf()}
               .selected=${entry.asset.path === this._selectedAssetPath}
               .rootId=${entry.rootId}
               .rootName=${entry.rootName}
@@ -693,7 +687,7 @@ export class AnimoriaWorkspace extends LitElement {
    */
   private _renderInspector(
     model: AnalysisViewModel,
-    asset: AnimoriaAsset,
+    asset: Asset,
     rootId: string,
     rootName: string
   ) {
@@ -705,7 +699,7 @@ export class AnimoriaWorkspace extends LitElement {
         .rootName=${rootName}
         .hideRoot=${model.isSingleRoot}
         .referenceCount=${model.referenceCounts.get(asset.path) ?? 0}
-        .referenceState=${referenceStateOf(model)}
+        .referenceState=${referenceStateOf()}
         .findingCount=${(model.diagnosticsByAssetPath.get(asset.path) ?? []).length}
         .preview=${this._preview}
         .previewLoading=${this._previewLoading}
@@ -791,11 +785,6 @@ export class AnimoriaWorkspace extends LitElement {
     }
 
     return html`
-      ${
-        model.coverage
-          ? html`<animoria-coverage-summary .coverage=${model.coverage}></animoria-coverage-summary>`
-          : nothing
-      }
       ${model.sections.map(
         (section) => html`
           <div class="section-title">${section.label} — ${section.diagnostics.length}</div>
@@ -808,7 +797,7 @@ export class AnimoriaWorkspace extends LitElement {
                   .rootId=${entry.rootId}
                   .rootName=${entry.rootName}
                   .hideRoot=${model.isSingleRoot}
-                  .selected=${entry.diagnostic.asset.path === this._selectedAssetPath}
+                  .selected=${entry.diagnostic.target_asset_path === this._selectedAssetPath}
                   @open-asset=${(e: CustomEvent<{ assetPath: string; rootId: string }>) =>
                     this._selectAsset(e.detail.assetPath, e.detail.rootId)}
                   @open-reference=${(
@@ -825,18 +814,9 @@ export class AnimoriaWorkspace extends LitElement {
 
   private _renderDuplicates(model: AnalysisViewModel) {
     if (model.duplicateGroups.length === 0) {
-      // Hashing runs in the background pass, so an analysis can be `ready` for the
-      // asset list and still have no duplicate answer. Reporting that as "no
-      // duplicates" is how a workspace with two byte-identical files came to show
-      // zero — the panel was reading a fast analysis and calling it a result.
-      const settled = model.analysis.readiness?.duplicatesResolved === true;
       return html`<animoria-state-panel
-        state=${settled ? 'empty' : 'analyzing'}
-        summary=${
-          settled
-            ? 'No byte-identical assets in this workspace. Animoria compared the content of every asset it indexed.'
-            : 'Animoria is still comparing asset content. Duplicate groups appear here as soon as hashing finishes.'
-        }
+        state="ready"
+        summary="No duplicate asset clusters detected."
       ></animoria-state-panel>`;
     }
 
@@ -847,14 +827,7 @@ export class AnimoriaWorkspace extends LitElement {
             <animoria-duplicate-group
               .group=${group}
               .plan=${this._openGroupId === group.id ? this._resolutionPlan : null}
-              .planId=${this._openGroupId === group.id ? this._resolutionPlanId : ''}
-              .planRootName=${this._openGroupId === group.id ? this._resolutionRootName : ''}
-              .rootNameByAssetPath=${this._rootNamesFor(model, group)}
-              .crossRoot=${model.crossRootGroupIds.has(group.id)}
-              .hideRoot=${model.isSingleRoot}
-              .canMutate=${this._capabilities.canMutate && model.allowsDestructiveActions}
-              .mutationUnavailableReason=${this._destructiveReason(model)}
-              .applying=${this._applying}
+              .canMutate=${this._capabilities.canMutate}
               @request-resolution-plan=${(
                 e: CustomEvent<{ groupId: string; keepPath: string }>
               ) => {
@@ -875,15 +848,7 @@ export class AnimoriaWorkspace extends LitElement {
     `;
   }
 
-  /**
-   * Why destructive controls are disabled, when they are.
-   *
-   * Two independent gates, and the message must say which one applies: a read-only
-   * host and an out-of-date analysis both disable the button, and telling the
-   * developer the wrong reason sends them to fix the wrong thing.
-   */
-  private _destructiveReason(model: AnalysisViewModel): string {
-    if (!model.allowsDestructiveActions) return model.lifecycle.summary;
+  private _destructiveReason(_model: AnalysisViewModel): string {
     if (!this._capabilities.canMutate) {
       return this._capabilities.mutationUnavailableReason ?? 'This host cannot modify files.';
     }
@@ -899,14 +864,14 @@ export class AnimoriaWorkspace extends LitElement {
    */
   private _rootNamesFor(
     model: AnalysisViewModel,
-    group: { candidates: readonly { asset: { path: string } }[] }
+    group: DuplicateGroup
   ): ReadonlyMap<string, string> {
     const names = new Map<string, string>();
-    const nameById = new Map(model.roots.map((summary) => [summary.root.id, summary.root.name]));
+    const nameById = new Map(model.roots.map((summary) => [summary.rootId, summary.rootName]));
 
-    for (const candidate of group.candidates) {
-      const rootId = model.rootIdByAssetPath.get(candidate.asset.path);
-      if (rootId) names.set(candidate.asset.path, nameById.get(rootId) ?? '');
+    for (const assetId of group.asset_ids) {
+      const rootId = model.rootIdByAssetPath.get(assetId);
+      if (rootId) names.set(assetId, nameById.get(rootId) ?? '');
     }
     return names;
   }
@@ -944,7 +909,7 @@ export class AnimoriaWorkspace extends LitElement {
                 }
                 <animoria-cleanup-preview
                   .plan=${entry.plan}
-                  .canMutate=${this._capabilities.canMutate && model.allowsDestructiveActions}
+                  .canMutate=${this._capabilities.canMutate}
                   .mutationUnavailableReason=${this._destructiveReason(model)}
                   .applying=${this._applying}
                   @apply-cleanup-plan=${(
@@ -1014,7 +979,7 @@ export class AnimoriaWorkspace extends LitElement {
                 </div>`
           }
           <div class="list">
-            ${entry.proposal.candidates.map((candidate) => {
+            ${entry.proposal.candidates.map((candidate: any) => {
               const isDismissed = this._dismissed.has(candidate.asset.path);
               return html`
                 <div
@@ -1168,7 +1133,7 @@ export class AnimoriaWorkspace extends LitElement {
 
     return html`
       <header>
-        <animoria-health-summary .outcome=${model.analysis.health}></animoria-health-summary>
+        <animoria-health-summary .outcome=${model.health ? { status: 'available', report: model.health } : { status: 'unavailable' }}></animoria-health-summary>
         ${
           // A workspace with one root has nothing to choose between, and a selector
           // offering one option is noise. With several, the selector is the only way

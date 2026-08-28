@@ -1,28 +1,23 @@
-import type { HealthScoreOutcome, HealthState } from '@animoria/core/contracts';
-import { describeHealthState } from '@animoria/core/contracts';
+import type { HealthScoreReport } from '@animoria/contracts';
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 
+export type HealthState = 'excellent' | 'good' | 'fair' | 'poor';
+
+export type HealthScoreOutcome =
+  | { readonly status: 'available'; readonly report: HealthScoreReport }
+  | { readonly status: 'unavailable'; readonly message?: string };
+
+export function describeHealthState(score: number): HealthState {
+  if (score >= 90) return 'excellent';
+  if (score >= 75) return 'good';
+  if (score >= 50) return 'fair';
+  return 'poor';
+}
+
 /**
- * The Health Score panel.
- *
- * ## What this component must never do
- * Compute. `HealthScoreOutcome` is a discriminated union whose `unavailable` arm
- * carries a reason, and `describeHealthState` is Core's own banding — both are used
- * here verbatim. Three clients previously each had their own formula, and the
- * JetBrains one produced a different number from the same workspace; the score
- * arriving as a value with nowhere to recompute it is what makes that impossible now.
- *
- * ## Why `unavailable` is a first-class picture, not a hidden row
- * A workspace Core could not score used to render as an absent widget, which reads
- * as "nothing to report" — the same silence a perfectly healthy workspace produces.
- * The two are now visually distinct, and the reason is shown.
- *
- * ## Qualifications before recommendations
- * A score computed while a configured rule declined to run is a floor on the
- * problems present, not a full accounting. Ordering the caveat above the advice is
- * the difference between "here is what to fix" and "here is what to fix, given we
- * could not check everything".
+ * Health score summary presentation component.
+ * Renders the authoritative governance health score computed by Core.
  */
 @customElement('animoria-health-summary')
 export class AnimoriaHealthSummary extends LitElement {
@@ -82,20 +77,19 @@ export class AnimoriaHealthSummary extends LitElement {
       line-height: var(--animoria-line-height);
     }
 
-    .qualification {
-      font-size: var(--animoria-font-size-sm);
-      color: var(--animoria-warning);
-      line-height: var(--animoria-line-height);
+    .categories {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--animoria-space-2);
+      margin-top: var(--animoria-space-1);
     }
 
-    ol {
-      margin: var(--animoria-space-1) 0 0;
-      padding-left: 18px;
-      font-size: var(--animoria-font-size-sm);
-      color: var(--animoria-text-primary);
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
+    .cat-chip {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      background: var(--animoria-bg-primary);
+      border: 1px solid var(--animoria-border);
     }
 
     .compact-line {
@@ -142,7 +136,7 @@ export class AnimoriaHealthSummary extends LitElement {
           <div class="dial">—</div>
           <div class="body">
             <div class="title">Health score not available</div>
-            <div class="reason">${outcome.message}</div>
+            <div class="reason">${outcome.message ?? 'Workspace is being indexed.'}</div>
           </div>
         </div>
       `;
@@ -156,31 +150,29 @@ export class AnimoriaHealthSummary extends LitElement {
 
     if (this.compact) {
       return html`<span class="compact-line" style="--state-color: ${color}"
-        ><span class="compact-dot"></span>Health score ${score}/100 · ${stateLabel}</span
+        ><span class="compact-dot"></span>Health score ${score}/100 · Grade ${report.grade}</span
       >`;
     }
-
-    const findingWord = report.totalDiagnosticCount === 1 ? 'finding' : 'findings';
 
     return html`
       <div class="panel" style="--state-color: ${color}">
         <div class="dial">${score}</div>
         <div class="body">
-          <div class="title">Health score ${score}/100 · ${stateLabel}</div>
-          <div class="sub">
-            ${report.totalAssetCount} asset(s) analyzed · ${report.totalDiagnosticCount} governance
-            ${findingWord}
-          </div>
-          ${report.qualifications.map(
-            (qualification) => html`<div class="qualification">${qualification.message}</div>`
-          )}
+          <div class="title">Health score ${score}/100 · Grade ${report.grade} (${stateLabel})</div>
+          <div class="sub">${report.summary}</div>
           ${
-            report.recommendations.length > 0
-              ? html`<ol>
-                ${report.recommendations
-                  .slice(0, 3)
-                  .map((recommendation) => html`<li>${recommendation.message}</li>`)}
-              </ol>`
+            report.categories && report.categories.length > 0
+              ? html`
+                <div class="categories">
+                  ${report.categories.map(
+                    (cat) => html`
+                      <span class="cat-chip">
+                        ${cat.category}: ${Math.round(cat.score)}/100
+                      </span>
+                    `
+                  )}
+                </div>
+              `
               : nothing
           }
         </div>

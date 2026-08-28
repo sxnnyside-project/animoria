@@ -26,7 +26,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@animoria/core": "workspace:*",
+    "@animoria/contracts": "workspace:*",
     "lit": "^3.3.3",
     "lottie-web": "5.13.0"
   },

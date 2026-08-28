@@ -9,10 +9,9 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node"],
     "paths": {
+      "@animoria/ui/bridge": ["../../packages/animoria-ui/src/bridge/index.ts"],
       "@animoria/ui": ["../../packages/animoria-ui/src/index.ts"],
-      "@animoria/core/contracts": ["../../packages/animoria-core/src/contracts.ts"],
-      "@animoria/core/i18n": ["../../packages/animoria-core/src/i18n/locales.ts"],
-      "@animoria/core": ["../../packages/animoria-core/src/index.ts"]
+      "@animoria/contracts": ["../../packages/animoria-contracts/src/index.ts"]
     }
   },
   "include": ["src"]

@@ -7,20 +7,8 @@ import org.junit.jupiter.api.Test
 import java.io.File
 
 /**
- * The rule this whole migration exists to enforce, checked mechanically:
- * **the JetBrains client presents Core's decisions and makes none of its own.**
- *
- * ## Why source-level, and why repository-wide
- * A second governance model does not arrive as one large commit. It arrives as
- * one helper that seems easier to compute locally than to plumb through the
- * daemon — a health arithmetic here, a "reference count > 0" check there — and by
- * the time it is visible in behaviour it is spread across a dozen call sites.
- * These assertions scan *every* Kotlin source file, so a re-derivation cannot be
- * introduced anywhere in the plugin without failing the build.
- *
- * Comments are stripped before matching throughout: every fix in this codebase is
- * documented by describing the thing it replaced, so raw-text matching would flag
- * the explanations as though they were the defect.
+ * Structural boundary test ensuring the JetBrains plugin does not re-implement
+ * governance logic, scoring arithmetic, or asset classification locally in Kotlin.
  */
 @DisplayName("JetBrains computes no governance semantics of its own")
 class SemanticBoundaryTest {

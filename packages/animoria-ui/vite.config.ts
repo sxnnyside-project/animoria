@@ -16,13 +16,9 @@ import { defineConfig } from 'vite';
 export default defineConfig({
   resolve: {
     alias: {
-      '@animoria/core/contracts': fileURLToPath(
-        new URL('../animoria-core/src/contracts.ts', import.meta.url)
+      '@animoria/contracts': fileURLToPath(
+        new URL('../animoria-contracts/src/index.ts', import.meta.url)
       ),
-      '@animoria/core/i18n': fileURLToPath(
-        new URL('../animoria-core/src/i18n/locales.ts', import.meta.url)
-      ),
-      '@animoria/core': fileURLToPath(new URL('../animoria-core/src/index.ts', import.meta.url)),
     },
   },
   build: {

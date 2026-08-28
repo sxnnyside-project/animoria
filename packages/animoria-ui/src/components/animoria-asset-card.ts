@@ -1,4 +1,4 @@
-import type { AnimoriaAsset, RuleDiagnostic } from '@animoria/core/contracts';
+import type { Asset, RuleDiagnostic } from '@animoria/contracts';
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import type { ReferenceState } from '../view-model/analysis-view-model.js';
@@ -10,30 +10,12 @@ import {
 import './animoria-root-badge.js';
 
 /**
- * One asset, as the product presents it.
- *
- * ## What this consolidates
- * Four implementations of the same tile: the sandbox's `animoria-asset-item`, VS
- * Code's `AssetCardModel` + inline card CSS, and JetBrains' inline card markup in
- * `AnimoriaGalleryPanel`. They disagreed on which fields to show, on how to format a
- * size, and on whether a finding was indicated at all — so the same asset looked
- * like a different asset in each IDE.
- *
- * ## Why the badge is a count and not a classification
- * The card shows *how many* findings concern this asset and their worst severity. It
- * does not name the category. Naming it would require deciding which of several
- * findings is "the" one, which is a judgement — and the three previous cards each
- * made it differently. The names live one click away, in the finding list, where all
- * of them are visible.
- *
- * ## Thumbnails
- * The card never reads a file. It renders `thumbnailSource` if the host supplied one
- * and a format placeholder otherwise, so a host with no thumbnail pipeline degrades
- * to a legible tile rather than a broken image.
+ * Visual asset card component rendering both Motion and Static assets.
+ * Displays format badge, size, dimensions, governance finding indicators, and invalid status.
  */
 @customElement('animoria-asset-card')
 export class AnimoriaAssetCard extends LitElement {
-  @property({ type: Object }) asset: AnimoriaAsset | null = null;
+  @property({ type: Object }) asset: Asset | null = null;
   /** Findings concerning this asset. Passed in; never derived here. */
   @property({ type: Array }) diagnostics: readonly RuleDiagnostic[] = [];
   /** A `data:` URI or host URL. `null` renders the format placeholder. */
@@ -218,7 +200,7 @@ export class AnimoriaAssetCard extends LitElement {
           ></animoria-root-badge>
           <div class="meta">
             <span class="format">${asset.format}</span>
-            <span>${formatBytes(asset.sizeBytes)}</span>
+            <span>${formatBytes(asset.size_bytes)}</span>
             ${
               this.diagnostics.length > 0
                 ? html`<span
@@ -233,7 +215,7 @@ export class AnimoriaAssetCard extends LitElement {
             }
           </div>
           ${
-            asset.status === 'parsed'
+            asset.is_valid
               ? html`<div class="meta">
                 <span title=${referenceExplanation(this.referenceState)}>
                   ${referenceLabel(this.referenceCount, this.referenceState)}

@@ -40,31 +40,10 @@ import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.TreeSelectionModel
 
 /**
- * The asset gallery — a native tree, and the thing Animoria is for.
+ * Native Swing asset gallery tree component for the JetBrains tool window.
  *
- * ## Why this had to be written
- * `AnimoriaTreeModel` and `AnimoriaTreeCellRenderer` were complete: sections for
- * animated and static assets, folder grouping, a health node, governance nodes,
- * per-asset thumbnails with pending and failed states, search, and a flat/tree
- * toggle. **Nothing ever constructed a `JTree` from them.** Their only references in
- * the repository were their own unit tests, so the JetBrains tool window shipped
- * findings, duplicates and cleanup — and no way to see the assets those findings are
- * about.
- *
- * That is not a missing polish item. Browsing animated assets is the product's
- * premise, and it is what the VS Code TreeView has provided since before Wave 1.
- *
- * ## Why native rather than the shared UI
- * A tree with lazy thumbnails, type-ahead, folder collapse and the platform's own
- * selection and keyboard behaviour is something Swing already does and a webview
- * would only imitate. `CLAUDE.md`'s layer table puts native tree views on the host
- * side for exactly this reason. The shared UI renders the *inspector*; this renders
- * the list.
- *
- * ## What it decides
- * Nothing. Sections, ordering, badge text and governance grouping are
- * `AnimoriaTreeModel`'s, fed from the analysis Core produced. This class builds the
- * component, routes a selection to the inspector, and asks the daemon for thumbnails.
+ * Provides hierarchical and flat browsing of discovered visual assets, thumbnail rendering,
+ * search filtering, and routes asset selections to the shared inspector panel.
  */
 class AnimoriaGalleryPanel(
     private val project: Project,

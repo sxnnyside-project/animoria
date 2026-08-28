@@ -16,6 +16,7 @@ export type {
   HostInbound,
   HostOutbound,
   UiPreferences,
+  MultiRootAnalysis,
   RootCleanupPlan,
   RootCleanupProposal,
 } from './types.js';

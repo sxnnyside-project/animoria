@@ -77,8 +77,8 @@ describe('@animoria/ui — host independence', () => {
     expect(violations, violations.join('\n')).toEqual([]);
   });
 
-  it('depends only on @animoria/core, lit, and itself', () => {
-    const allowedExternal = [/^@animoria\/core/, /^lit/];
+  it('depends only on @animoria/contracts, lit, and itself', () => {
+    const allowedExternal = [/^@animoria\/contracts/, /^lit/];
     const violations: string[] = [];
 
     for (const file of TS_FILES) {

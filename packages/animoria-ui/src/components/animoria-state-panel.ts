@@ -1,4 +1,10 @@
-import type { AnalysisLifecycleState } from '@animoria/core/contracts';
+export type AnalysisLifecycleState =
+  | 'initializing'
+  | 'analyzing'
+  | 'ready'
+  | 'stale'
+  | 'incomplete'
+  | 'failed';
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 

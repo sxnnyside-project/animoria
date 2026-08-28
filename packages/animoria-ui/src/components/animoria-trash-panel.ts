@@ -1,30 +1,37 @@
-import type { RestoreResult, SessionManifest } from '@animoria/core/contracts';
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { formatBytes } from '../view-model/analysis-view-model.js';
 import './animoria-state-panel.js';
 
+export interface TrashEntry {
+  readonly assetId: string;
+  readonly originalPath: string;
+  readonly sizeBytes: number;
+}
+
+export interface SessionManifest {
+  readonly sessionId: string;
+  readonly movedAt: string | number;
+  readonly entries: readonly TrashEntry[];
+}
+
+export interface RestoreFailure {
+  readonly originalPath: string;
+  readonly reason: string;
+}
+
+export interface RestoreResult {
+  readonly restoredPaths: readonly string[];
+  readonly failures: readonly RestoreFailure[];
+}
+
 /**
- * What cleanup can be undone, and the outcome of undoing it.
- *
- * ## Why this exists
- * Every removal Animoria performs stages into `.animoria/trash/` specifically so it
- * can be reversed. The reversal had a Core implementation (`restoreTrashSession`), a
- * daemon method, a `HostBridge` message pair, and handlers in all three hosts — and
- * no component anywhere sent `request-trash-sessions` or rendered `restore-result`.
- * The safety property existed end to end except for the end the developer touches.
- *
- * ## Why partial restores render per entry
- * `restoreTrashSession` never throws; it reports each file it could not put back and
- * why — most often because something new now occupies the original path. Collapsing
- * that into "restore failed" would send the developer looking for a bug instead of
- * for the file in their way.
+ * Trash and session restore management panel.
  */
 @customElement('animoria-trash-panel')
 export class AnimoriaTrashPanel extends LitElement {
-  /** `null` before the host has answered — distinct from an empty trash. */
-  @property({ attribute: false }) sessions: readonly SessionManifest[] | null = null;
-  @property({ attribute: false }) result: RestoreResult | null = null;
+  @property({ type: Array }) sessions: readonly SessionManifest[] | null = null;
+  @property({ type: Object }) result: RestoreResult | null = null;
   @property({ type: Boolean }) canRestore = false;
   @property({ type: String }) restoreUnavailableReason = '';
   @property({ type: Boolean }) restoring = false;
@@ -33,77 +40,92 @@ export class AnimoriaTrashPanel extends LitElement {
     :host {
       display: flex;
       flex-direction: column;
-      gap: var(--animoria-space-3);
+      gap: var(--animoria-space-2);
+      font-family: var(--animoria-font-family);
+      font-size: var(--animoria-font-size-sm);
     }
 
     .row {
       display: flex;
-      align-items: flex-start;
+      align-items: center;
       justify-content: space-between;
       gap: var(--animoria-space-2);
-      padding: var(--animoria-space-2);
+      padding: var(--animoria-space-2) var(--animoria-space-3);
       border: 1px solid var(--animoria-border);
-      border-radius: var(--animoria-radius-sm);
+      border-radius: var(--animoria-radius);
       background: var(--animoria-bg-secondary);
     }
 
     .body {
-      min-width: 0;
       display: flex;
       flex-direction: column;
       gap: 2px;
+      min-width: 0;
     }
 
     .headline {
       font-weight: 600;
+      color: var(--animoria-text-strong);
     }
 
-    .meta,
-    .reason {
+    .meta {
       font-size: var(--animoria-font-size-xs);
       color: var(--animoria-text-muted);
-      line-height: var(--animoria-line-height);
-      word-break: break-all;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     button {
-      background: var(--animoria-accent);
-      color: var(--animoria-text-on-accent);
-      border: none;
-      border-radius: var(--animoria-radius-sm);
-      padding: 5px 12px;
       font-family: inherit;
-      font-size: var(--animoria-font-size-sm);
+      font-size: var(--animoria-font-size-xs);
+      padding: 4px 10px;
+      border-radius: var(--animoria-radius-sm);
+      border: 1px solid var(--animoria-border);
+      background: var(--animoria-bg-raised);
+      color: var(--animoria-text-primary);
       cursor: pointer;
       flex-shrink: 0;
     }
 
+    button:hover:not(:disabled) {
+      background: var(--animoria-bg-hover);
+    }
+
     button:disabled {
-      opacity: 0.45;
+      opacity: 0.5;
       cursor: not-allowed;
     }
 
     .outcome {
-      border: 1px solid var(--animoria-border);
-      border-left-width: 3px;
+      padding: var(--animoria-space-2);
       border-radius: var(--animoria-radius-sm);
-      padding: var(--animoria-space-2) var(--animoria-space-3);
-      font-size: var(--animoria-font-size-sm);
-      line-height: var(--animoria-line-height);
+      font-size: var(--animoria-font-size-xs);
     }
 
     .outcome.clean {
-      border-left-color: var(--animoria-success);
+      background: var(--animoria-success-subtle);
+      color: var(--animoria-success);
     }
 
     .outcome.partial {
-      border-left-color: var(--animoria-warning);
+      background: var(--animoria-warning-subtle);
+      color: var(--animoria-warning);
+    }
+
+    .reason {
+      color: var(--animoria-text-muted);
+      font-size: var(--animoria-font-size-xs);
     }
   `;
 
   private _restore(sessionId: string): void {
     this.dispatchEvent(
-      new CustomEvent('restore-session', { detail: { sessionId }, bubbles: true, composed: true })
+      new CustomEvent('restore-session', {
+        detail: { sessionId },
+        bubbles: true,
+        composed: true,
+      })
     );
   }
 
@@ -118,7 +140,7 @@ export class AnimoriaTrashPanel extends LitElement {
         </div>
         ${result.failures.map(
           (failure) => html`<div class="reason">
-            ${failure.originalPath} — ${REASON_TEXT[failure.reason]}
+            ${failure.originalPath} — ${failure.reason}
           </div>`
         )}
       </div>
@@ -148,8 +170,8 @@ export class AnimoriaTrashPanel extends LitElement {
       return html`
         ${this.result ? this._renderOutcome(this.result) : nothing}
         <animoria-state-panel
-          state="empty"
-          summary="Nothing is in Animoria's trash. Removals stay recoverable for seven days."
+          state="ready"
+          summary="Nothing is in Animoria's trash. Removals stay recoverable."
         ></animoria-state-panel>
       `;
     }
@@ -183,13 +205,6 @@ export class AnimoriaTrashPanel extends LitElement {
     `;
   }
 }
-
-/** Core's refusal reasons, in the words a developer can act on. */
-const REASON_TEXT: Readonly<Record<RestoreResult['failures'][number]['reason'], string>> = {
-  'destination-occupied': 'something new now exists at its original path',
-  'trash-file-missing': 'the staged copy is no longer in the trash directory',
-  'move-failed': 'the file could not be moved back',
-};
 
 declare global {
   interface HTMLElementTagNameMap {

@@ -15,23 +15,23 @@ format:
     cd packages/animoria-jetbrains && ./gradlew ktlintFormat
 
 typecheck:
-    pnpm typecheck
+    pnpm -r --filter=!@animoria/core typecheck
 
-test:
-    pnpm test
+test: core-test vscode-test sandbox-test jetbrains-test
 
-build: core-build vscode-build sandbox-build jetbrains-build
+test-all: test
 
 core-build:
-    pnpm --filter @animoria/core build
+    cargo build --release --manifest-path packages/animoria-core-rust/Cargo.toml
+    pnpm --filter @animoria/contracts build
 
 core-test:
-    pnpm --filter @animoria/core test
+    cargo test --manifest-path packages/animoria-core-rust/Cargo.toml
 
 core-clean:
-    pnpm --filter @animoria/core clean
+    cargo clean --manifest-path packages/animoria-core-rust/Cargo.toml
 
-vscode-build: core-build
+vscode-build: core-build ui-build
     pnpm --filter animoria-vscode build
 
 vscode-test:
@@ -40,25 +40,33 @@ vscode-test:
 vscode-typecheck:
     pnpm --filter animoria-vscode typecheck
 
+ui-build:
+    pnpm --filter @animoria/ui build
+
+ui-test:
+    pnpm --filter @animoria/ui test
+
 dev: sandbox-dev
 
 sandbox-dev:
     pnpm --filter animoria-sandbox dev
 
-sandbox-build: core-build
+sandbox-build: ui-build
     pnpm --filter animoria-sandbox build
 
-jetbrains-build: core-build
-    pnpm --filter @animoria/ui build
-    pnpm --filter @animoria/core build:sea
+sandbox-test:
+    pnpm --filter animoria-sandbox test
+
+jetbrains-build: core-build ui-build
     node scripts/copy-sea-into-jetbrains.mjs
     cd packages/animoria-jetbrains && ./gradlew buildPlugin -x buildSearchableOptions
 
-jetbrains-run: core-build
-    pnpm --filter @animoria/ui build
-    pnpm --filter @animoria/core build:sea
+jetbrains-run: core-build ui-build
     node scripts/copy-sea-into-jetbrains.mjs
     cd packages/animoria-jetbrains && ./gradlew runIde
+
+jetbrains-test:
+    cd packages/animoria-jetbrains && ./gradlew test
 
 jetbrains-lint:
     cd packages/animoria-jetbrains && ./gradlew detekt ktlintCheck
@@ -68,3 +76,5 @@ jetbrains-format:
 
 jetbrains-clean:
     cd packages/animoria-jetbrains && ./gradlew clean
+
+build: core-build ui-build vscode-build sandbox-build jetbrains-build

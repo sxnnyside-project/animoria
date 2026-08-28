@@ -1,18 +1,19 @@
-import type { MultiRootAnalysis, ResolutionPlan, UsageReference } from '@animoria/core/contracts';
+import type { ResolutionPlan, UsageReference } from '@animoria/contracts';
 import type {
   HostCapabilities,
   HostInbound,
   HostOutbound,
+  MultiRootAnalysis,
   RootCleanupPlan,
   RootCleanupProposal,
   UiPreferences,
-} from '@animoria/ui';
+} from '@animoria/ui/bridge';
 import {
   DEFAULT_PREFERENCES,
   LOTTIE_FORMATS,
   buildAnimationPreview,
   validateOutbound,
-} from '@animoria/ui';
+} from '@animoria/ui/bridge';
 
 /**
  * The sandbox's `HostBridge` implementation — Animoria's reference host.
@@ -346,7 +347,9 @@ export class SandboxHost {
 
   /** The asset Core attributed to this path, or `null`. Never re-derived from the path. */
   private _assetFor(assetPath: string) {
-    return this._analysis?.assets.find((entry) => entry.asset.path === assetPath)?.asset ?? null;
+    return (
+      this._analysis?.assets.find((entry: any) => entry.asset.path === assetPath)?.asset ?? null
+    );
   }
 
   private _fileUrl(path: string): string {

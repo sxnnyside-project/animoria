@@ -1,0 +1,70 @@
+use std::fs;
+use std::path::Path;
+use crate::cli::ui::{brand, dim, error, format_badge, format_bytes, format_duration, success, title};
+use crate::indexer::AssetIndex;
+
+pub fn execute_scan(target_path: &Path, json: bool) -> anyhow::Result<i32> {
+    let canonical = fs::canonicalize(target_path).unwrap_or_else(|_| target_path.to_path_buf());
+    let mut index = AssetIndex::new(canonical.to_string_lossy().to_string(), canonical.clone());
+    let analysis = index.scan_workspace(&[])?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&analysis)?);
+        return Ok(0);
+    }
+
+    let assets = &analysis.assets;
+    println!(
+        "\n{} {} {}\n",
+        brand("animoria"),
+        title("Asset Gallery"),
+        dim(&format!("({} visual assets found)", assets.len()))
+    );
+
+    if assets.is_empty() {
+        println!("  {}", dim("No visual assets discovered in this workspace.\n"));
+        return Ok(0);
+    }
+
+    println!(
+        "  {:<12}  {:<42}  {:>14}  {:>10}  {:>8}  {:>10}  {:<10}",
+        "Format", "Relative Path", "Dimensions", "Duration", "FPS", "Size", "Status"
+    );
+    println!("  {}", "─".repeat(116));
+
+    for a in assets {
+        let badge = format_badge(a.format);
+        let dims = match &a.dimensions {
+            Some(d) => format!("{}×{}", d.width, d.height),
+            None => "-".to_string(),
+        };
+        let dur = format_duration(a.motion.as_ref().and_then(|m| m.duration_secs));
+        let fps = a
+            .motion
+            .as_ref()
+            .and_then(|m| m.fps)
+            .map(|f| format!("{:.0}", f))
+            .unwrap_or_else(|| "-".to_string());
+        let size = format_bytes(a.size_bytes);
+        let status = if a.is_valid {
+            success("Valid")
+        } else {
+            error("Invalid")
+        };
+
+        // Path truncation for clean display
+        let rel_path = if a.relative_path.len() > 40 {
+            format!("...{}", &a.relative_path[a.relative_path.len() - 37..])
+        } else {
+            a.relative_path.clone()
+        };
+
+        println!(
+            "  {:<21}  {:<42}  {:>14}  {:>10}  {:>8}  {:>10}  {:<10}",
+            badge, rel_path, dims, dur, fps, size, status
+        );
+    }
+
+    println!("\n  {}\n", dim(&format!("Scanned in {}", canonical.display())));
+    Ok(0)
+}

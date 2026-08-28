@@ -71,10 +71,7 @@ internal class JetBrainsPreviewRequests(
             val extension = file.extension.lowercase()
             val browserAnimated = extension in setOf("gif", "apng", "svg")
 
-            // A Lottie is *played*, not pictured. Core reads the document — including
-            // out of a `.lottie` archive — and the shared UI's player drives it, which
-            // is what makes pause, scrubbing and speed possible at all. The migration
-            // sent a still frame and a caption saying playback happens elsewhere.
+            // Provide Lottie JSON document to the JCEF player to enable interactive scrubbing and playback
             if (extension == "json" || extension == "lottie") {
                 if (postLottieDocument(assetPath)) return@launch
             }

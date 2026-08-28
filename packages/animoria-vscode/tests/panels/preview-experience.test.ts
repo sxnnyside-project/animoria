@@ -1,27 +1,14 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { MultiRootAnalysis, WorkspaceAnalysis, WorkspaceSession } from '@animoria/core';
 import type { HostInbound } from '@animoria/ui/bridge';
 import { afterEach, describe, expect, it } from 'vitest';
-import { VsCodeHostBridge } from '../../src/panels/VsCodeHostBridge.js';
+import { VsCodeHostBridge } from '../../src/panels/vscode-host-bridge.js';
 import { resetTestWorkspace } from '../harness.js';
 
 /**
- * The preview a developer actually gets.
- *
- * ## The regression
- * `AnimoriaPreviewPanel` was the product's centre: playback, a frame scrubber, speed,
- * a background you could change to see a white asset. The shared-UI migration replaced
- * it with a still frame and a caption saying playback happens in the editor — the
- * contract's `data: unknown` field was never filled by any host, so there was nothing
- * to play even in principle.
- *
- * ## What these assert
- * That the *host puts a playable document on the wire*. Whether the scrubber moves is
- * the component's business; whether there is anything for it to scrub is this
- * bridge's, and that is where the capability was lost. A test that mocked the payload
- * would have passed throughout the regression.
+ * Tests ensuring the host bridge supplies playable animation documents,
+ * frame metadata, and valid image data URIs to the preview panel.
  */
 
 const roots: string[] = [];

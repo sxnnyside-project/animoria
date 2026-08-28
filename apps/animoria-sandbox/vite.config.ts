@@ -69,17 +69,14 @@ export default defineConfig({
       '@animoria/ui/tokens.css': fileURLToPath(
         new URL('../../packages/animoria-ui/src/styles/tokens.css', import.meta.url)
       ),
+      '@animoria/ui/bridge': fileURLToPath(
+        new URL('../../packages/animoria-ui/src/bridge/index.ts', import.meta.url)
+      ),
       '@animoria/ui': fileURLToPath(
         new URL('../../packages/animoria-ui/src/index.ts', import.meta.url)
       ),
-      '@animoria/core/contracts': fileURLToPath(
-        new URL('../../packages/animoria-core/src/contracts.ts', import.meta.url)
-      ),
-      '@animoria/core/i18n': fileURLToPath(
-        new URL('../../packages/animoria-core/src/i18n/locales.ts', import.meta.url)
-      ),
-      '@animoria/core': fileURLToPath(
-        new URL('../../packages/animoria-core/src/index.ts', import.meta.url)
+      '@animoria/contracts': fileURLToPath(
+        new URL('../../packages/animoria-contracts/src/index.ts', import.meta.url)
       ),
     },
   },
@@ -87,7 +84,7 @@ export default defineConfig({
     {
       /**
        * A **read-only** bridge between the browser harness and a real
-       * `@animoria/core` index.
+       * Animoria native daemon index.
        *
        * ## What this bridge deliberately cannot do
        * It exposes no endpoint that mutates the filesystem. It previously offered

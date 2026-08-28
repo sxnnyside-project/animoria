@@ -13,9 +13,7 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": [],
     "paths": {
-      "@animoria/core/contracts": ["../animoria-core/src/contracts.ts"],
-      "@animoria/core": ["../animoria-core/src/index.ts"],
-      "@animoria/core/i18n": ["../animoria-core/src/i18n/locales.ts"]
+      "@animoria/contracts": ["../animoria-contracts/src/index.ts"]
     }
   },
   "include": ["src", "tests"]

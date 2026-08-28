@@ -59,16 +59,11 @@ data class HealthScoreData(
     val details: String? = null,
 )
 
-// ── Canonical analysis (the daemon's one governance result) ───────────────────
-//
-// These mirror `WorkspaceAnalysis` in @animoria/core. They replace
-// `GovernanceIssueData` / `GovernanceResultData`, which modelled a second
-// governance engine's `unused` / `duplicate` / `overused` categories — a shape that
-// fed nothing into the Health Score this plugin displayed beside it, and that the
-// panel then re-derived its own score from.
-//
-// Unknown fields are ignored by the lenient `Json` instance below, so a Core that
-// gains a field does not break a plugin that has not learned about it yet.
+/**
+ * Canonical analysis data classes matching Protocol v1 payload schemas.
+ *
+ * Deserialized with lenient JSON configuration to ignore unknown fields during core upgrades.
+ */
 
 @Serializable
 data class EvidenceLocationData(
@@ -1164,19 +1159,24 @@ class CoreProcessManager(private val project: Project) {
      */
     private fun findBundledExecutable(): File? {
         val platformArchDir = platformArchDirName() ?: return null
-        val executableName =
-            if (System.getProperty("os.name").lowercase().contains("win")) {
-                "animoria-core.exe"
-            } else {
-                "animoria-core"
-            }
+        val isWindows = System.getProperty("os.name").lowercase().contains("win")
+        val nativeExecutableName = if (isWindows) "animoria.exe" else "animoria"
+        val legacyExecutableName = if (isWindows) "animoria-core.exe" else "animoria-core"
+
         val base = project.basePath
         if (base != null) {
-            val devPath = File(base, "packages/animoria-core/sea/$platformArchDir/$executableName")
-            if (devPath.exists()) return devPath
+            val rustRelease = File(base, "packages/animoria-core-rust/target/release/$nativeExecutableName")
+            if (rustRelease.exists()) return rustRelease
+
+            val rustDebug = File(base, "packages/animoria-core-rust/target/debug/$nativeExecutableName")
+            if (rustDebug.exists()) return rustDebug
+
+            val legacySeaPath = File(base, "packages/animoria-core/sea/$platformArchDir/$legacyExecutableName")
+            if (legacySeaPath.exists()) return legacySeaPath
         }
 
-        return extractBundledNativeDaemon(platformArchDir, executableName)
+        return extractBundledNativeDaemon(platformArchDir, nativeExecutableName)
+            ?: extractBundledNativeDaemon(platformArchDir, legacyExecutableName)
     }
 
     /**

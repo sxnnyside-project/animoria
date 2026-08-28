@@ -6,23 +6,11 @@ import com.intellij.openapi.project.Project
 import kotlinx.serialization.json.JsonElement
 
 /**
- * The most recent canonical analysis, readable synchronously.
+ * Project-level service providing thread-safe, synchronous access to the latest
+ * canonical analysis received from the daemon.
  *
- * ## Why this exists
- * The daemon is asynchronous and every governance fact arrives over NDJSON, but
- * some JetBrains extension points are not allowed to wait. A `LocalInspectionTool`
- * runs inside a read action on a highlighting pass: it must answer "does this file
- * have problems?" immediately, and it cannot block on a subprocess round-trip
- * without freezing the editor.
- *
- * The alternative — having the inspection compute findings itself — is the exact
- * thing this migration exists to prevent, so instead the analysis is cached here
- * as it arrives and read verbatim. Nothing in this class derives, scores, or
- * classifies anything; it is a mailbox, not a model.
- *
- * `null` means no analysis has arrived yet, which is deliberately distinct from an
- * analysis containing no diagnostics: the first means "not known yet", the second
- * means "checked, and clean".
+ * Used by IntelliJ extension points (such as `LocalInspectionTool`) that execute on
+ * read actions during editor highlighting passes and cannot perform asynchronous subprocess I/O.
  */
 @Service(Service.Level.PROJECT)
 class AnimoriaAnalysisHolder {
@@ -30,14 +18,7 @@ class AnimoriaAnalysisHolder {
     private var analysis: WorkspaceAnalysisData? = null
 
     /**
-     * The canonical payload, exactly as the daemon sent it.
-     *
-     * Kept alongside the flattened view because the shared UI renders
-     * `MultiRootAnalysis` and the flat projection is lossy — no `roots`, no
-     * `lifecycle`, no `freshness`, no per-root `referenceCounts`. The JCEF bridge used
-     * to re-encode the flat model and post *that* as `analysis`, so even a correct
-     * decode would have handed the UI a shape its view model cannot build from.
-     * Forwarding the original bytes is the only version of this that cannot drift.
+     * The raw canonical payload as received from the daemon, forwarded directly to the JCEF webview.
      */
     @Volatile
     private var canonical: JsonElement? = null

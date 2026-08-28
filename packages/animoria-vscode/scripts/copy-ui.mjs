@@ -39,3 +39,34 @@ if (existsSync(`${bundleEs}.map`)) cpSync(`${bundleEs}.map`, join(media, 'animor
 cpSync(tokens, join(media, 'tokens.css'));
 
 console.log('[animoria-vscode] shared UI copied into media/');
+
+// Copy native binary if available in target/release
+const isWindows = process.platform === 'win32';
+const binName = isWindows ? 'animoria.exe' : 'animoria';
+const rustTargetRelease = join(
+  here,
+  '..',
+  '..',
+  'animoria-core-rust',
+  'target',
+  'release',
+  binName
+);
+const rustTargetDebug = join(here, '..', '..', 'animoria-core-rust', 'target', 'debug', binName);
+const binDir = join(here, '..', 'bin');
+
+mkdirSync(binDir, { recursive: true });
+const targetBin = existsSync(rustTargetRelease)
+  ? rustTargetRelease
+  : existsSync(rustTargetDebug)
+    ? rustTargetDebug
+    : null;
+
+if (targetBin) {
+  cpSync(targetBin, join(binDir, binName));
+  console.log(`[animoria-vscode] native daemon binary copied from ${targetBin} into bin/`);
+} else {
+  console.log(
+    '[animoria-vscode] note: native daemon binary not yet built in target/release or debug.'
+  );
+}

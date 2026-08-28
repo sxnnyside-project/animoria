@@ -11,31 +11,10 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 private const val MIN_MS_BETWEEN_HINTS = 1500L
 
 /**
- * Shows what Animoria knows about the line under the cursor.
+ * Listens to editor mouse motion events to display Animoria asset hover tooltips.
  *
- * ## What changed from the implementation this replaces
- * The listener of the same name did the *matching itself*: a substring test of asset
- * stems against raw document text, with a four-character minimum to suppress the
- * false positives that approach inevitably produces. Its own documentation conceded
- * it was "an approximation, not authoritative matching", and that reimplementing
- * `reference-patterns.ts` in Kotlin would violate the architecture.
- *
- * It was deleted in the shared-UI migration with nothing in its place, so VS Code
- * kept an editor hover and JetBrains lost one — the same product answering the same
- * question in one IDE and staying silent in the other.
- *
- * This one decides nothing. It asks [AnimoriaUsageHoverProvider], which reads Core's
- * reference index, and renders the answer. There is no stem length threshold here
- * because there are no false positives to suppress: a line either is a reference Core
- * established or it is not.
- *
- * ## Why still an `EditorMouseMotionListener`
- * `LineMarkerProvider` and `ExternalAnnotator` work on the PSI tree, which has
- * per-token structure only for languages the IDE parses. Animoria's scan covers
- * JS/TS, Swift, Kotlin, Dart, Vue and Python; outside the JVM languages most of those
- * collapse to a single leaf without their own plugin, and a PSI-based hover would
- * work in Kotlin files and nowhere else. A document line is available everywhere,
- * which is also the model VS Code's provider uses.
+ * Attaches a mouse motion listener to document-backed editors, delegating hover resolution
+ * to {@link AnimoriaUsageHoverProvider} and debouncing popup triggers.
  */
 class AnimoriaEditorHoverListener : EditorFactoryListener {
     override fun editorCreated(event: EditorFactoryEvent) {

@@ -3,21 +3,8 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 /**
- * Guards the one place TypeScript cannot: values rendered from inline webview HTML.
- *
- * ## Why this gate exists
- * Wave 3 deleted `estimatedHealthScoreDelta`, `estimatedExecutionMs` and
- * `healthScoreAfter` — figures presented to developers as measurements that were
- * really arithmetic on a candidate count, sitting beside genuinely computed
- * numbers in identical styling. Deleting the *fields* was not enough: the panel's
- * webview markup lives inside template literals, so the code reading
- * `p.estimatedHealthScoreDelta` kept compiling, kept running, and rendered the
- * literal string `+undefined` into the UI. It survived a full type-check, a full
- * test run, and a structural search that only looked at Core.
- *
- * The lesson generalises past those three names: any value the extension shows a
- * developer must come from something that measured it. This scans the rendered
- * strings themselves, where the compiler has no reach.
+ * Structural test asserting that all health scores and confidence metrics presented
+ * to users are measured and emitted by Core, preventing fabricated or uncalculated estimates.
  */
 const SRC = resolve(__dirname, '../src');
 

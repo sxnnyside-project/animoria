@@ -1,7 +1,11 @@
-import type { DaemonEvent, DaemonResponse } from '@animoria/core/contracts';
-import { PROTOCOL_VERSION } from '@animoria/core/contracts';
 import { describe, expect, it } from 'vitest';
-import { FakeDaemon, type DaemonScenario } from '../src/host/fake-daemon.js';
+import {
+  FakeDaemon,
+  PROTOCOL_VERSION,
+  type DaemonEvent,
+  type DaemonResponse,
+  type DaemonScenario,
+} from '../src/host/fake-daemon.js';
 
 /**
  * The harness's scripted protocol host.

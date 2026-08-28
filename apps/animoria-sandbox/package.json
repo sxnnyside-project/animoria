@@ -12,7 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@animoria/core": "workspace:*",
+    "@animoria/contracts": "workspace:*",
     "@animoria/ui": "workspace:*",
     "lit": "^3.3.3"
   },

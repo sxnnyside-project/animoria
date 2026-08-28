@@ -22,12 +22,10 @@ export default defineConfig({
         '../../packages/animoria-ui/src/bridge/index.ts',
         import.meta.url
       ).pathname,
-      '@animoria/core/contracts': new URL(
-        '../../packages/animoria-core/src/contracts.ts',
+      '@animoria/contracts': new URL(
+        '../../packages/animoria-contracts/src/index.ts',
         import.meta.url
       ).pathname,
-      '@animoria/core': new URL('../../packages/animoria-core/src/index.ts', import.meta.url)
-        .pathname,
     },
   },
 });

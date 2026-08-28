@@ -1,28 +1,29 @@
-import type { AnimoriaAsset, IntegrationContext } from '@animoria/core';
-import { computeImportPath, computeWorkspaceRelativePath, toImportSpecifier } from '@animoria/core';
-import type { ActiveEditorTracker } from './ActiveEditorTracker.js';
+import type { Asset } from '@animoria/contracts';
+import { relative } from 'node:path';
+import type { ActiveEditorTracker } from './active-editor-tracker.js';
 
-/**
- * Builds an {@link IntegrationContext} for an asset, anchoring the import
- * path to the last known active editor when available. Shared by
- * `AnimoriaPreviewPanel` (Preview Panel's Integrate section) and
- * `animoria.generateSnippet` (tree view context menu) so both entry
- * points to Snippet Generation resolve paths identically.
- */
+export interface IntegrationContext {
+  readonly asset: Asset;
+  readonly importPath: string;
+  readonly workspaceRelativePath: string;
+  readonly pathResolutionBasis: 'active-editor' | 'workspace-root';
+  readonly workspacePath: string;
+}
+
 export function buildIntegrationContext(
-  asset: AnimoriaAsset,
+  asset: Asset,
   workspacePath: string,
   activeEditorTracker: ActiveEditorTracker | undefined
 ): IntegrationContext {
   const activeFilePath = activeEditorTracker?.getLastActiveFilePath();
 
   const workspaceRelativePath = workspacePath
-    ? computeWorkspaceRelativePath(workspacePath, asset.path)
+    ? relative(workspacePath, asset.path).replace(/\\/g, '/')
     : asset.name;
 
   const importPath = activeFilePath
-    ? computeImportPath(activeFilePath, asset.path)
-    : toImportSpecifier(workspaceRelativePath);
+    ? relative(activeFilePath, asset.path).replace(/\\/g, '/')
+    : `./${workspaceRelativePath}`;
 
   return {
     asset,

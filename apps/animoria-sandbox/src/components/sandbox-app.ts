@@ -115,16 +115,16 @@ export class SandboxApp extends LitElement {
   `;
 
   override firstUpdated(): void {
-    // Mounted after the first render so `#ui-root` exists. The host is created here
-    // rather than in the constructor so a hot reload replaces both together.
     this._host = new SandboxHost({
       onLog: (entry) => {
-        // Bounded: an unbounded log in a long dev session is a memory leak in the
-        // one place a developer is least likely to look for one.
         this._logs = [...this._logs.slice(-499), entry];
       },
     });
-    mount(this._uiRoot, this._host);
+    queueMicrotask(() => {
+      if (this._uiRoot && this._host) {
+        mount(this._uiRoot, this._host);
+      }
+    });
   }
 
   override render() {

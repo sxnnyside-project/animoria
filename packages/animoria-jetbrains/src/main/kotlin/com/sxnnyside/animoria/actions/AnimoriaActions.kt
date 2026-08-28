@@ -36,11 +36,7 @@ abstract class AnimoriaAction(
     icon: javax.swing.Icon? = null,
 ) : AnAction(text, description, icon) {
     /**
-     * Enabled only when there is a workspace to act on.
-     *
-     * Without this, every action stays clickable in a project Animoria cannot
-     * index and fails silently when invoked — the class of "nothing happened and
-     * nothing said why" this wave exists to remove.
+     * Enables the action only when the project is active and the daemon engine is initialized.
      */
     override fun update(e: AnActionEvent) {
         val project = e.project

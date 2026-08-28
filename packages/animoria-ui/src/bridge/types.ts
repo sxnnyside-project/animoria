@@ -1,16 +1,31 @@
 import type {
-  AnalysisReadiness,
-  AnimatedFormat,
-  UsageReference,
-  CleanupPlan,
-  CleanupExecutionResult,
-  MultiRootAnalysis,
+  Asset,
+  AssetFormat,
+  DuplicateGroup,
   ResolutionPlan,
-  ReviewableCleanupProposal,
-  RestoreResult,
-  SessionManifest,
-  WorkspaceRoot,
-} from '@animoria/core/contracts';
+  RuleDiagnostic,
+  UsageReference,
+  WorkspaceAnalysis,
+} from '@animoria/contracts';
+
+export type AnimatedFormat = AssetFormat;
+export interface AnalysisReadiness {
+  readonly assetsIndexed: boolean;
+  readonly referencesResolved: boolean;
+  readonly duplicatesResolved: boolean;
+  readonly complete: boolean;
+}
+export type CleanupPlan = any;
+export type CleanupExecutionResult = any;
+export type MultiRootAnalysis = any;
+export type ReviewableCleanupProposal = any;
+export type RestoreResult = any;
+export type SessionManifest = any;
+export interface WorkspaceRoot {
+  readonly id: string;
+  readonly name: string;
+  readonly path: string;
+}
 
 /**
  * One root's cleanup proposal.
@@ -226,7 +241,7 @@ export type AnimationPreview =
 export const BROWSER_ANIMATED_FORMATS: readonly AnimatedFormat[] = ['gif', 'apng', 'animated-svg'];
 
 /** Formats whose document the inspector's Lottie player can drive. */
-export const LOTTIE_FORMATS: readonly AnimatedFormat[] = ['lottie', 'dotlottie'];
+export const LOTTIE_FORMATS: readonly AnimatedFormat[] = ['lottie', 'dot-lottie'];
 
 /**
  * Classifies one asset's preview from what the host can actually serve.

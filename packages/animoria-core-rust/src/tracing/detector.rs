@@ -1,0 +1,173 @@
+use aho_corasick::{AhoCorasickBuilder, MatchKind};
+use ignore::WalkBuilder;
+use rayon::prelude::*;
+use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
+
+use crate::contracts::asset::Asset;
+use crate::contracts::usage::UsageReference;
+use crate::scanner::ignore_rules::IgnoreRules;
+use super::patterns::{is_line_comment_or_url, is_source_file_extension};
+
+pub struct AssetReferenceDetector {
+    root_path: PathBuf,
+    ignore_rules: IgnoreRules,
+}
+
+impl AssetReferenceDetector {
+    pub fn new(root_path: PathBuf, custom_ignore_patterns: &[String]) -> anyhow::Result<Self> {
+        let ignore_rules = IgnoreRules::new(custom_ignore_patterns)?;
+        Ok(Self {
+            root_path,
+            ignore_rules,
+        })
+    }
+
+    /// Finds all source code files eligible for usage scanning in the workspace.
+    pub fn find_source_files(&self) -> Vec<PathBuf> {
+        let mut builder = WalkBuilder::new(&self.root_path);
+        builder
+            .hidden(true)
+            .git_ignore(true)
+            .git_global(true)
+            .git_exclude(true)
+            .parents(false);
+
+        let mut sources = Vec::new();
+        for result in builder.build() {
+            let entry = match result {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            if self.ignore_rules.is_ignored(path) {
+                continue;
+            }
+            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                if is_source_file_extension(ext) {
+                    sources.push(path.to_path_buf());
+                }
+            }
+        }
+        sources
+    }
+
+    /// Scans source files in parallel and extracts all asset usage references.
+    pub fn detect_references(&self, assets: &[Asset]) -> Vec<UsageReference> {
+        if assets.is_empty() {
+            return Vec::new();
+        }
+
+        // Build mapping: pattern string -> (AssetId, is_exact_filename)
+        let mut patterns = Vec::new();
+        let mut pattern_to_asset: HashMap<usize, (String, bool)> = HashMap::new();
+
+        for asset in assets {
+            // Pattern 1: Exact filename (e.g. "hero.json", "logo.webp")
+            let idx1 = patterns.len();
+            patterns.push(asset.name.clone());
+            pattern_to_asset.insert(idx1, (asset.id.clone(), true));
+
+            // Pattern 2: Stem (e.g. "hero", "logo") if stem length >= 3 to prevent noisy false positives
+            if asset.stem.len() >= 3 && asset.stem != asset.name {
+                let idx2 = patterns.len();
+                patterns.push(asset.stem.clone());
+                pattern_to_asset.insert(idx2, (asset.id.clone(), false));
+            }
+        }
+
+        let ac = match AhoCorasickBuilder::new()
+            .match_kind(MatchKind::Standard)
+            .ascii_case_insensitive(true)
+            .build(&patterns)
+        {
+            Ok(ac) => ac,
+            Err(_) => return Vec::new(),
+        };
+
+        let source_files = self.find_source_files();
+        let asset_paths: std::collections::HashSet<String> = assets.iter().map(|a| a.path.clone()).collect();
+
+        // Scan files in parallel using Rayon
+        let references: Vec<UsageReference> = source_files
+            .par_iter()
+            .filter(|p| !asset_paths.contains(&p.to_string_lossy().to_string()))
+            .flat_map(|source_path| {
+                let content = match fs::read_to_string(source_path) {
+                    Ok(c) => c,
+                    Err(_) => return Vec::new(),
+                };
+
+                let relative_source = source_path
+                    .strip_prefix(&self.root_path)
+                    .unwrap_or(source_path)
+                    .to_string_lossy()
+                    .to_string();
+
+                let syntax_type = source_path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("unknown")
+                    .to_lowercase();
+
+                let mut file_refs = Vec::new();
+
+                for (line_idx, line) in content.lines().enumerate() {
+                    let line_number = (line_idx + 1) as u32;
+
+                    // Skip comment lines
+                    if is_line_comment_or_url(line) {
+                        continue;
+                    }
+
+                    // Aho-Corasick linear scan on line
+                    for mat in ac.find_overlapping_iter(line) {
+                        if let Some((asset_id, is_exact_filename)) = pattern_to_asset.get(&mat.pattern().as_usize()) {
+                            // An asset file cannot reference itself
+                            let source_str = source_path.to_string_lossy();
+                            if source_str.ends_with(&format!("/{}", &patterns[mat.pattern().as_usize()]))
+                                || assets.iter().any(|a| &a.id == asset_id && a.path == source_str)
+                            {
+                                continue;
+                            }
+                            // Check negative filters: ignore remote URLs like http:// or https://
+                            let match_start = mat.start();
+                            let prefix = &line[..match_start];
+                            if prefix.ends_with("http://")
+                                || prefix.ends_with("https://")
+                                || prefix.ends_with("//cdn.")
+                            {
+                                continue;
+                            }
+
+                            // Check that the match is bounded by string delimiters or code syntax
+                            let confidence = if *is_exact_filename {
+                                "high"
+                            } else {
+                                "low"
+                            };
+
+                            file_refs.push(UsageReference {
+                                asset_id: asset_id.clone(),
+                                file_path: source_path.to_string_lossy().to_string(),
+                                relative_file_path: relative_source.clone(),
+                                line_number,
+                                line_content: line.trim().to_string(),
+                                syntax_type: syntax_type.clone(),
+                                confidence: confidence.to_string(),
+                            });
+                        }
+                    }
+                }
+
+                file_refs
+            })
+            .collect();
+
+        references
+    }
+}

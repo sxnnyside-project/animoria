@@ -13,8 +13,8 @@
       "@animoria/ui/bridge": [
         "../animoria-ui/src/bridge/index.ts"
       ],
-      "@animoria/core/contracts": [
-        "../animoria-core/src/contracts.ts"
+      "@animoria/contracts": [
+        "../animoria-contracts/src/index.ts"
       ]
     }
   },

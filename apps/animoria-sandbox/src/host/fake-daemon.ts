@@ -1,61 +1,89 @@
-import type {
-  DaemonCapabilities,
-  DaemonError,
-  DaemonErrorCode,
-  DaemonEvent,
-  DaemonEventName,
-  DaemonResponse,
-} from '@animoria/core/contracts';
-import { PROTOCOL_VERSION, checkProtocolCompatibility } from '@animoria/core/contracts';
+export const PROTOCOL_VERSION = 1;
 
-/**
- * A deterministic protocol daemon that touches no filesystem.
- *
- * ## Why the harness needs one
- * The states Wave 5 added are all *protocol* states: a version mismatch, a daemon
- * that never becomes ready, a cancelled request, a stale plan. None of them can be
- * produced by the read-only HTTP bridge, and none of them is reachable by pointing
- * the sandbox at a real workspace — you cannot make a healthy daemon claim protocol
- * 99 on demand.
- *
- * So the harness gains a second host: the same `HostBridge` the IDEs implement,
- * backed by a scripted daemon whose scenario is chosen up front. That is what makes
- * "what does the UI do when the engine is a version too old?" a question a developer
- * can answer by clicking, rather than by imagining.
- *
- * ## What it is not
- * It is not a mock of Core. It replays fixture analyses and scripted protocol
- * outcomes; it never classifies an asset, scores a workspace, or decides what is
- * removable. A fake that invented governance would be the fourth engine this
- * migration spent three waves removing.
- */
+export interface DaemonError {
+  code: string;
+  message: string;
+  retryable?: boolean;
+}
 
-/** The failure modes the harness can put the UI into. */
-export type DaemonScenario =
-  /** Everything works: handshake, ready, analysis. */
-  | 'healthy'
-  /** The daemon never starts — the binary is missing or the process died. */
-  | 'unavailable'
-  /** The daemon answers, but speaks a version this client cannot talk to. */
-  | 'protocol-mismatch'
-  /** The workspace cannot be analysed at all. */
-  | 'fatal-workspace'
-  /** Analysis ran and failed. */
+export type DaemonErrorCode =
+  | 'invalid-params'
+  | 'unsupported-version'
+  | 'unsupported-method'
+  | 'internal-error'
+  | 'unknown-method'
+  | 'scan-failed'
+  | 'workspace-not-found'
   | 'analysis-failed'
-  /** Analysis finished but coverage is insufficient for absence claims. */
   | 'analysis-incomplete'
-  /** Every plan the UI applies is rejected as stale. */
   | 'stale-plan'
-  /** Every request is cancelled before it completes. */
-  | 'cancelled'
-  /** Requests are accepted but never answered — the "is it slow or dead?" case. */
-  | 'never-ready';
+  | 'timeout'
+  | 'cancelled';
+
+export interface DaemonEvent {
+  protocol: number;
+  event: string;
+  sequence?: number;
+  sessionId?: string;
+  payload?: any;
+  data?: any;
+}
+
+export type DaemonEventName =
+  | 'indexing-started'
+  | 'indexing-progress'
+  | 'analysis-started'
+  | 'analysis-progress'
+  | 'analysis-completed'
+  | 'analysis-failed'
+  | 'fatal'
+  | 'ready'
+  | 'stale'
+  | 'watcher-event';
+
+export interface DaemonResponse<T = any> {
+  protocol: number;
+  id: string;
+  result?: T;
+  error?: DaemonError;
+}
+
+export interface DaemonCapabilities {
+  analysis?: boolean;
+  watch?: boolean;
+  cleanup?: boolean;
+  restore?: boolean;
+  duplicateResolution?: boolean;
+  cancellation?: boolean;
+  multiRoot?: boolean;
+  thumbnails?: boolean;
+  snippets?: boolean;
+  [key: string]: any;
+}
+
+export function checkProtocolCompatibility(version: number): {
+  compatible: boolean;
+  reason?: string;
+} {
+  return version === PROTOCOL_VERSION
+    ? { compatible: true }
+    : { compatible: false, reason: `Unsupported protocol version: ${version}` };
+}
+
+export type DaemonScenario =
+  | 'healthy'
+  | 'unavailable'
+  | 'protocol-mismatch'
+  | 'never-ready'
+  | 'fatal-workspace'
+  | 'analysis-failed'
+  | 'analysis-incomplete'
+  | 'stale-plan'
+  | 'cancelled';
 
 export interface FakeDaemonOptions {
   readonly scenario: DaemonScenario;
-  /** The analysis payload replayed on success. A fixture, never computed here. */
   readonly analysisPayload?: unknown;
-  /** Called for every outbound message, so the harness console can render it. */
   readonly onMessage?: (message: DaemonResponse | DaemonEvent) => void;
 }
 
@@ -71,7 +99,6 @@ const CAPABILITIES: DaemonCapabilities = {
   snippets: false,
 };
 
-/** The error each failure scenario produces for a request. */
 const SCENARIO_ERROR: Partial<Record<DaemonScenario, { code: DaemonErrorCode; message: string }>> =
   {
     unavailable: {
@@ -128,16 +155,8 @@ export class FakeDaemon {
     return this._ready;
   }
 
-  /**
-   * Emits the startup sequence for the configured scenario.
-   *
-   * Sequence numbers are monotonic in every scenario, including the failing ones —
-   * a daemon that fails still owes its client an ordered account of how it failed.
-   */
   start(): void {
     if (this._scenario === 'unavailable' || this._scenario === 'never-ready') {
-      // Nothing at all. This is the case a client can only distinguish from "slow"
-      // by asking — which is what `ping` exists for.
       return;
     }
 
@@ -160,15 +179,14 @@ export class FakeDaemon {
     this._event('ready', { sessionId: this.sessionId, capabilities: CAPABILITIES });
   }
 
-  /** Answers one request, according to the scenario. */
   request(id: string, method: string, protocol: number = PROTOCOL_VERSION): void {
     const compatibility = checkProtocolCompatibility(protocol);
     if (!compatibility.compatible) {
-      this._error(id, 'unsupported-version', compatibility.message ?? 'Protocol mismatch.');
+      this._error(id, 'unsupported-version', compatibility.reason ?? 'Protocol mismatch.');
       return;
     }
 
-    if (this._scenario === 'never-ready') return; // Deliberately no answer.
+    if (this._scenario === 'never-ready') return;
 
     const scripted = SCENARIO_ERROR[this._scenario];
     if (scripted && method !== 'ping') {

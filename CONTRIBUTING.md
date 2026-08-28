@@ -5,6 +5,56 @@ This document covers how to work with the project as a contributor.
 
 ---
 
+## Repository Architecture
+
+Animoria is organized as a multi-ecosystem monorepo centered around a high-performance native Rust core engine:
+
+```text
+                       ┌─────────────────────────┐
+                       │   animoria-core-rust    │ (Native Core Engine & CLI)
+                       │     Source of Truth     │
+                       └───────────┬─────────────┘
+                                   │
+                              Protocol v1
+                                   │
+              ┌────────────────────┼────────────────────┐
+              ▼                    ▼                    ▼
+     JetBrains Plugin      VS Code Extension       Standalone CLI
+   (packages/animoria-    (packages/animoria-    (packages/animoria-
+        jetbrains)             vscode)                core-rust)
+              │                    │
+              │         @animoria/contracts
+              │        (Pure Canonical Types)
+              │                    │
+              └────────────┬───────┘
+                           ▼
+                  @animoria/ui (Webview)
+```
+
+---
+
+## Ecosytem Conventions & Coding Standards
+
+### 1. File Naming Conventions
+
+Strict file naming rules per ecosystem:
+
+* **Rust (`packages/animoria-core-rust`)**: `snake_case.rs` (e.g. `ignore_rules.rs`, `asset_reference_detector.rs`).
+* **TypeScript (`packages/animoria-vscode`, `packages/animoria-contracts`, `packages/animoria-ui`)**: `kebab-case.ts` (e.g. `daemon-client.ts`, `diagnostic-publisher.ts`, `asset-card-model.ts`).
+* **Kotlin (`packages/animoria-jetbrains`)**: `PascalCase.kt` (e.g. `CoreProcessManager.kt`, `AnimoriaAnalysisHolder.kt`).
+
+### 2. Documentation & Commenting Rules
+
+* **Document Intent and Invariants ("Why", not "What")**:
+  Explain non-obvious design decisions, lifecycle boundaries, or safety invariants.
+  Avoid redundant comments that merely narrate self-explanatory code syntax.
+* **Module Doc Headers (`//!` in Rust, KDoc in Kotlin, JSDoc in TS)**:
+  Every major module entry point must define its responsibilities, upstream inputs, and downstream outputs.
+* **Contracts Purity**:
+  `@animoria/contracts` is the pure representation of domain models generated from Rust with `ts-rs`. Never add ad-hoc `any` or synthetic helper types directly to the contracts root.
+
+---
+
 ## Before You Start
 
 - Search [existing issues](https://github.com/sxnnyside-project/animoria/issues) before opening a new one.
@@ -14,89 +64,28 @@ This document covers how to work with the project as a contributor.
 
 ---
 
-## Reporting a Bug
-
-Open a [GitHub Issue](https://github.com/sxnnyside-project/animoria/issues/new/choose) using the bug report template.
-
-Include:
-
-- What you expected to happen
-- What actually happened
-- Steps to reproduce
-- Environment details (OS, Node.js version, editor version, relevant config)
-
----
-
-## Proposing a Feature
-
-Open a [GitHub Issue](https://github.com/sxnnyside-project/animoria/issues/new/choose) using the feature request template, or submit a PR directly if the change is small and self-contained.
-
-For larger features, an issue discussion first avoids wasted effort on both sides.
-
----
-
-## Workflow
-
-1. Fork the repository and create a branch from `main`.
-2. Name your branch descriptively — `fix/crash-on-empty-input`, `feat/offline-mode`.
-3. Make your changes.
-4. Run the quality gate to ensure checks pass: `just check` (or `pnpm check`).
-5. Open a pull request against `main` with a clear description of what changed and why.
-
----
-
 ## Pull Request Checklist
 
 Before submitting:
 
-- [ ] The project builds without errors (`just check` / `pnpm check`)
+- [ ] Rust tests pass: `cargo test` in `packages/animoria-core-rust`
+- [ ] VS Code tests pass: `pnpm --filter animoria-vscode test`
+- [ ] JetBrains tests pass: `./gradlew test` in `packages/animoria-jetbrains`
+- [ ] File naming matches the ecosystem convention (`kebab-case` for TS, `snake_case` for Rust)
 - [ ] Changes are described in [CHANGELOG.md](CHANGELOG.md) under `[Unreleased]`
 - [ ] The PR description explains what changed and why
-- [ ] New behavior is covered by tests where applicable
 
 ---
 
 ## Commit Style
 
-This project uses [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). Every commit message must follow the format:
+This project uses [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):
 
-```
+```text
 <type>: <description>
 
 [optional body]
 [optional footer]
 ```
 
-Accepted types:
-
-| Type       | Use for                                   |
-| ---------- | ----------------------------------------- |
-| `feat`     | New functionality                         |
-| `fix`      | Bug fixes                                 |
-| `docs`     | Documentation only                        |
-| `style`    | Formatting, whitespace — no logic changes |
-| `refactor` | Code restructure without behavior change  |
-| `test`     | Adding or updating tests                  |
-| `chore`    | Build process, tooling, dependencies      |
-| `perf`     | Performance improvements                  |
-
-Examples:
-
-```
-feat: add multi-root workspace support
-fix: prevent file watcher burst on rapid branch checkouts
-docs: update installation steps for JetBrains daemon
-chore: bump dependencies to latest stable
-```
-
-Commits that don't follow this format will be flagged during review.
-
----
-
-## Questions
-
-If something in the codebase is unclear, open an issue with the `question` label before assuming it's a bug.
-
----
-
-_Animoria is a Sxnnyside Project Tool. Part of the [Sxnnyside Project](https://sxnnysideproject.com)._
+Accepted types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`.

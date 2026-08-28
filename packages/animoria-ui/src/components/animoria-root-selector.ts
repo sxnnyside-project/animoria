@@ -133,11 +133,11 @@ export class AnimoriaRootSelector extends LitElement {
           (summary) => html`
             <button
               type="button"
-              aria-pressed=${this.filter.kind === 'root' && this.filter.rootId === summary.root.id}
-              title=${summary.root.path}
-              @click=${() => this._select({ kind: 'root', rootId: summary.root.id })}
+              aria-pressed=${this.filter.kind === 'root' && this.filter.rootId === summary.rootId}
+              title=${summary.rootPath}
+              @click=${() => this._select({ kind: 'root', rootId: summary.rootId })}
             >
-              <span class="name">${summary.root.name}</span>
+              <span class="name">${summary.rootName}</span>
               <span class="count">${this._countFor(summary)}</span>
             </button>
           `

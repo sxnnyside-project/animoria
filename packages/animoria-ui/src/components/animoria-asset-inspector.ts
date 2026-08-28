@@ -1,4 +1,4 @@
-import type { AnimoriaAsset, UsageReference } from '@animoria/core/contracts';
+import type { Asset, UsageReference } from '@animoria/contracts';
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import type {
@@ -16,31 +16,12 @@ import './animoria-snippet-panel.js';
 import './animoria-root-badge.js';
 
 /**
- * The one place an asset can be looked at rather than merely listed.
- *
- * ## What this restores
- * `AnimoriaPreviewPanel` (VS Code, 1,135 lines), `AnimoriaPreviewPanel.kt`
- * (JetBrains) and `animoria-preview-panel.ts` (sandbox) were deleted in the shared-UI
- * migration and nothing took their place. The asset grid survived; *inspecting an
- * asset* did not. Every capability the panels had reached — preview, metadata, reveal
- * in file manager, copy path, generate snippet — became a `HostOutbound` member no
- * component sent, which is how seven of seventeen messages came to have no sender at
- * all.
- *
- * ## Why the preview states are enumerated
- * `idle`, `loading`, `image`, `still`, `unsupported` and `failed` are six visibly
- * different answers, and the old panels collapsed them into two: a spinner and an
- * image. A Rive file that cannot animate here, a Lottie whose frame failed to render,
- * and a file that has gone missing all showed the same empty box.
- *
- * ## What this does not do
- * It computes nothing. Reference counts, badges and diagnostics arrive already
- * decided; the preview arrives already classified by the host. This component chooses
- * layout and wording, and emits intent.
+ * Detailed asset inspection panel supporting metadata examination,
+ * interactive motion playback (Lottie/GIF), static image zooming, and code snippet generation.
  */
 @customElement('animoria-asset-inspector')
 export class AnimoriaAssetInspector extends LitElement {
-  @property({ attribute: false }) asset: AnimoriaAsset | null = null;
+  @property({ attribute: false }) asset: Asset | null = null;
   @property({ attribute: false }) capabilities: HostCapabilities | null = null;
   /** Core's attribution for this asset. Never derived here from the path. */
   @property({ type: String }) rootId = '';
@@ -352,16 +333,16 @@ export class AnimoriaAssetInspector extends LitElement {
               type="button"
               class="reference"
               ?disabled=${!canOpen}
-              title=${canOpen ? reference.file : 'This host cannot open a source file.'}
+              title=${canOpen ? reference.file_path : 'This host cannot open a source file.'}
               @click=${() =>
                 this._emit('open-reference', {
-                  file: reference.file,
-                  line: reference.line,
+                  file: reference.file_path,
+                  line: reference.line_number,
                   rootId: this.rootId,
                 })}
             >
-              <span class="reference-where">${fileName(reference.file)}:${reference.line}</span>
-              <span class="reference-line">${reference.content}</span>
+              <span class="reference-where">${fileName(reference.file_path)}:${reference.line_number}</span>
+              <span class="reference-line">${reference.line_content}</span>
             </button>
           `
         )}
@@ -369,15 +350,7 @@ export class AnimoriaAssetInspector extends LitElement {
     `;
   }
 
-  /**
-   * What this asset *is*, decided by its family rather than by one generic table.
-   *
-   * Core extracts artboards and state machines from Rive, frame and loop counts from
-   * GIF, animation type from an animated SVG, and the manifest from a dotLottie
-   * archive. The previous inspector printed format, size and a reference count for
-   * every asset and discarded all of it.
-   */
-  private _renderMetadata(asset: AnimoriaAsset) {
+  private _renderMetadata(asset: Asset) {
     const groups = factGroupsFor(asset);
 
     return html`
