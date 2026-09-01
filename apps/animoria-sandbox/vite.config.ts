@@ -18,20 +18,9 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 /**
- * The workspace this dev bridge inspects.
- *
- * ## Why this is never the Animoria repository
- * This previously defaulted to the repository root — so a UI development server
- * was pointed at the developer's own working copy. Combined with the write
- * endpoints this bridge used to expose, that made "iterate on a component" and
- * "delete files from your checkout" the same HTTP surface.
- *
- * The default is now the committed fixture set, which is disposable by
- * construction. `ANIMORIA_SANDBOX_WORKSPACE` overrides it for anyone who wants to
- * point the harness at a scratch project of their own.
- *
- * `fileURLToPath` rather than `URL.pathname`: the latter yields `/C:/...` on
- * Windows, which is not a usable filesystem path.
+ * The workspace this dev bridge inspects — the committed, disposable fixture
+ * set by default; `ANIMORIA_SANDBOX_WORKSPACE` overrides it. `fileURLToPath`
+ * rather than `URL.pathname`, which yields `/C:/...` on Windows.
  */
 function resolveWorkspacePath(): string {
   const override = process.env.ANIMORIA_SANDBOX_WORKSPACE;
@@ -69,18 +58,9 @@ export default defineConfig({
   plugins: [
     {
       /**
-       * A **read-only** bridge between the browser harness and the real
-       * `animoria` native daemon — the same Protocol v1 process VS Code and
-       * JetBrains spawn. Every response the harness renders is Core's own
-       * answer, not a second computation of it: a previous version of this
-       * bridge imported `@animoria/core` (the legacy TypeScript engine) by
-       * relative path, which meant the harness used to build and review
-       * `@animoria/ui` ran a different engine than the one that ships.
-       *
-       * ## What this bridge deliberately cannot do
-       * It exposes no endpoint that mutates the filesystem. Destructive
-       * operations belong to clients that can stage, preview, and reverse
-       * them; a UI development harness has no reason to own that power.
+       * A **read-only** bridge to the real `animoria` native daemon — the
+       * same Protocol v1 process VS Code and JetBrains spawn. Exposes no
+       * endpoint that mutates the filesystem.
        */
       name: 'animoria-daemon-bridge',
       // Dev server only. Vitest also constructs a serve-mode Vite server, and

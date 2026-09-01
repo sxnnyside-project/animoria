@@ -1,18 +1,6 @@
 import { EventEmitter as NodeEventEmitter } from 'node:events';
 
-/**
- * In-memory stand-in for the `vscode` module.
- *
- * The real module only resolves inside a running Extension Host, so it
- * cannot be imported directly by a unit test. `vitest.config.ts` aliases
- * the `vscode` specifier to this file, which means production code needs
- * no test-mode branching: `import * as vscode from 'vscode'` resolves to
- * this implementation under test and to the real API inside VS Code.
- *
- * Scope is deliberately narrow — every export here backs an API the
- * extension actually calls (see the grep-derived surface in
- * TASK-H1.1). Add to it only when a real call site needs the addition.
- */
+// In-memory stand-in for `vscode`, aliased in vitest.config.ts so production code needs no test-mode branching.
 
 export class Disposable {
   private readonly _callOnDispose: () => void;

@@ -17,27 +17,9 @@ import java.io.File
 import java.io.InputStreamReader
 import java.io.PrintWriter
 
-/**
- * Decodes a real daemon response with the *actual* production data classes,
- * not with ad-hoc JSON path assertions.
- *
- * [NativeDaemonIntegrationTest] proves the daemon speaks Protocol v1 and
- * returns assets. It does not prove `CoreProcessManager` can make sense of
- * what it gets back — that decode happens with `kotlinx.serialization` against
- * [MultiRootAnalysisData], and nothing exercises that decode against a live
- * daemon. `CoreProcessManager`'s own comment on this decode ("a decode
- * failure here means the client and the daemon disagree about the contract,
- * which is precisely the condition that must never be quiet") describes
- * exactly the failure mode this test is built to catch: today it would fail
- * silently into `AnimoriaLogger.error` and an empty tool window, with every
- * other green test unaware anything was wrong.
- *
- * This reproduces `CoreProcessManager`'s real sequence: send `analyze`, then
- * — as the plugin does, per the comment in `daemon/server.rs` on why this
- * event exists — wait for the pushed `analysis-completed` *event* rather than
- * the request's own response, and decode its payload with the same
- * `MultiRootAnalysisData` class the plugin ships.
- */
+// Unlike NativeDaemonIntegrationTest (proves the daemon responds), this proves CoreProcessManager can decode
+// what comes back: sends `analyze`, waits for the pushed `analysis-completed` event (not the request's own
+// response, matching the real client), and decodes it with the actual MultiRootAnalysisData class.
 @OptIn(ExperimentalSerializationApi::class)
 @DisplayName("JetBrains decode contract: MultiRootAnalysisData against a live daemon")
 class ProtocolParityTest {

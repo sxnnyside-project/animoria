@@ -9,21 +9,8 @@ import {
 } from '../../src/panels/vscode-host-bridge.js';
 import type { HostInbound } from '@animoria/ui/bridge';
 
-/**
- * `native-daemon.integration.test.ts` proves `VsCodeDaemonClient` talks to the
- * real daemon correctly in isolation. It does not prove the extension's own
- * wiring — `VsCodeHostBridge` turning a `WorkspaceSession` into the exact
- * `postMessage` payloads the webview (`@animoria/ui`) renders — ever sees that
- * data. Every other bridge test drives it with a hand-built fixture session,
- * so a mismatch between what the real daemon returns and what the session
- * adapter (built in `extension.ts`, not exercised here otherwise) expects
- * would pass every existing test and still show a blank panel in the IDE.
- *
- * This closes that gap: real daemon process, real fixture scan, a minimal
- * (but real-shaped) `WorkspaceSession` built from that scan's actual output,
- * fed through the real `VsCodeHostBridge` — and asserts the posted `analysis`
- * message carries the same asset count the daemon actually found.
- */
+// Unlike every other bridge test (hand-built fixture sessions), this drives VsCodeHostBridge with a real daemon scan,
+// so a mismatch between what the daemon returns and what extension.ts's session adapter expects can't hide behind a mock.
 describe('VsCodeHostBridge — real daemon data through the real bridge', () => {
   const fixturesDir = resolve(__dirname, '../../../../fixtures');
   let client: VsCodeDaemonClient;

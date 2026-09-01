@@ -12,28 +12,8 @@ import com.intellij.openapi.vfs.newvfs.events.VFileEvent
 import com.intellij.openapi.vfs.newvfs.events.VFileMoveEvent
 import com.intellij.openapi.vfs.newvfs.events.VFilePropertyChangeEvent
 
-/**
- * Bridges IntelliJ's Virtual File System (VFS) events to the Animoria daemon's
- * `markStale` method via `CoreProcessManager.notifyFileChanged`.
- *
- * ## Why VFS and not `FileSystemWatcher`
- * IntelliJ's VFS guarantees that all filesystem mutations performed by the IDE
- * itself (refactors, saves, deletions from the Project view) are surfaced as VFS
- * events. A raw `java.nio.WatchService` listener would miss IDE-driven changes
- * until the OS propagated them — which can be delayed or silently dropped under
- * heavy IDE load. Using `BulkFileListener` is the documented stable API for
- * reacting to file changes inside IntelliJ Platform plugins.
- *
- * ## Scope
- * Only files inside the current project's `basePath` are forwarded. Events
- * outside the project boundary are silently ignored — this mirrors
- * `AnimoriaFileWatcher`'s workspace-scoped `RelativePattern` in VS Code.
- *
- * ## Threading
- * VFS events are delivered on the EDT. The daemon write (via
- * `CoreProcessManager`) is non-blocking (fire-and-forget), so EDT responsiveness
- * is not impacted. The daemon's internal debounce handles rapid bursts.
- */
+// Bridges VFS events to the daemon's markStale. Uses BulkFileListener rather than a raw WatchService because VFS
+// guarantees IDE-driven mutations (refactors, saves) are surfaced, which a filesystem watcher can miss or delay.
 class AnimoriaVFSListener(
     private val project: Project,
 ) : BulkFileListener {

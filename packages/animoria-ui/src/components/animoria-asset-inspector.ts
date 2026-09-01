@@ -15,10 +15,6 @@ import './animoria-asset-stage.js';
 import './animoria-snippet-panel.js';
 import './animoria-root-badge.js';
 
-/**
- * Detailed asset inspection panel supporting metadata examination,
- * interactive motion playback (Lottie/GIF), static image zooming, and code snippet generation.
- */
 @customElement('animoria-asset-inspector')
 export class AnimoriaAssetInspector extends LitElement {
   @property({ attribute: false }) asset: Asset | null = null;

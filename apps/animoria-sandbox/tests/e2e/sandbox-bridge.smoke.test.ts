@@ -4,22 +4,12 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 /**
- * The one test in this suite that boots the real thing.
- *
- * Every other sandbox test runs inside Vitest's own Vite server, and
- * `vite.config.ts` deliberately disables the daemon bridge whenever
- * `process.env.VITEST` is set — spawning a daemon per unit test file would be
- * wasteful, and the `configureServer` guard says as much. That guard is also
- * exactly why no other test in this package ever exercises the bridge that
- * ships: `SandboxHost` fetching `/api/analysis` from a live Vite dev server
- * backed by the real `animoria` daemon and the real fixtures.
- *
- * This spawns the actual `vite` CLI as a subprocess with `VITEST` stripped
- * from its environment, so the bridge in `vite.config.ts` runs for real,
- * against the same `RustDaemonClient` and the same committed fixtures VS
- * Code and JetBrains integration tests use. If the response shape the
- * browser-side `SandboxHost` expects ever drifts from what the bridge
- * actually serves, this is the test that notices — no other test can.
+ * The one test in this suite that boots the real thing. `vite.config.ts`
+ * disables the daemon bridge whenever `process.env.VITEST` is set, so every
+ * other test runs inside Vitest's own server without it. This spawns the
+ * actual `vite` CLI with `VITEST` stripped, so the bridge runs for real
+ * against the real daemon — the only test that can catch the response shape
+ * drifting from what `SandboxHost` expects.
  */
 describe('sandbox daemon bridge — real Vite server, real daemon, real fixtures', () => {
   const appRoot = resolve(fileURLToPath(new URL('.', import.meta.url)), '../..');
@@ -94,10 +84,7 @@ describe('sandbox daemon bridge — real Vite server, real daemon, real fixtures
 
     const body = await response.json();
 
-    // This is the exact contract `sandbox-host.ts#_runAnalysis` reads: `roots`
-    // (an array containing Core's `WorkspaceAnalysis`) and `assets`. A daemon
-    // bridge that renamed or reshaped either of these would break the sandbox
-    // silently, because nothing that runs inside Vitest's own server can see it.
+    // The exact shape `sandbox-host.ts#_runAnalysis` reads.
     expect(Array.isArray(body.roots)).toBe(true);
     expect(body.roots.length).toBeGreaterThan(0);
     expect(Array.isArray(body.assets)).toBe(true);

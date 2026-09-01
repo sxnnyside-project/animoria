@@ -48,14 +48,7 @@ let hoverRegistration: vscode.Disposable | undefined;
 let diagnosticPublisher: DiagnosticPublisher | undefined;
 let activeEditorTracker: ActiveEditorTracker | undefined;
 
-/**
- * Adapts this extension's module-level scan state (`lastAnalysis`,
- * `lastReferences`, `lastDuplicateGroups`) into the `WorkspaceSession`
- * interface `VsCodeHostBridge` expects. Built fresh on every panel open
- * rather than cached, so a panel always reads whatever the last scan left
- * behind — there is exactly one workspace root today (`folders[0]`), so
- * `indexerForRoot`/`indexerForPath` ignore the id/path they're given.
- */
+// Only one workspace root is supported today, so indexerForRoot/indexerForPath ignore the id/path given.
 function createSessionAdapter(): WorkspaceSession {
   const folders = vscode.workspace.workspaceFolders ?? [];
   const rootPath = folders[0]?.uri.fsPath ?? process.cwd();
@@ -93,14 +86,6 @@ function createSessionAdapter(): WorkspaceSession {
   };
 }
 
-/**
- * Extension entry point: wires the tree view, hover provider, diagnostics,
- * file watcher, and every `animoria.*` command to a single daemon client and
- * the module-level scan state those commands and `scanWorkspace` share.
- * Runs one scan immediately so the tree/hover/diagnostics are populated
- * before the developer does anything, then re-scans on file changes and on
- * workspace-folder changes.
- */
 export async function activate(context: vscode.ExtensionContext) {
   const outputChannel = vscode.window.createOutputChannel('Animoria');
   context.subscriptions.push(outputChannel);
@@ -189,10 +174,7 @@ export async function activate(context: vscode.ExtensionContext) {
   });
 
   const governanceCommand = vscode.commands.registerCommand('animoria.runGovernance', async () => {
-    // "Run Governance" must leave something to look at — a rescan alone updates
-    // the tree silently, which is indistinguishable from nothing having
-    // happened. Opening the report is what makes this an audit rather than a
-    // background refresh, and matches JetBrains' `runGovernance()`.
+    // Rescan alone updates the tree silently; opening the report makes this an audit.
     await scanWorkspace();
     if (lastAnalysis) await viewGovernanceReport();
   });
@@ -289,9 +271,7 @@ export async function activate(context: vscode.ExtensionContext) {
       const workspacePath = folders[0]?.uri.fsPath ?? process.cwd();
 
       try {
-        // Routes through the daemon's plan-based remediation (`.animoria/trash/`
-        // staging, restorable) instead of vscode.workspace.fs.delete, which
-        // bypasses Animoria's trash system entirely.
+        // Uses the daemon's plan-based trash (.animoria/trash/, restorable), not vscode.workspace.fs.delete.
         await daemonClient.trashAsset(workspacePath, assetId, path);
         void scanWorkspace();
         vscode.window.showInformationMessage('Animoria: Asset moved to trash.');
@@ -376,14 +356,7 @@ export async function deactivate() {
   }
 }
 
-/**
- * Runs a fresh daemon scan of the first workspace folder and fans the result
- * out to every surface that renders it: the tree view, diagnostics, hover
- * provider (all three read the module-level `lastAnalysis` this sets), and
- * every open `AnimoriaWorkspacePanel`. Only the first folder is scanned —
- * true multi-root support is a `WorkspaceSession`-level concern this
- * extension doesn't yet implement, matching `createSessionAdapter`.
- */
+// Only scans the first workspace folder; multi-root support isn't implemented yet (matches createSessionAdapter).
 async function scanWorkspace(): Promise<void> {
   const folders = vscode.workspace.workspaceFolders;
   if (!folders || folders.length === 0 || !daemonClient) return;
@@ -428,13 +401,7 @@ async function scanWorkspace(): Promise<void> {
   }
 }
 
-/**
- * Renders `lastAnalysis` as Markdown into the read-only
- * `animoria-governance` virtual document. Falls back to an ordinary
- * untitled Markdown document if the virtual-document scheme fails to open
- * (`vscode.workspace.openTextDocument` on a registered scheme can throw if
- * the provider hasn't been registered yet, e.g. very early in activation).
- */
+// Falls back to a plain untitled document if the virtual-document scheme isn't registered yet (e.g. early in activation).
 async function viewGovernanceReport(): Promise<void> {
   if (!lastAnalysis) {
     vscode.window.showWarningMessage(
@@ -489,13 +456,6 @@ async function viewGovernanceReport(): Promise<void> {
   }
 }
 
-/**
- * Copies an integration snippet for `asset` to the clipboard — straight to
- * the clipboard when only one framework's generator matched, or via a quick
- * pick when several did (e.g. an SVG has both a React and a plain-HTML
- * snippet). Snippet generation itself is Core's (`generateSnippetsForAsset`);
- * this only decides how to present the choice and deliver the result.
- */
 async function generateSnippet(asset: Asset): Promise<void> {
   const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
   const ctx = buildIntegrationContext(asset, folder, activeEditorTracker);

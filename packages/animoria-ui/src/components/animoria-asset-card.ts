@@ -9,10 +9,6 @@ import {
 } from '../view-model/analysis-view-model.js';
 import './animoria-root-badge.js';
 
-/**
- * Visual asset card component rendering both Motion and Static assets.
- * Displays format badge, size, dimensions, governance finding indicators, and invalid status.
- */
 @customElement('animoria-asset-card')
 export class AnimoriaAssetCard extends LitElement {
   @property({ type: Object }) asset: Asset | null = null;

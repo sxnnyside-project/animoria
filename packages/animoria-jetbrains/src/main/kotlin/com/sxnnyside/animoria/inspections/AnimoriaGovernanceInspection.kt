@@ -8,32 +8,9 @@ import com.intellij.psi.PsiFile
 import com.sxnnyside.animoria.backend.AnimoriaAnalysisHolder
 import com.sxnnyside.animoria.backend.RuleDiagnosticData
 
-/**
- * Surfaces Animoria's governance findings through the IDE's own Problems view.
- *
- * ## Why an inspection on the asset, not an annotator on the reference
- * Animoria's findings are statements about an *asset file* — "nothing references
- * `hero.json`", "`spinner-copy.json` is byte-identical to `spinner.json`",
- * "`hero.gif` exceeds the configured size limit". None of them is a statement
- * about a particular line of Kotlin or TypeScript, so highlighting a referencing
- * line would attach the finding to a file that is not the subject of it. Opening
- * the asset and seeing what governance says about it is where a JetBrains
- * developer expects to find this, and it is the only placement that keeps the
- * finding attached to the thing it is actually about.
- *
- * ## Why it computes nothing
- * The whole body reads {@link AnimoriaAnalysisHolder} — the canonical analysis as
- * Core produced it — and translates each diagnostic into a `ProblemDescriptor`.
- * Severity, evidence, confidence and remediation all arrive already decided. A
- * Kotlin-side re-derivation here would be a second governance engine in the one
- * place a developer is most likely to trust what they see.
- *
- * ## Why an absent analysis produces no problems rather than a clean bill
- * `null` from the holder means the daemon has not reported yet. Returning an
- * empty array is correct — there is nothing to show — but it deliberately does
- * not mean "this asset is fine", and no caller can read it that way, because an
- * inspection has no vocabulary for asserting health in the first place.
- */
+// Surfaces Animoria's governance findings in the IDE's Problems view, attached to the asset file itself
+// (not a referencing line, since findings are about the asset). Reads AnimoriaAnalysisHolder verbatim — no
+// re-derivation. A null analysis yields no problems, which means "not reported yet", not "this asset is fine".
 class AnimoriaGovernanceInspection : LocalInspectionTool() {
     override fun getDisplayName(): String = "Animoria asset governance"
 

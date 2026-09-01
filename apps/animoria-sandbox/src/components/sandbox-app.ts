@@ -5,23 +5,9 @@ import { SANDBOX_CAPABILITIES, SandboxHost, type SandboxLogEntry } from '../host
 import './sandbox-event-console.js';
 
 /**
- * The harness shell.
- *
- * ## What is left here, and why
- * Everything in this file is *instrumentation*: the chrome that lets a developer
- * watch the shared UI work. The product surfaces are `@animoria/ui`, mounted below,
- * with no sandbox-specific variant and no fixture shortcuts.
- *
- * The event console is the reason the harness earns its keep. It shows every bridge
- * message in both directions, including the ones the sandbox **refuses** — so the
- * read-only guarantee is something a reviewer can watch happen rather than something
- * they have to trust.
- *
- * ## What was deleted from here
- * `animoria-app.ts` held the analysis, the diagnostics, the reference counts and the
- * health outcome as five separate pieces of `@state`, wired the four product panels
- * itself, and spoke a `{command}` dialect no other client used. All of that is now
- * one `WorkspaceAnalysis` arriving over one bridge.
+ * The harness shell — instrumentation chrome around `@animoria/ui`, which owns
+ * every product surface. The event console shows every bridge message in both
+ * directions, including refused ones, so the read-only guarantee is observable.
  */
 @customElement('sandbox-app')
 export class SandboxApp extends LitElement {

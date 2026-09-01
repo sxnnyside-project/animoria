@@ -15,10 +15,7 @@ export function describeHealthState(score: number): HealthState {
   return 'poor';
 }
 
-/**
- * Health score summary presentation component.
- * Renders the authoritative governance health score computed by Core.
- */
+/** Renders the health score Core computed; never recalculates it. */
 @customElement('animoria-health-summary')
 export class AnimoriaHealthSummary extends LitElement {
   @property({ type: Object }) outcome: HealthScoreOutcome | null = null;

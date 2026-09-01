@@ -3,11 +3,6 @@ import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { formatBytes } from '../view-model/analysis-view-model.js';
 
-/**
- * Renders one duplicate asset cluster and its resolution flow: pick which
- * copy to keep, preview the resulting plan (including any proposed
- * reference rewrites), then apply it.
- */
 @customElement('animoria-duplicate-group')
 export class AnimoriaDuplicateGroupView extends LitElement {
   @property({ type: Object }) group: DuplicateGroup | null = null;

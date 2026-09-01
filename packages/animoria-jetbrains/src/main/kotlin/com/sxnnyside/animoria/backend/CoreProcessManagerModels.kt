@@ -4,13 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
-/**
- * The wire-format DTOs `CoreProcessManager` decodes from the daemon's NDJSON
- * events and requests — split out from `CoreProcessManager.kt` itself because
- * none of these carry any process-management behavior; they are the contract,
- * not the client. Kept in the same package and file-adjacent so the class that
- * decodes them and the shapes it decodes stay easy to cross-reference.
- */
+// Wire-format DTOs CoreProcessManager decodes from the daemon's NDJSON events and requests.
 @Serializable
 data class CoreEvent(
     val event: String,
@@ -214,20 +208,9 @@ data class DuplicateGroupData(
     val potentialSavingsBytes: Long = 0,
 )
 
-/**
- * The canonical multi-root analysis, as the daemon actually sends it.
- *
- * `assets`/`diagnostics` here are the *bare* lists the daemon puts at the
- * payload's top level (`daemon/server.rs`'s `"assets": assets` on the
- * `analysis-completed` event, taken straight from the root's own
- * `WorkspaceAnalysis`) — never Core's attribution-wrapped shape. They used to
- * be typed as `AttributedAssetData`/`AttributedDiagnosticData` (`{rootId,
- * rootName, asset}`), which nothing on the wire ever produces: any real,
- * non-empty payload threw `MissingFieldException` decoding straight through
- * `CoreProcessManager`'s `runCatching`, so a live scan never once reached
- * `AnimoriaAnalysisHolder` — silently, because the failure path is a logged
- * error and an empty tool window, not a crash.
- */
+// `assets`/`diagnostics` are the bare lists the daemon actually sends, never the attribution-wrapped
+// {rootId, rootName, asset} shape — typing them as that previously threw MissingFieldException on every
+// real payload, silently, so a live scan never reached AnimoriaAnalysisHolder.
 @Serializable
 data class MultiRootAnalysisData(
     val generatedAt: String = "",

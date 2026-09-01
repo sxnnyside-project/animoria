@@ -6,21 +6,7 @@ import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.project.Project
 
-/**
- * Persistent settings for the Animoria plugin, stored per-project in
- * `.idea/animoria.xml`.
- *
- * Mirrors the VS Code configuration schema:
- * - `animoria.enableThumbnails` → [enableThumbnails]
- *
- * ## API
- * Access via `AnimoriaSettings.getInstance(project)`.
- *
- * ## Persistence
- * IntelliJ's `PersistentStateComponent` serializes the state class via
- * XML bean binding. Fields must be `var` with default values for correct
- * round-trip serialization.
- */
+// Persistent settings, stored per-project in .idea/animoria.xml. Fields must be `var` with defaults for XML bean binding.
 @State(
     name = "AnimoriaSettings",
     storages = [Storage("animoria.xml")],

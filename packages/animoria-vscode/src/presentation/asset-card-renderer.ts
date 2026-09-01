@@ -42,56 +42,9 @@ function formatBytes(bytes: number): string {
 
 // ─── AssetCardRenderer ────────────────────────────────────────────────────────
 
-/**
- * Renders an {@link AssetCardModel} into a `vscode.MarkdownString` for use
- * in hover cards, sidebar tooltips, and any other VS Code surface that
- * accepts structured Markdown.
- *
- * ## Why this is separate from `AssetCardModel`
- *
- * The model defines *what* is known. The renderer decides *how* it is
- * presented for a specific surface. A future renderer for a different
- * surface (e.g. a Quick Pick detail line, or a plain-text CLI output)
- * would accept the same model and produce a different output format —
- * without any changes to the model itself.
- *
- * ## Hover rendering contract
- *
- * The renderer follows a fixed information hierarchy:
- *
- * **Primary** — thumbnail · name · format · dimensions · duration · size
- * **Secondary** — reference count · governance flag
- * **Technical** — asset path (collapsed/muted)
- *
- * The thumbnail is embedded inline when `card.thumbnailPath` is non-null.
- * When it is null, the renderer emits a compact metadata-only card so the
- * hover is never visually empty or blocked.
- *
- * ## VS Code Markdown constraints
- *
- * Hover Markdown strings have a narrower feature set than standard GitHub
- * Markdown. Specifically: no custom CSS, no `<style>` tags, limited HTML.
- * The renderer uses only the subset VS Code actually renders:
- * - `![alt](uri)` for thumbnail (must be a `vscode-resource:` or `https:` URI)
- * - Fenced code blocks for the technical path
- * - `**bold**` and `_italic_` for hierarchy
- * - Horizontal rules for section separation
- * - Escaped pipe characters inside tables
- */
+/** Renders an {@link AssetCardModel} into a `vscode.MarkdownString` for hover cards and tooltips. */
 export class AssetCardRenderer {
-  /**
-   * Renders a hover card from an {@link AssetCardModel}.
-   *
-   * The returned `MarkdownString` has `isTrusted` set to `false` (safe
-   * default: no command links executed without opt-in from the caller).
-   * Set `isTrusted = true` on the result if the caller wants to add
-   * `command:` URIs.
-   *
-   * @param card    The model to render.
-   * @param compact When `true`, omits the thumbnail and emits a single-line
-   *   summary suitable for inline description tooltips (e.g. tree items).
-   *   When `false` (default), renders the full hierarchical card.
-   */
+  // isTrusted defaults false so no command: URIs execute without the caller opting in.
   static renderHoverCard(card: AssetCardModel, compact = false): vscode.MarkdownString {
     const md = new vscode.MarkdownString('', true);
     md.supportHtml = false; // Keep output predictable across all VS Code themes
@@ -168,13 +121,7 @@ export class AssetCardRenderer {
 
   // ── Static asset card (hover) ───────────────────────────────────────────────
 
-  /**
-   * Renders a hover card for a static asset (SVG without animation, PNG,
-   * JPEG, WebP, AVIF). Static assets carry no `AssetCardModel` — they have
-   * no duration/fps/layer metadata to normalize — so this renders directly
-   * from `AnimoriaStaticAsset`, embedding the file itself as the preview
-   * image rather than a separately-generated thumbnail.
-   */
+  // Static assets carry no AssetCardModel (no duration/fps/layer to normalize); embeds the file itself as the preview.
   static renderStaticAssetHoverCard(asset: StaticAssetHoverInfo): vscode.MarkdownString {
     const md = new vscode.MarkdownString('', true);
     md.supportHtml = false;

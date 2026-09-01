@@ -33,14 +33,7 @@ import javax.swing.JPanel
 class AnimoriaSharedUiPanel(
     private val project: Project,
     parentDisposable: Disposable,
-    /**
-     * Which single product surface this panel renders.
-     *
-     * One capability per tool-window content tab, which is JetBrains' own idiom for
-     * exactly this. The alternative — the shared UI's internal tab bar — put a tab
-     * strip inside a tab strip and made every capability compete for one panel's
-     * width, which is the arrangement this split removes.
-     */
+    // Which single product surface this panel renders — one capability per tool-window tab, avoiding a tab strip inside a tab strip.
     private val surface: String = "all",
 ) : Disposable {
     private val logger = Logger.getInstance(AnimoriaSharedUiPanel::class.java)
@@ -139,14 +132,7 @@ class AnimoriaSharedUiPanel(
     }
 
     companion object {
-        /**
-         * The mounted panel per project, so an action can route into it.
-         *
-         * A registry rather than a service, because the panel's lifetime is the tool
-         * window's: it is registered when the content is created and cleared by the
-         * same `Disposer` that tears the window down, so an action can never reach a
-         * disposed panel.
-         */
+        // A registry (not a service) because the panel's lifetime is the tool window's; Disposer clears it on teardown.
         private val mounted = mutableMapOf<String, MutableMap<String, AnimoriaSharedUiPanel>>()
 
         fun register(
@@ -231,27 +217,8 @@ class AnimoriaSharedUiPanel(
             """.trimIndent()
     }
 
-    /**
-     * IntelliJ theme → Animoria tokens.
-     *
-     * The one adapter, in the host whose vocabulary these names are. Both previous
-     * panels had their own copy of this mapping and the two had already drifted — one
-     * read `JBColor.lazy { UIUtil.getEditorPaneBackground() }`, the other
-     * `EditorColorsManager.globalScheme.defaultBackground` — and *both* emitted
-     * `--vscode-*` names from a JetBrains IDE.
-     *
-     * ## Why every token, and not only the ones that were easy
-     * This used to define twelve. The shared UI reads about twenty-five, so the rest
-     * fell through to the defaults in `tokens.css` — and those defaults are VS Code
-     * dark-theme values. A JetBrains developer therefore got IntelliJ's panel colours
-     * for the surfaces this file happened to cover and VS Code's for hover, selection,
-     * severity, typography and scrollbars. That is precisely the "a VS Code webview
-     * wearing JetBrains colours" the review named.
-     *
-     * Severity colours come from `JBUI.CurrentTheme` and `NamedColorUtil` rather than
-     * from constants, so a user's theme — Darcula, Light, High Contrast, or a custom
-     * one — drives them the way it drives the rest of the IDE.
-     */
+    // Must define every token the shared UI reads (~25), not just the easy ones — any left undefined falls through
+    // to tokens.css's VS Code dark-theme defaults, giving a JetBrains user mismatched colors on those surfaces.
     private fun themeAdapterCss(): String {
         val panelBg = UIUtil.getPanelBackground()
         val labelFg = UIUtil.getLabelForeground()

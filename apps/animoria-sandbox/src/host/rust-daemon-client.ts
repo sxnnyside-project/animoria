@@ -5,17 +5,10 @@ import { join, resolve } from 'node:path';
 import { type Interface, createInterface } from 'node:readline';
 
 /**
- * Node-side client for the real `animoria` native daemon (Protocol v1
- * NDJSON over stdio) — the same binary VS Code spawns.
- *
- * ## Why the sandbox needed this
- * The dev bridge previously imported `@animoria/core` (the legacy TS
- * engine) by relative path, computing its own answer instead of showing
- * Core's. That meant the harness used to develop and review `@animoria/ui`
- * ran against a different engine than the one shipping in VS Code and
- * JetBrains — a real analysis and a plausible-looking one could silently
- * diverge. This client makes the sandbox a host over the *same* daemon the
- * IDEs use, matching `packages/animoria-vscode/src/daemon/daemon-client.ts`.
+ * Node-side client for the real `animoria` native daemon (Protocol v1 NDJSON
+ * over stdio) — the same binary VS Code spawns. Mirrors
+ * `packages/animoria-vscode/src/daemon/daemon-client.ts` so the sandbox
+ * renders Core's actual answer rather than a second engine's approximation.
  */
 export interface DaemonRequestEnvelope {
   protocol: number;

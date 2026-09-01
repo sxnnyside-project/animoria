@@ -16,20 +16,8 @@ import kotlinx.serialization.json.putJsonObject
 import java.io.File
 import java.util.Base64
 
-/**
- * Everything the inspector needs to *show* an asset.
- *
- * ## Why this is its own class
- * It is the only part of the JetBrains bridge that reads files and decides how an
- * asset should be rendered; the rest translates one UI message into one daemon call.
- * Keeping both in one class pushed it past detekt's size budget, and the seam was
- * already there — this is where it was.
- *
- * ## What it still may not do
- * Classify. Which formats a browser animates is Core's list, the frame count comes
- * from the document Core read, and a file it cannot read falls back to the frame Core
- * rendered. Nothing here decides what an asset *is*.
- */
+// Split out of JetBrainsHostBridge (which pushed detekt's size budget) since it's the only part that reads
+// files and decides how to render them. Never classifies an asset — that stays Core's list.
 internal class JetBrainsPreviewRequests(
     private val project: Project,
     private val scope: CoroutineScope,

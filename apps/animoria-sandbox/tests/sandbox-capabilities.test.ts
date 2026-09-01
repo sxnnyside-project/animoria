@@ -2,33 +2,17 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { SANDBOX_CAPABILITIES } from '../src/host/sandbox-host.js';
 
-/**
- * The dev bridge's source with comments blanked.
- *
- * Comments are stripped for the same reason every other gate in this repository
- * strips them: the removed endpoints are *documented* in the comments that replaced
- * them, so a raw-text assertion would flag the explanation of the fix as the defect.
- */
+// Comments are stripped so a mention of a removed endpoint in an explanatory
+// comment doesn't get flagged as if the endpoint still existed.
 function bridgeSource(): string {
   return readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/\/\/.*$/gm, '');
 }
 
-/**
- * The sandbox's read-only guarantee, as a property rather than a promise.
- *
- * ## Why this matters beyond the harness
- * The sandbox is Animoria's reference host: it drives the same components through
- * the same bridge as VS Code and JetBrains. That is only safe because it declares
- * `canMutate: false` and the components honour it — so this file is really asserting
- * that "reference implementation" and "cannot delete your files" are compatible.
- *
- * The bridge previously exposed `POST /api/delete-asset`, `/api/execute-cleanup` and
- * `/api/resolve-duplicates`, which between them called `fs.unlink` on caller-supplied
- * paths and rewrote source files in place — against a workspace that defaulted to the
- * developer's own checkout.
- */
+// Asserts the sandbox's read-only guarantee as a property, not a promise: the
+// reference host declares `canMutate: false` and nothing in the bridge can
+// still delete or rewrite files.
 describe('sandbox capabilities', () => {
   it('declares mutation unavailable', () => {
     expect(SANDBOX_CAPABILITIES.canMutate).toBe(false);

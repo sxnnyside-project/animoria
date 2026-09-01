@@ -25,23 +25,9 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.put
 
-/**
- * The one place a JetBrains action's *intent* becomes an Animoria operation.
- *
- * ## Why actions do not talk to the daemon directly
- * Every user-facing operation has at least two entry points — a registered
- * `<action>` reachable from Find Action, Search Everywhere and the keymap, and a
- * button or context-menu item inside the tool window. Without a shared owner,
- * each entry point grows its own copy of "send this command, decode that
- * response, report the outcome," and the copies drift: that is precisely how the
- * cleanup dialog ended up with a native path and a JCEF path that disagreed
- * about whether a button existed.
- *
- * Actions here are deliberately thin. They resolve a project, call one method on
- * this host, and return. Nothing about governance — health, confidence, coverage,
- * orphan status, duplicate classification, cleanup categories — is decided in
- * Kotlin at all; the host forwards to the daemon and presents what comes back.
- */
+// The one place a JetBrains action's intent becomes an Animoria operation, shared by every entry point (action,
+// toolbar button, context menu) so they can't drift into disagreeing implementations. Decides nothing about
+// governance itself — forwards to the daemon and presents what comes back.
 @Service(Service.Level.PROJECT)
 class AnimoriaActionHost(
     private val project: Project,

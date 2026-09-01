@@ -2,10 +2,6 @@ import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import type { GeneratedSnippet } from '../bridge/types.js';
 
-/**
- * Visual code snippet panel displaying framework integration snippets (React, Vue, Flutter, Compose, Swift)
- * with interactive tab switching, syntax display, and copy-to-clipboard functionality.
- */
 @customElement('animoria-snippet-panel')
 export class AnimoriaSnippetPanel extends LitElement {
   /** Every target Core generated for this asset. Never collapsed to one. */

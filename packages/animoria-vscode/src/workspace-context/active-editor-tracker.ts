@@ -25,10 +25,6 @@ export class ActiveEditorTracker implements vscode.Disposable {
     });
   }
 
-  /**
-   * The absolute path of the last real, on-disk text editor known to have
-   * had focus, or `undefined` if none has been observed yet.
-   */
   getLastActiveFilePath(): string | undefined {
     return this._lastActiveFilePath;
   }

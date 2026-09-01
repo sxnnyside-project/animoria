@@ -15,13 +15,7 @@ data object GalleryRoot
 /** Shown in place of every section when the workspace has no discovered assets yet. */
 data object EmptyStateNode
 
-/**
- * Shown instead of every other section when the daemon could not be
- * started at all — every feature depends on it, so surfacing this
- * prominently (not just as a dismissible notification) is what tells a
- * user "nothing works" actually means something specific and diagnosable,
- * rather than looking like a silently broken plugin.
- */
+// Shown instead of every other section when the daemon fails to start, so "nothing works" is diagnosable, not silent.
 data class DaemonUnavailableNode(
     val message: String,
 )
@@ -100,19 +94,7 @@ private val SECTION_LABELS =
 
 // ── Tree model ─────────────────────────────────────────────────────────────────
 
-/**
- * `DefaultTreeModel`-backed model for the Animoria gallery `JTree`.
- *
- * Mirrors `AnimoriaTreeProvider` (VS Code): holds asset and governance state,
- * builds the tree structure on demand from push-event data delivered by the native daemon.
- *
- * ## View modes
- * `flat` — all assets sorted alphabetically, no folders.
- * `tree` — assets grouped by directory hierarchy.
- *
- * ## Thread safety
- * All mutations must be dispatched on the EDT by the caller (typically `invokeLater`).
- */
+/** `DefaultTreeModel`-backed model for the Animoria gallery `JTree`. Mutations must be dispatched on the EDT by the caller. */
 class AnimoriaTreeModel : DefaultTreeModel(DefaultMutableTreeNode(GalleryRoot)) {
     enum class ViewMode { FLAT, TREE }
 

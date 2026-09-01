@@ -3,10 +3,6 @@ import { LitElement, css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { confidenceLabel } from '../view-model/analysis-view-model.js';
 
-/**
- * Visual badge displaying the diagnostic confidence level (`certain`, `high`, `moderate`, `low`)
- * associated with a governance rule finding.
- */
 @customElement('animoria-confidence-badge')
 export class AnimoriaConfidenceBadge extends LitElement {
   @property({ type: String }) confidence: Confidence = 'moderate';

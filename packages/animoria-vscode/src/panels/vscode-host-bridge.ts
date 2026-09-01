@@ -49,13 +49,7 @@ const logWarn = (category: string, source: string, message: string, details?: un
   console.warn(`[animoria:${category}] ${source}: ${message}${detail}`);
 };
 
-/**
- * The workspace root that owns `path` — the longest matching root path, so
- * a nested root inside another (a real multi-root layout) attributes to the
- * more specific one rather than whichever root happened to be scanned
- * first. Never a fabricated root: `null` when the session has none, which
- * every caller must handle rather than silently falling back to `cwd()`.
- */
+// Matches the longest root path so a nested root attributes to the more specific one; null (never cwd()) if none matches.
 function rootForPath(
   roots: readonly { readonly id: string; readonly name: string; readonly path: string }[],
   path: string
@@ -84,13 +78,7 @@ export interface ResolutionResult {
 
 type CleanupCandidate = ReviewableCleanupProposal['candidates'][number];
 
-/**
- * Every asset the governance engine already flagged as unreferenced, minus
- * whatever the developer dismissed from a prior review. Core (the Rust
- * daemon's `no-unreferenced-assets` rule) is the single source of truth for
- * *what* is eligible — this only assembles the diagnostics it already
- * computed into candidates; it invents no new eligibility logic.
- */
+// Assembles candidates from Core's existing no-unreferenced-assets diagnostics; invents no new eligibility logic.
 function buildCleanupCandidates(
   analysis: WorkspaceAnalysis,
   opts?: { dismissedPaths: ReadonlySet<string> }
@@ -128,14 +116,7 @@ async function buildReviewableProposal(
   };
 }
 
-/**
- * Renames Core's severity for *this* candidate's own diagnostic into the
- * confidence vocabulary the UI shows — a one-to-one relabel of a value Core
- * already decided, not a new judgment. `candidate.severity` is set in
- * `buildCleanupCandidates` from the very diagnostic that made the asset a
- * candidate, so this never risks picking up an unrelated diagnostic that
- * happens to share the same asset path.
- */
+// One-to-one relabel of Core's severity into UI confidence vocabulary, not a new judgment.
 function confidenceFor(severity: string | undefined): string {
   return severity === 'error' ? 'certain' : severity === 'warning' ? 'moderate' : 'low';
 }
@@ -174,19 +155,13 @@ function buildCleanupPlan(
   };
 }
 
-/**
- * Actually moves every entry in `plan` to `.animoria/trash/` via the Rust
- * daemon's `trash_asset` method — the same one `remediate_plan`'s callers
- * use for duplicate resolution. Returns as soon as the first entry fails
- * unless `allowPartial` is set, matching the plan-based remediation
- * contract: a partial application is refused unless explicitly opted into.
- */
 /** One trashed asset paired with the size it reclaimed, for the trash-session manifest. */
 interface TrashedItem {
   readonly item: TrashItem;
   readonly sizeBytes: number;
 }
 
+// Stops at the first failed entry unless allowPartial is set — partial application is refused unless opted into.
 async function executeCleanupPlan(
   plan: CleanupPlan,
   opts: { daemon: VsCodeDaemonClient; workspacePath: string; allowPartial?: boolean }
@@ -240,12 +215,7 @@ async function executeCleanupPlan(
   };
 }
 
-/**
- * Reuses Core's own duplicate-resolution logic (the Rust daemon's
- * `remediate_plan` method) rather than reimplementing "which copies get
- * deleted" here — the plan structurally matches what `remediate_plan` for
- * `stageTrash`/`clean` already produces for the CLI.
- */
+// Reuses Core's remediate_plan rather than reimplementing "which copies get deleted" here.
 async function buildResolutionPlan(opts: {
   daemon: VsCodeDaemonClient;
   group: DuplicateGroup;
@@ -321,13 +291,7 @@ function toPascalCase(stem: string): string {
 
 type PackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun';
 
-/**
- * Detects the workspace's package manager from its lockfile — an install
- * hint naming the wrong tool is worse than none, since copying it verbatim
- * mixes lockfiles. Falls back to npm, not because it's assumed to be in
- * use, but because `npm install` is the one command guaranteed to work with
- * no prior setup.
- */
+// Falls back to npm not because it's assumed present, but because it's guaranteed to work with no prior setup.
 function detectPackageManager(workspacePath: string): PackageManager {
   if (existsSync(join(workspacePath, 'bun.lockb')) || existsSync(join(workspacePath, 'bun.lock'))) {
     return 'bun';
@@ -1250,13 +1214,7 @@ export class VsCodeHostBridge {
     };
   }
 
-  /**
-   * The daemon's `TrashManager` stages files on disk but persists no journal
-   * of its own — one call moves one asset. A "session" (one batch of
-   * assets moved together by one cleanup/resolution application, restorable
-   * as a unit) is therefore workspace-state the host keeps, not something
-   * the daemon can be asked to list.
-   */
+  // The daemon persists no journal of its own; "sessions" (batches restorable as a unit) are host-side state.
   private _trashSessions(): SessionManifest[] {
     return this._memento?.get<SessionManifest[]>(TRASH_SESSIONS_KEY, []) ?? [];
   }
@@ -1275,12 +1233,7 @@ export class VsCodeHostBridge {
     void this._memento.update(TRASH_SESSIONS_KEY, [...this._trashSessions(), session]);
   }
 
-  /**
-   * Walks the user through each proposed reference rewrite one at a time,
-   * showing the before/after line and applying only the ones confirmed —
-   * the "propose-diff, confirm per file" design for reference rewriting.
-   * Never applies anything automatically as part of resolving duplicates.
-   */
+  // Propose-diff, confirm per file — never applies a rewrite automatically as part of resolving duplicates.
   private async _reviewReferenceRewrites(
     daemon: VsCodeDaemonClient,
     workspacePath: string,

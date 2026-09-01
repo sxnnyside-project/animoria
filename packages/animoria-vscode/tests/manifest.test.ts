@@ -2,15 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-/**
- * Platform-citizenship checks on `package.json` (V5).
- *
- * ## What these guard
- * A JSON Schema, a walkthrough and keybindings are only real if they are wired up
- * correctly — a typo in a `fileMatch` glob or a `media.markdown` path that does not
- * exist fails silently at runtime (VS Code logs a warning to its own output channel,
- * which nobody reads). These tests catch that class of mistake at build time instead.
- */
+// Catches wiring typos (a bad fileMatch glob, a missing media.markdown path) that VS Code fails on silently at runtime.
 const ROOT = resolve(__dirname, '..');
 const manifest = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf-8'));
 

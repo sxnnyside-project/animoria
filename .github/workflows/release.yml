@@ -59,8 +59,7 @@ jobs:
           check "animoria-vscode/package.json" \
             "$(node -p "require('./packages/animoria-vscode/package.json').version")"
 
-          # The Gradle build reads ANIMORIA_VERSION; assert it resolves to the tag
-          # rather than to its local-development fallback.
+          # Gradle reads ANIMORIA_VERSION; assert it resolves to the tag, not the dev fallback.
           RESOLVED_GRADLE_VERSION="${ANIMORIA_VERSION:-$TAG_VERSION}"
           check "jetbrains (ANIMORIA_VERSION)" "$RESOLVED_GRADLE_VERSION"
 
@@ -124,16 +123,11 @@ jobs:
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security default-keychain -s build.keychain
           security import "$RUNNER_TEMP/certificate.p12" -k build.keychain -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          # Unquoted on purpose: list-keychains prints one keychain per line, and
-          # this needs each to arrive as its own argument to -s, not one blob with
-          # embedded newlines (which is what quoting it here produced before).
+          # Unquoted: needs each keychain as its own -s argument, not one newline-joined blob.
           security list-keychain -d user -s build.keychain $(security list-keychains -d user | sed 's/"//g')
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           rm -f "$RUNNER_TEMP/certificate.p12"
-          # Count only, not the label: the identity's Common Name is masked as
-          # *** everywhere else in this workflow (it comes from the
-          # MACOS_SIGNING_IDENTITY secret), so printing it here in the clear
-          # would be the one place it leaks.
+          # Count only — the identity name is a secret, masked everywhere else.
           echo "codesign identities available after import: $(security find-identity -v -p codesigning build.keychain | grep -c '^[[:space:]]*[0-9]\+)')"
 
       - name: Sign and notarize macOS binary
@@ -233,6 +227,20 @@ jobs:
       - name: Build all packages
         run: pnpm build
 
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable (2026-08-05)
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/animoria-core-rust/target
+          key: ${{ runner.os }}-cargo-release-test-${{ hashFiles('packages/animoria-core-rust/Cargo.lock') }}
+
+      # Release artifacts are only downloaded later; tests need a binary now.
+      - name: Build native daemon (debug, for tests only)
+        run: cargo build --manifest-path packages/animoria-core-rust/Cargo.toml
+
       - name: Run tests
         run: pnpm test
 
@@ -245,9 +253,7 @@ jobs:
       - name: Verify the VS Code extension carries the shared UI bundle
         run: |
           set -euo pipefail
-          # Same class of defect as the plugin jar: an extension without the bundle
-          # opens a blank webview. `copy-ui.mjs` already fails the build when the
-          # bundle is absent; this asserts the output rather than trusting the step.
+          # Asserts the bundle exists rather than trusting copy-ui.mjs silently.
           for f in packages/animoria-vscode/media/animoria-ui.js packages/animoria-vscode/media/tokens.css; do
             if [ ! -f "$f" ]; then
               echo "::error::$f is missing — the extension's panel would be blank"
@@ -300,22 +306,14 @@ jobs:
           set -euo pipefail
           cd packages/animoria-jetbrains
           chmod +x ./gradlew
-          # The shared UI bundle is copied in by the `copySharedUi` Gradle task, which
-          # `processResources` depends on and which *fails* when the bundle is
-          # missing. It used to be a `cp` of the sandbox's dist into `resources/assets`,
-          # which no longer exists and which nothing read even when it did — the
-          # plugin shipped a directory of dead files and a blank panel.
-          #
-          # `verifyPlugin` runs on every pull request; it must also run here, so a
-          # release can never ship a plugin that CI would have rejected.
+          # copySharedUi (Gradle) copies the UI bundle; processResources fails without it.
+          # verifyPlugin also runs on every PR — running it here too keeps release in sync with CI.
           ./gradlew buildPlugin verifyPlugin
 
       - name: Verify the plugin jar carries the shared UI bundle
         run: |
           set -euo pipefail
-          # A plugin without the bundle installs, launches, and renders an empty
-          # rectangle with nothing in the log. That is a release-blocking defect and
-          # it is invisible to `verifyPlugin`, so it is asserted here.
+          # verifyPlugin doesn't catch a missing bundle (blank panel, no log); assert it here.
           JAR=$(find packages/animoria-jetbrains/build/libs -maxdepth 1 -name 'instrumented-*.jar' | head -1)
           if [ -z "$JAR" ]; then
             echo "::error::No instrumented plugin jar was produced"
@@ -382,13 +380,7 @@ jobs:
           echo "::error::hotfix_source_run_id is required alongside hotfix_jetbrains_version."
           exit 1
 
-      # Deliberately NOT the tag: the version label comes from
-      # hotfix_jetbrains_version regardless of ref, and checking out the tag
-      # would re-run this hotfix against whatever bug caused it to be needed
-      # in the first place — including a stale verify-packaged-daemon.mjs
-      # timeout that predates the very fix this job exists to apply. Runs
-      # against whichever branch you dispatch this workflow from (main, by
-      # default, in the "Run workflow" UI).
+      # Runs against the dispatched branch (not the tag) — avoids re-running into the bug this hotfix fixes.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -409,8 +401,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Only what JetBrains needs — never installs vsce/ovsx, never touches
-      # either marketplace.
+      # Only what JetBrains needs — no vsce/ovsx, no VS Code marketplace.
       - name: Build @animoria/ui
         run: pnpm --filter @animoria/ui build
 
@@ -470,9 +461,7 @@ jobs:
           cd packages/animoria-jetbrains
           ./gradlew publishPlugin
 
-      # Repackaged locally only as a release asset — this never calls `vsce
-      # publish`, so it cannot collide with the version already live on the
-      # VS Code Marketplace from the original run.
+      # Packaged as a release asset only — never calls `vsce publish`.
       - name: Repackage VS Code extension for the release asset only
         run: npm install -g @vscode/vsce
 

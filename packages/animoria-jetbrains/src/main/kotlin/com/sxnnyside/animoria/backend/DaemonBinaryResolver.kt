@@ -4,19 +4,8 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import java.io.File
 
-/**
- * Locates the bundled native `animoria` binary this plugin spawns. Pulled
- * out of `CoreProcessManager` because none of this depends on a live process
- * or the NDJSON protocol — it is pure filesystem and JAR-resource discovery,
- * run once per `start()`.
- *
- * ## Extraction caching
- * A bundled native executable ships zipped inside the plugin's own JAR and
- * cannot be spawned as a process from there, so it is extracted once to a
- * directory keyed by the JAR entry's CRC+size (see [daemonFingerprint]) —
- * not by plugin version — so an upgrade that changes the binary always
- * re-extracts, and one that doesn't never needlessly does.
- */
+// Locates the bundled native `animoria` binary. A zipped JAR entry can't be spawned as a process, so it's
+// extracted once to a directory keyed by the entry's CRC+size (see daemonFingerprint), not by plugin version.
 class DaemonBinaryResolver(
     private val project: Project,
     private val logger: Logger,
@@ -41,18 +30,8 @@ class DaemonBinaryResolver(
         return extractBundledNativeDaemon(platformArchDir, nativeExecutableName)
     }
 
-    /**
-     * Extracts the `native/<platform-arch>/` resources (the executable and
-     * its sibling `native_modules/`) from the plugin's own jar to a stable
-     * location on disk, since a native binary cannot be spawned as a
-     * process while it's still zipped inside a jar entry — unlike
-     * `classes/cli.js` in a `runIde` dev sandbox, a real installed plugin
-     * has no unpacked `classes/` directory at all, only jar files under `lib`.
-     *
-     * Skips the copy on subsequent calls once the executable already
-     * exists at the destination — extraction is a one-time cost per
-     * plugin install, not per project-open.
-     */
+    // Extracts native/<platform-arch>/ from the plugin's jar to disk — an installed plugin has no unpacked
+    // classes/ directory (unlike a runIde dev sandbox), only jar files under lib.
     private fun extractBundledNativeDaemon(
         platformArchDir: String,
         executableName: String,
@@ -71,29 +50,8 @@ class DaemonBinaryResolver(
         val jarFile = File(jarPath)
         if (!jarFile.isFile) return null
 
-        /*
-         * The extraction directory is keyed by the *bytes being extracted*.
-         *
-         * ## The bug this replaces
-         * The destination was `animoria/native/<platform-arch>/`, and the first line
-         * of this function was:
-         *
-         *     if (destinationExecutable.exists()) return destinationExecutable
-         *
-         * — so the daemon was extracted **once, ever**. Upgrading the plugin left the
-         * previous binary in place indefinitely: the JAR shipped a current daemon and
-         * the IDE kept running the one it had cached on first launch.
-         *
-         * That is where the old daemon entered, and it explains why rebuilding the
-         * plugin never fixed the reported
-         * `"getUsageReferences" is declared but not implemented in this build` — the
-         * artifact was correct and nothing was reading it. The failure is invisible to
-         * every build-time gate, because at build time the artifact *is* right.
-         *
-         * Keying on the entry's CRC makes the identity of the directory the identity
-         * of the binary: the same bytes reuse the extraction, different bytes get
-         * their own, and a stale copy can never be mistaken for the current one.
-         */
+        // Keyed by the entry's CRC, not a fixed path: a fixed destination previously meant the daemon was
+        // extracted once, ever, so a plugin upgrade kept running the binary cached on first launch.
         val fingerprint = daemonFingerprint(jarFile, resourcePrefix + executableName) ?: return null
         val destinationRoot =
             File(

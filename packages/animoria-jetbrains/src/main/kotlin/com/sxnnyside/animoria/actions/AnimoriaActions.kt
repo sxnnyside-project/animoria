@@ -6,30 +6,9 @@ import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.project.Project
 
-/**
- * Animoria's registered JetBrains actions.
- *
- * ## Why these are standalone classes rather than panel members
- * Every action here used to be an `inner class` of `AnimoriaGalleryPanel`, which
- * made each one reachable exactly one way: by finding the panel's toolbar. The
- * plugin registered **zero** `<action>` elements, so nothing Animoria could do
- * appeared in Find Action, Search Everywhere, or the Keymap — the three places a
- * JetBrains developer actually looks for a command. An action bound to a panel
- * instance cannot be registered, because the platform instantiates registered
- * actions itself through a no-argument constructor.
- *
- * These resolve their project from the [AnActionEvent] instead, so the platform
- * can construct them, the keymap can bind them, and the tool window can still
- * reuse the exact same instances for its toolbar. One implementation, several
- * discovery paths — rather than one implementation per discovery path.
- *
- * ## Why every one of them is three lines
- * The work lives in [AnimoriaActionHost]. An action's whole job is to answer
- * "should this be enabled right now" and "which operation did the user ask
- * for" — no daemon calls, no decoding, and emphatically no governance
- * arithmetic. See the host's own documentation for why that boundary is drawn
- * where it is.
- */
+// Standalone (not inner classes of the panel) so the platform can construct and register them via a no-arg
+// constructor — that's what makes them reachable from Find Action, Search Everywhere, and the Keymap.
+// Each resolves its project from AnActionEvent; the real work lives in AnimoriaActionHost.
 abstract class AnimoriaAction(
     text: String,
     description: String,

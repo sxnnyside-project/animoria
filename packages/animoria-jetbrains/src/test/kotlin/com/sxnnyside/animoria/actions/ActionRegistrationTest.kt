@@ -9,21 +9,8 @@ import org.w3c.dom.Element
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
 
-/**
- * Verifies the plugin descriptor actually registers what it claims to.
- *
- * ## What this stands in for
- * The real question — "does Animoria appear in Find Action?" — is answered by the
- * IDE, which this environment cannot launch. But every way that question gets a
- * *wrong* answer is mechanically checkable here: an action whose `class` does not
- * exist, an id registered twice, a group referenced but never declared, an
- * extension point pointing at a missing service. Each of those fails at plugin
- * load with a stack trace in the IDE log and a silently absent feature for the
- * user, and each is caught below at build time instead.
- *
- * A live smoke test remains the only way to confirm the final rendering; this
- * closes everything up to it.
- */
+// Can't launch the IDE to check "does Animoria appear in Find Action?", but every way that answer goes wrong
+// (missing class, duplicate id, undeclared group) is mechanically checkable here at build time instead.
 @DisplayName("plugin.xml registers a real, discoverable action surface")
 class ActionRegistrationTest {
     private val pluginXml = File("src/main/resources/META-INF/plugin.xml")

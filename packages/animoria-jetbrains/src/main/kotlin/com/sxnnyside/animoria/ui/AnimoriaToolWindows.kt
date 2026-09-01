@@ -4,20 +4,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 
-/**
- * Brings one of Animoria's tool window tabs to the front.
- *
- * ## Why this exists
- * Selecting an asset in the gallery posted a `focus` message to the Preview panel and
- * stopped there. The message arrived, the panel selected the asset — and the developer
- * was still looking at the Assets tab, so nothing appeared to happen. "Open preview"
- * that leaves you on the page you were already on is indistinguishable from a dead
- * control, which is exactly how it was reported.
- *
- * Routing to a surface has two halves: telling the surface what to show, and *showing
- * the surface*. The shared UI owns the first and cannot do the second — a webview
- * cannot select the IDE tab that contains it.
- */
+// Brings a tool window tab to the front — the half of "focus" a webview can't do itself, since it can't select its own IDE tab.
 object AnimoriaToolWindows {
     private val windows = mutableMapOf<String, ToolWindow>()
 

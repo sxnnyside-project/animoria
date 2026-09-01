@@ -1,11 +1,6 @@
 import type { HostInbound, HostOutbound } from './types.js';
 import { INBOUND_TYPES, OUTBOUND_TYPES } from './types.js';
 
-/**
- * Runtime validation for bidirectional bridge messages across host boundaries.
- * Enforces schema conformance for `HostInbound` and `HostOutbound` payloads at runtime.
- */
-
 export type ValidationResult<T> =
   | { readonly ok: true; readonly message: T }
   | { readonly ok: false; readonly reason: string };

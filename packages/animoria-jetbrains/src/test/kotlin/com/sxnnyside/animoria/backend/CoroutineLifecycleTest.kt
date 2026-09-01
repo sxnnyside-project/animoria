@@ -6,25 +6,9 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import java.io.File
 
-/**
- * Guards against re-leaking background work outside project lifetime.
- *
- * ## What went wrong before
- * Twenty-two call sites across seven files launched their background work with
- * `GlobalScope.launch(Dispatchers.IO)`. `GlobalScope` is application-lifetime and
- * uncancellable, so a coroutine started while a project was open kept running after
- * that project closed — there was nowhere for a cancellation signal to reach it,
- * because no caller ever held a reference to anything that could cancel it.
- *
- * `AnimoriaCoroutineScope` (this package) is a `@Service(Service.Level.PROJECT)`
- * whose `CoroutineScope` the platform constructor-injects and cancels itself when
- * the project closes. Every call site now launches into `AnimoriaCoroutineScope.of(project)`
- * instead.
- *
- * These assertions are source-level, source-wide (every `.kt` file under `src/main`,
- * not one named file) — a leak can be reintroduced anywhere a background operation is
- * added, not only in the seven files fixed here.
- */
+// Guards against re-leaking background work outside project lifetime: 22 call sites used to launch into
+// GlobalScope (application-lifetime, uncancellable), so coroutines outlived a closed project. All now use
+// AnimoriaCoroutineScope.of(project) instead; this checks every .kt file under src/main, not just those seven.
 @DisplayName("no plugin-owned coroutine outlives its project")
 class CoroutineLifecycleTest {
     private val mainSourceRoot = File("src/main/kotlin")

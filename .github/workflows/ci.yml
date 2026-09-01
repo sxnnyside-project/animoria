@@ -113,9 +113,7 @@ jobs:
           key: ${{ runner.os }}-cargo-sandbox-${{ hashFiles('packages/animoria-core-rust/Cargo.lock') }}
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      # The sandbox's real-daemon smoke test spawns the actual `animoria`
-      # binary against the committed fixtures — without this, `RustDaemonClient`
-      # can't find a binary at all and every daemon-backed route 500s.
+      # Sandbox e2e test spawns the real daemon; needs a binary to find.
       - name: Build native daemon (debug)
         run: cargo build --manifest-path packages/animoria-core-rust/Cargo.toml
       - name: Test

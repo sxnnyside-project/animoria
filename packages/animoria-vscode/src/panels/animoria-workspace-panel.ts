@@ -7,13 +7,7 @@ import {
   type WorkspaceSession,
 } from './vscode-host-bridge.js';
 
-/**
- * Where an entry point wants the developer to land, and about what.
- *
- * Carried as identity, never as a rendered conclusion: "the duplicates tab, for
- * group G" rather than "the duplicates tab, showing this plan". The panel forwards
- * it; the shared UI selects.
- */
+// Carried as identity ("duplicates tab, for group G"), never a rendered conclusion — the panel forwards it, the shared UI selects.
 export interface PanelFocus {
   readonly tab: 'assets' | 'findings' | 'duplicates' | 'cleanup';
   readonly assetPath?: string;
@@ -21,12 +15,6 @@ export interface PanelFocus {
   readonly rootId?: string;
 }
 
-/**
- * Distinct editor surfaces supported by Animoria in VS Code.
- *
- * Each surface maps to a dedicated `viewType` allowing multiple panels to coexist
- * and be positioned side-by-side or in separate editor columns.
- */
 export type PanelSurface = 'inspector' | 'findings' | 'duplicates' | 'cleanup';
 
 interface SurfaceDefinition {
@@ -60,13 +48,7 @@ const SURFACES: Readonly<Record<PanelSurface, SurfaceDefinition>> = {
   },
 };
 
-/**
- * Hosts the shared `@animoria/ui` webview within VS Code editor panels.
- *
- * Provides nonce-based CSP HTML shell, mounts the shared Lit UI bundle,
- * bridges bidirectional `postMessage` communication via {@link VsCodeHostBridge},
- * and manages surface lifecycles (inspector, findings, duplicates, cleanup).
- */
+/** Hosts the shared `@animoria/ui` webview within VS Code editor panels. */
 export class AnimoriaWorkspacePanel {
   /** One live panel per surface, so they coexist rather than replace each other. */
   private static readonly _open = new Map<PanelSurface, AnimoriaWorkspacePanel>();
@@ -74,15 +56,7 @@ export class AnimoriaWorkspacePanel {
   private readonly _panel: vscode.WebviewPanel;
   private readonly _bridge: VsCodeHostBridge;
   private readonly _disposables: vscode.Disposable[] = [];
-  /**
-   * Held until the UI says it can receive.
-   *
-   * A `focus` posted into a webview that has not finished mounting is delivered to
-   * nobody: the shared UI subscribes in `connectedCallback` and announces itself with
-   * `ready`. The first render therefore *queues* its focus and the bridge flushes it
-   * on `ready`, which is why "Resolve Duplicates" now lands on the group whether or
-   * not the panel was already open.
-   */
+  // A `focus` posted before the webview announces `ready` is delivered to nobody; queued here and flushed on `ready`.
   private _pendingFocus: PanelFocus | null = null;
 
   private constructor(

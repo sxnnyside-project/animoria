@@ -3,18 +3,9 @@ import { customElement, property } from 'lit/decorators.js';
 import type { SandboxLogEntry } from '../host/sandbox-host.js';
 
 /**
- * Every bridge message, in both directions, as they happen.
- *
- * ## Why this is the harness's most useful control
- * The shared UI and its host talk in one vocabulary now, and this makes that
- * conversation visible. Two things become reviewable that previously were not:
- *
- * 1. **The read-only guarantee.** A refused message renders in its own colour with
- *    the reason. Watching `apply-cleanup-plan` be refused is stronger evidence than
- *    reading that it would be.
- * 2. **Conformance.** A host that sends a message the UI does not expect, or fails
- *    to answer one it does, shows up here as a gap in the sequence — which is what
- *    a JetBrains or VS Code adapter can be checked against.
+ * Every bridge message, in both directions, as they happen. Refused messages
+ * render in their own color with the reason, so the read-only guarantee is
+ * something a reviewer can watch rather than take on faith.
  */
 @customElement('sandbox-event-console')
 export class SandboxEventConsole extends LitElement {

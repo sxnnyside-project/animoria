@@ -73,10 +73,7 @@ export class AnimoriaWorkspace extends LitElement {
   /** The host connection. Set once, before the element is attached. */
   @property({ attribute: false }) bridge: HostBridge | null = null;
 
-  /**
-   * Which single product surface this mount renders (`all`, `inspector`, `findings`, `duplicates`, `cleanup`).
-   * Hosts can mount dedicated individual surfaces or render the complete suite in `all` mode.
-   */
+  /** Which single product surface this mount renders. */
   @property({ type: String }) surface: 'all' | 'inspector' | 'findings' | 'duplicates' | 'cleanup' =
     'all';
 
