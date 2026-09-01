@@ -292,7 +292,7 @@ jobs:
             cp -r "../../native-daemon/$target/." bin/
             VSIX="animoria-${VERSION}-${target}.vsix"
             vsce package --target "$target" --no-dependencies -o "$VSIX"
-            vsce publish --target "$target" --no-dependencies --packagePath "$VSIX"
+            vsce publish --no-dependencies --packagePath "$VSIX"
             ovsx publish "$VSIX" --target "$target" -p "$OVSX_PAT"
           done
 
