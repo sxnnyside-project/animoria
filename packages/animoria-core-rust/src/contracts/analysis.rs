@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use super::asset::Asset;
+use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "ts-bindings")]
 use ts_rs::TS;
@@ -8,7 +8,10 @@ use ts_rs::TS;
 #[cfg_attr(feature = "ts-bindings", derive(TS))]
 #[cfg_attr(
     feature = "ts-bindings",
-    ts(export, export_to = "../../../packages/animoria-contracts/src/generated/")
+    ts(
+        export,
+        export_to = "../../../packages/animoria-contracts/src/generated/"
+    )
 )]
 #[serde(rename_all = "kebab-case")]
 pub enum LifecycleState {
@@ -24,7 +27,10 @@ pub enum LifecycleState {
 #[cfg_attr(feature = "ts-bindings", derive(TS))]
 #[cfg_attr(
     feature = "ts-bindings",
-    ts(export, export_to = "../../../packages/animoria-contracts/src/generated/")
+    ts(
+        export,
+        export_to = "../../../packages/animoria-contracts/src/generated/"
+    )
 )]
 #[serde(rename_all = "kebab-case")]
 pub enum DiagnosticSeverity {
@@ -37,7 +43,10 @@ pub enum DiagnosticSeverity {
 #[cfg_attr(feature = "ts-bindings", derive(TS))]
 #[cfg_attr(
     feature = "ts-bindings",
-    ts(export, export_to = "../../../packages/animoria-contracts/src/generated/")
+    ts(
+        export,
+        export_to = "../../../packages/animoria-contracts/src/generated/"
+    )
 )]
 pub struct RuleDiagnostic {
     pub rule_id: String,
@@ -62,7 +71,10 @@ pub struct RuleDiagnostic {
 #[cfg_attr(feature = "ts-bindings", derive(TS))]
 #[cfg_attr(
     feature = "ts-bindings",
-    ts(export, export_to = "../../../packages/animoria-contracts/src/generated/")
+    ts(
+        export,
+        export_to = "../../../packages/animoria-contracts/src/generated/"
+    )
 )]
 pub struct CategoryScore {
     pub category: String,
@@ -75,7 +87,10 @@ pub struct CategoryScore {
 #[cfg_attr(feature = "ts-bindings", derive(TS))]
 #[cfg_attr(
     feature = "ts-bindings",
-    ts(export, export_to = "../../../packages/animoria-contracts/src/generated/")
+    ts(
+        export,
+        export_to = "../../../packages/animoria-contracts/src/generated/"
+    )
 )]
 pub struct HealthScoreReport {
     pub score: u32,
@@ -88,7 +103,10 @@ pub struct HealthScoreReport {
 #[cfg_attr(feature = "ts-bindings", derive(TS))]
 #[cfg_attr(
     feature = "ts-bindings",
-    ts(export, export_to = "../../../packages/animoria-contracts/src/generated/")
+    ts(
+        export,
+        export_to = "../../../packages/animoria-contracts/src/generated/"
+    )
 )]
 pub struct WorkspaceAnalysis {
     pub root_id: String,
@@ -105,7 +123,10 @@ pub struct WorkspaceAnalysis {
 #[cfg_attr(feature = "ts-bindings", derive(TS))]
 #[cfg_attr(
     feature = "ts-bindings",
-    ts(export, export_to = "../../../packages/animoria-contracts/src/generated/")
+    ts(
+        export,
+        export_to = "../../../packages/animoria-contracts/src/generated/"
+    )
 )]
 pub struct AnalysisSnapshot {
     pub snapshot_id: String,

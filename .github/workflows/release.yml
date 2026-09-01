@@ -29,7 +29,7 @@ permissions:
 jobs:
   # ── Version consistency is verified before anything is built or published ────
   # The tag is the single source of truth. Every versioned artifact — the VS Code
-  # extension, @animoria/core, and the JetBrains plugin — must agree with it.
+  # extension and the JetBrains plugin — must agree with it.
   #
   # This job exists because the JetBrains plugin version was previously a hardcoded
   # literal in build.gradle.kts that no check compared against the tag: every release
@@ -67,8 +67,6 @@ jobs:
 
           check "animoria-vscode/package.json" \
             "$(node -p "require('./packages/animoria-vscode/package.json').version")"
-          check "animoria-core/package.json" \
-            "$(node -p "require('./packages/animoria-core/package.json').version")"
 
           # The Gradle build reads ANIMORIA_VERSION; assert it resolves to the tag
           # rather than to its local-development fallback.
@@ -83,43 +81,45 @@ jobs:
           exit $fail
 
   build-native-daemon:
-    name: Build native daemon (${{ matrix.os }})
+    name: Build native daemon (${{ matrix.platform_arch }})
     needs: verify-versions
     strategy:
-      # Four triples, not three. `build:sea` produces a binary for the runner's own
-      # platform and architecture, so the matrix *is* the supported platform list:
-      # a triple missing here is a triple where the JetBrains plugin falls back to
-      # requiring a system Node install, which most users do not have.
-      #
-      #   ubuntu-latest    -> linux-x64
-      #   ubuntu-24.04-arm -> linux-arm64   (CI runners, Asahi, ARM workstations)
-      #   macos-latest     -> darwin-arm64  (Apple Silicon)
-      #   windows-latest   -> win32-x64
-      #
-      # macos-13 (Intel) was dropped: GitHub has deprecated the image, and it
-      # burns Actions minutes on a shrinking population of Intel Macs. Its
-      # users fall back to the system-Node path noted above.
+      # Every entry here is a real vsce/Open VSX platform target string — the
+      # VS Code packaging step below reuses these names directly. A platform
+      # missing from this matrix is a platform the extension ships with no
+      # native binary, and the JetBrains plugin falls back to requiring a
+      # system Rust/Node install, which most users do not have.
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            platform_arch: linux-x64
+          - os: ubuntu-24.04-arm
+            platform_arch: linux-arm64
+          - os: macos-latest
+            platform_arch: darwin-arm64
+          - os: windows-latest
+            platform_arch: win32-x64
     runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry & build
+        uses: actions/cache@6849a6489940f00c2f30c0fb92c6274307ccb58a # v4.1.2
         with:
-          node-version: '22'
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/animoria-core-rust/target
+          key: ${{ matrix.platform_arch }}-cargo-${{ hashFiles('packages/animoria-core-rust/Cargo.lock') }}
+          restore-keys: ${{ matrix.platform_arch }}-cargo-
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build @animoria/core
-        run: pnpm --filter @animoria/core build
+      - name: Build release binary
+        run: cargo build --release --manifest-path packages/animoria-core-rust/Cargo.toml
 
       - name: Import macOS signing certificate
         # A fresh runner's keychain is empty — ANIMORIA_SIGNING_IDENTITY alone
@@ -132,7 +132,7 @@ jobs:
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
         run: |
           if [ -z "$MACOS_CERTIFICATE" ]; then
-            echo "MACOS_CERTIFICATE not set; build:sea will fail its own required-signing check below."
+            echo "MACOS_CERTIFICATE not set; the signing step below will fail its own required-signing check."
             exit 0
           fi
           KEYCHAIN_PASSWORD=$(uuidgen)
@@ -154,44 +154,64 @@ jobs:
           # would be the one place it leaks.
           echo "codesign identities available after import: $(security find-identity -v -p codesigning build.keychain | grep -c '^[[:space:]]*[0-9]\+)')"
 
-      - name: Build self-contained native executable
-        run: pnpm --filter @animoria/core build:sea
+      - name: Sign and notarize macOS binary
+        # An ad-hoc signature satisfies the loader on the machine that produced
+        # it and nothing else: Gatekeeper rejects an ad-hoc-signed binary
+        # downloaded from the internet, so a release shipping one fails to
+        # launch its daemon on every user's Mac. Missing credentials must fail
+        # this job rather than silently ship an unlaunchable binary.
+        if: runner.os == 'macOS'
         env:
-          # Makes missing macOS signing credentials a hard failure rather than a
-          # silent downgrade to an ad-hoc signature, which Gatekeeper blocks on
-          # every downloaded copy. `build-sea.mjs` fails deterministically when
-          # this is set and the credentials are absent — a release cannot ship an
-          # unlaunchable daemon just because a secret was not configured.
-          ANIMORIA_RELEASE_SIGNING: required
           ANIMORIA_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
           ANIMORIA_NOTARIZE_APPLE_ID: ${{ secrets.MACOS_NOTARIZE_APPLE_ID }}
           ANIMORIA_NOTARIZE_TEAM_ID: ${{ secrets.MACOS_NOTARIZE_TEAM_ID }}
           ANIMORIA_NOTARIZE_PASSWORD: ${{ secrets.MACOS_NOTARIZE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          BIN="packages/animoria-core-rust/target/release/animoria"
 
-      - name: Verify the produced binary runs
-        # Extraction and launch, checked on the platform that built it. An artifact
-        # that unpacks but cannot execute is the failure mode this catches — and
-        # the one a plugin discovers only in a user's IDE.
+          if [ -z "$ANIMORIA_SIGNING_IDENTITY" ]; then
+            echo "::error::ANIMORIA_SIGNING_IDENTITY is not set."
+            exit 1
+          fi
+          codesign --sign "$ANIMORIA_SIGNING_IDENTITY" --options runtime --timestamp --force "$BIN"
+
+          if [ -z "$ANIMORIA_NOTARIZE_APPLE_ID" ] || [ -z "$ANIMORIA_NOTARIZE_TEAM_ID" ] || [ -z "$ANIMORIA_NOTARIZE_PASSWORD" ]; then
+            echo "::error::Notarization credentials are incomplete — a signed-but-unnotarized binary is still blocked by Gatekeeper."
+            exit 1
+          fi
+          ZIP="$BIN.zip"
+          ditto -c -k --keepParent "$BIN" "$ZIP"
+          xcrun notarytool submit "$ZIP" \
+            --apple-id "$ANIMORIA_NOTARIZE_APPLE_ID" \
+            --team-id "$ANIMORIA_NOTARIZE_TEAM_ID" \
+            --password "$ANIMORIA_NOTARIZE_PASSWORD" \
+            --wait
+          rm -f "$ZIP"
+
+      - name: Stage binary for upload
         shell: bash
         run: |
           set -euo pipefail
-          BIN=$(find packages/animoria-core/sea -type f \( -name 'animoria-core' -o -name 'animoria-core.exe' \) | head -1)
-          if [ -z "$BIN" ]; then
-            echo "::error::build:sea produced no executable"
-            exit 1
-          fi
-          chmod +x "$BIN" || true
-          "$BIN" --version
+          BIN_NAME=animoria
+          if [ "${{ runner.os }}" = "Windows" ]; then BIN_NAME=animoria.exe; fi
+          mkdir -p "native-daemon/${{ matrix.platform_arch }}"
+          cp "packages/animoria-core-rust/target/release/$BIN_NAME" "native-daemon/${{ matrix.platform_arch }}/$BIN_NAME"
+          chmod +x "native-daemon/${{ matrix.platform_arch }}/$BIN_NAME" || true
+
+      - name: Verify the produced binary runs
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN_NAME=animoria
+          if [ "${{ runner.os }}" = "Windows" ]; then BIN_NAME=animoria.exe; fi
+          "native-daemon/${{ matrix.platform_arch }}/$BIN_NAME" --version
 
       - name: Upload native daemon artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: native-daemon-${{ matrix.os }}
-          # An explicit directory (not a glob) preserves its immediate
-          # children — darwin-arm64/, linux-x64/, win32-x64/ — as the
-          # artifact's own top-level entries, so merge-multiple below
-          # can combine all three platforms' output without collisions.
-          path: packages/animoria-core/sea
+          name: native-daemon-${{ matrix.platform_arch }}
+          path: native-daemon
           if-no-files-found: error
 
   release:
@@ -208,7 +228,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
 
@@ -226,7 +246,7 @@ jobs:
         run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
 
       - name: Cache pnpm store
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
           key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -269,33 +289,44 @@ jobs:
         id: version
         run: echo "VERSION=${{ needs.verify-versions.outputs.version }}" >> $GITHUB_OUTPUT
 
-      - name: Package extension
-        working-directory: packages/animoria-vscode
-        run: vsce package --no-dependencies -o animoria-${{ steps.version.outputs.VERSION }}.vsix
-
-      - name: Publish to VS Code Marketplace
-        working-directory: packages/animoria-vscode
-        run: vsce publish --no-dependencies --packagePath animoria-${{ steps.version.outputs.VERSION }}.vsix
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-
-      - name: Publish to Open VSX Registry
-        working-directory: packages/animoria-vscode
-        run: ovsx publish animoria-${{ steps.version.outputs.VERSION }}.vsix -p ${{ secrets.OVSX_PAT }}
-
       - name: Download native daemon artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: native-daemon-*
-          path: packages/animoria-jetbrains/src/main/resources/native
+          path: native-daemon
           merge-multiple: true
 
       - name: Restore native daemon executable permissions
         # GitHub Actions artifact upload/download does not preserve the
         # executable bit on non-Windows binaries.
+        run: find native-daemon -type f -name animoria -exec chmod +x {} \;
+
+      - name: Package and publish VS Code extension per platform
+        # One .vsix per target, each bundling only that platform's binary in
+        # `bin/` (see `daemon-client.ts`'s `resolveBinaryPath`, which looks
+        # there first) — a single platform-agnostic .vsix has nowhere to put
+        # four different native binaries at once.
+        working-directory: packages/animoria-vscode
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: |
-          find packages/animoria-jetbrains/src/main/resources/native \
-            -type f -name 'animoria-core' -exec chmod +x {} \;
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          for target in linux-x64 linux-arm64 darwin-arm64 win32-x64; do
+            rm -rf bin
+            mkdir -p bin
+            cp -r "../../native-daemon/$target/." bin/
+            VSIX="animoria-${VERSION}-${target}.vsix"
+            vsce package --target "$target" --no-dependencies -o "$VSIX"
+            vsce publish --target "$target" --no-dependencies --packagePath "$VSIX"
+            ovsx publish "$VSIX" --target "$target" -p "$OVSX_PAT"
+          done
+
+      - name: Stage native daemon for the JetBrains plugin
+        run: |
+          mkdir -p packages/animoria-jetbrains/src/main/resources/native
+          cp -r native-daemon/. packages/animoria-jetbrains/src/main/resources/native/
 
       - name: Build and verify JetBrains Plugin
         run: |
@@ -353,7 +384,7 @@ jobs:
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           files: |
-            packages/animoria-vscode/animoria-${{ steps.version.outputs.VERSION }}.vsix
+            packages/animoria-vscode/animoria-${{ steps.version.outputs.VERSION }}-*.vsix
             packages/animoria-jetbrains/build/distributions/*.zip
           generate_release_notes: true
           body: |
@@ -362,11 +393,12 @@ jobs:
             See [CHANGELOG.md](https://github.com/sxnnyside-project/animoria/blob/main/packages/animoria-vscode/CHANGELOG.md) for details.
 
             ### Install
-            Search **Animoria** in the VS Code Extensions panel,
-            or download the `.vsix`/`.zip` from this release and install manually:
+            Search **Animoria** in the VS Code Extensions panel — the Marketplace
+            serves the .vsix matching your platform automatically — or download
+            the one for your platform from this release and install manually:
 
             ```
-            code --install-extension animoria-${{ steps.version.outputs.VERSION }}.vsix
+            code --install-extension animoria-${{ steps.version.outputs.VERSION }}-<platform>.vsix
             ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -399,7 +431,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
 
@@ -417,24 +449,25 @@ jobs:
 
       # Only what JetBrains needs — never installs vsce/ovsx, never touches
       # either marketplace.
-      - name: Build @animoria/core and @animoria/ui
-        run: |
-          pnpm --filter @animoria/core build
-          pnpm --filter @animoria/ui build
+      - name: Build @animoria/ui
+        run: pnpm --filter @animoria/ui build
 
       - name: Download native daemon artifacts from the source run
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: native-daemon-*
-          path: packages/animoria-jetbrains/src/main/resources/native
+          path: native-daemon
           merge-multiple: true
           run-id: ${{ inputs.hotfix_source_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Restore native daemon executable permissions
+        run: find native-daemon -type f -name animoria -exec chmod +x {} \;
+
+      - name: Stage native daemon for the JetBrains plugin
         run: |
-          find packages/animoria-jetbrains/src/main/resources/native \
-            -type f -name 'animoria-core' -exec chmod +x {} \;
+          mkdir -p packages/animoria-jetbrains/src/main/resources/native
+          cp -r native-daemon/. packages/animoria-jetbrains/src/main/resources/native/
 
       - name: Build and verify JetBrains Plugin
         run: |
@@ -480,16 +513,25 @@ jobs:
       # VS Code Marketplace from the original run.
       - name: Repackage VS Code extension for the release asset only
         run: npm install -g @vscode/vsce
-      - name: Package extension (no publish)
+
+      - name: Package extension per platform (no publish)
         working-directory: packages/animoria-vscode
-        run: vsce package --no-dependencies -o animoria-${{ inputs.hotfix_jetbrains_version }}.vsix
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.hotfix_jetbrains_version }}"
+          for target in linux-x64 linux-arm64 darwin-arm64 win32-x64; do
+            rm -rf bin
+            mkdir -p bin
+            cp -r "../../native-daemon/$target/." bin/
+            vsce package --target "$target" --no-dependencies -o "animoria-${VERSION}-${target}.vsix"
+          done
 
       - name: Create or update GitHub Release
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           tag_name: v${{ inputs.hotfix_jetbrains_version }}
           files: |
-            packages/animoria-vscode/animoria-${{ inputs.hotfix_jetbrains_version }}.vsix
+            packages/animoria-vscode/animoria-${{ inputs.hotfix_jetbrains_version }}-*.vsix
             packages/animoria-jetbrains/build/distributions/*.zip
           generate_release_notes: true
           body: |
@@ -499,10 +541,10 @@ jobs:
 
             ### Install
             Search **Animoria** in the VS Code Extensions panel,
-            or download the `.vsix`/`.zip` from this release and install manually:
+            or download the `.vsix` for your platform from this release and install manually:
 
             ```
-            code --install-extension animoria-${{ inputs.hotfix_jetbrains_version }}.vsix
+            code --install-extension animoria-${{ inputs.hotfix_jetbrains_version }}-<platform>.vsix
             ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

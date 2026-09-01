@@ -17,13 +17,8 @@ import kotlinx.serialization.json.jsonObject
 import java.awt.datatransfer.StringSelection
 
 /**
- * Generates a paste-ready framework integration snippet for an asset.
- *
- * Business logic (which frameworks are offered, import path resolution,
- * install hints) lives entirely in `@animoria/core`'s `integrationRegistry`
- * (`generateSnippet` daemon command) — this object only presents the
- * resulting choices and copies the selection to the clipboard. Mirrors
- * VS Code's `generateSnippet()` command (`showQuickPick` + clipboard copy).
+ * Action that requests code integration snippets from the native daemon and presents
+ * a chooser popup to copy the snippet to the clipboard.
  */
 object GenerateSnippetAction {
     /** Requests snippet choices for [asset] from the daemon and lets the user pick one to copy. */
@@ -67,14 +62,14 @@ object GenerateSnippetAction {
         project: Project,
         snippets: List<SnippetData>,
     ) {
-        JBPopupFactory.getInstance()
+        JBPopupFactory
+            .getInstance()
             .createPopupChooserBuilder(snippets)
             .setTitle("Copy Integration Snippet")
             .setItemChosenCallback { chosen -> copyToClipboard(project, chosen) }
             .setRenderer { _, value, _, _, _ ->
                 javax.swing.JLabel(value.label)
-            }
-            .createPopup()
+            }.createPopup()
             .showInFocusCenter()
     }
 

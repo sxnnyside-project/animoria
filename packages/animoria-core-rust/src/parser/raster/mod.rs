@@ -1,9 +1,9 @@
-use std::fs::File;
-use std::io::Read;
-use std::path::Path;
 use crate::contracts::asset::{
     Asset, AssetFormat, AssetKind, Dimensions, MotionMetadata, StaticMetadata,
 };
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
 
 pub fn parse_raster(path: &Path, asset: &mut Asset) -> Result<(), String> {
     let mut file = File::open(path).map_err(|e| format!("Cannot open raster file: {e}"))?;
@@ -245,7 +245,10 @@ fn parse_webp(data: &[u8], asset: &mut Asset) -> Result<(), String> {
         // Lossy VP8
         let w = u16::from_le_bytes([data[26], data[27] & 0x3F]) as u32;
         let h = u16::from_le_bytes([data[28], data[29] & 0x3F]) as u32;
-        asset.dimensions = Some(Dimensions { width: w, height: h });
+        asset.dimensions = Some(Dimensions {
+            width: w,
+            height: h,
+        });
     } else if chunk_header == b"VP8L" && data.len() >= 25 {
         // Lossless VP8L: signature byte 0x2F followed by 14 bits width, 14 bits height
         let b1 = data[21];
@@ -254,12 +257,18 @@ fn parse_webp(data: &[u8], asset: &mut Asset) -> Result<(), String> {
         let b4 = data[24];
         let w = 1 + (((b2 as u32 & 0x3F) << 8) | (b1 as u32));
         let h = 1 + (((b4 as u32 & 0x0F) << 10) | ((b3 as u32) << 2) | ((b2 as u32) >> 6));
-        asset.dimensions = Some(Dimensions { width: w, height: h });
+        asset.dimensions = Some(Dimensions {
+            width: w,
+            height: h,
+        });
     } else if chunk_header == b"VP8X" && data.len() >= 30 {
         // Extended VP8X: canvas width 24-bit (bytes 24-26) + 1, canvas height 24-bit (bytes 27-29) + 1
         let w = 1 + (data[24] as u32 | ((data[25] as u32) << 8) | ((data[26] as u32) << 16));
         let h = 1 + (data[27] as u32 | ((data[28] as u32) << 8) | ((data[29] as u32) << 16));
-        asset.dimensions = Some(Dimensions { width: w, height: h });
+        asset.dimensions = Some(Dimensions {
+            width: w,
+            height: h,
+        });
     }
 
     asset.kind = AssetKind::Static;
@@ -281,8 +290,10 @@ fn parse_avif(data: &[u8], asset: &mut Asset) -> Result<(), String> {
     // Search for ispe box (Image Spatial Extents)
     if let Some(pos) = data.windows(4).position(|w| w == b"ispe") {
         if pos + 12 <= data.len() {
-            let width = u32::from_be_bytes([data[pos + 4], data[pos + 5], data[pos + 6], data[pos + 7]]);
-            let height = u32::from_be_bytes([data[pos + 8], data[pos + 9], data[pos + 10], data[pos + 11]]);
+            let width =
+                u32::from_be_bytes([data[pos + 4], data[pos + 5], data[pos + 6], data[pos + 7]]);
+            let height =
+                u32::from_be_bytes([data[pos + 8], data[pos + 9], data[pos + 10], data[pos + 11]]);
             if width > 0 && height > 0 {
                 asset.dimensions = Some(Dimensions { width, height });
             }

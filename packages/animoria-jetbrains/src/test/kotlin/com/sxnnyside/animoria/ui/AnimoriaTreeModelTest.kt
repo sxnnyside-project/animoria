@@ -276,7 +276,8 @@ class GalleryMountedTest {
             .walkTopDown()
             .filter { it.isFile && it.extension == "kt" }
             .joinToString("\n") { file ->
-                file.readText()
+                file
+                    .readText()
                     .replace(Regex("""/\*[\s\S]*?\*/""")) { it.value.replace(Regex("[^\n]"), " ") }
                     .lines()
                     .joinToString("\n") { line -> line.substringBefore("//") }
@@ -300,7 +301,8 @@ class GalleryMountedTest {
     @org.junit.jupiter.api.DisplayName("the tool window opens the gallery")
     fun theGalleryIsAToolWindowTab() {
         val factory =
-            java.io.File("src/main/kotlin/com/sxnnyside/animoria/ui/AnimoriaToolWindowFactory.kt")
+            java.io
+                .File("src/main/kotlin/com/sxnnyside/animoria/ui/AnimoriaToolWindowFactory.kt")
                 .readText()
         assertTrue(factory.contains("AnimoriaGalleryPanel"), "the gallery must be a tool window tab")
         assertTrue(

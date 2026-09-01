@@ -23,8 +23,9 @@ import kotlinx.serialization.json.put
  * Registered on the governance section's context menu. Mirrors VS Code's
  * `exportGovernanceReport()` (save dialog + `workspace.fs.writeFile`).
  */
-class ExportGovernanceReportAction(private val project: Project) :
-    AnAction("Export Governance Report", "Save the governance report as Markdown or JSON", AllIcons.Actions.MenuSaveall) {
+class ExportGovernanceReportAction(
+    private val project: Project,
+) : AnAction("Export Governance Report", "Save the governance report as Markdown or JSON", AllIcons.Actions.MenuSaveall) {
     override fun actionPerformed(e: AnActionEvent) {
         val descriptor =
             FileSaverDescriptor(
@@ -59,7 +60,8 @@ class ExportGovernanceReportAction(private val project: Project) :
                     Messages.showInfoMessage(project, "Report exported to ${targetFile.name}", "Export Complete")
                 }
             } catch (ex: Exception) {
-                com.sxnnyside.animoria.logging.AnimoriaLogger.error("Animoria: Failed to export governance report", ex)
+                com.sxnnyside.animoria.logging.AnimoriaLogger
+                    .error("Animoria: Failed to export governance report", ex)
             }
         }
     }

@@ -1,8 +1,26 @@
-import type { Asset, DuplicateGroup, ResolutionPlan, WorkspaceAnalysis } from '@animoria/contracts';
+import { promises as fs, existsSync } from 'node:fs';
+import { basename, extname, join } from 'node:path';
 import type {
+  Asset,
+  DuplicateGroup,
+  ReferenceRewriteProposal,
+  ResolutionPlan,
+  TrashItem,
+  UsageReference,
+  WorkspaceAnalysis,
+} from '@animoria/contracts';
+import type {
+  CleanupEntry,
+  CleanupExecutionResult,
+  CleanupPlan,
+  CleanupRefusal,
   HostCapabilities,
   HostInbound,
   HostOutbound,
+  MultiRootAnalysis,
+  RestoreResult,
+  ReviewableCleanupProposal,
+  SessionManifest,
   UiPreferences,
 } from '@animoria/ui/bridge';
 import {
@@ -12,70 +30,537 @@ import {
   buildAnimationPreview,
   validateOutbound,
 } from '@animoria/ui/bridge';
+import * as vscode from 'vscode';
+import type { VsCodeDaemonClient } from '../daemon/daemon-client.js';
+import { buildIntegrationContext } from '../workspace-context/build-integration-context.js';
 
-export interface MultiRootAnalysis {
-  roots: WorkspaceAnalysis[];
-  duplicateGroups: DuplicateGroup[];
-  assets: Asset[];
-  readiness?: { referencesResolved: boolean };
+export type { MultiRootAnalysis, CleanupPlan, CleanupExecutionResult };
+
+export interface WorkspaceSession {
+  readonly identity: string;
+  readonly roots: readonly { readonly id: string; readonly name: string; readonly path: string }[];
+  getAnalysis(): MultiRootAnalysis;
+  indexerForRoot(rootId: string): { getAnalysis(): WorkspaceAnalysis } | null;
+  indexerForPath(path: string): { root: { path: string } } | null;
 }
 
-export type WorkspaceSession = any;
-export type CleanupPlan = any;
-export type CleanupExecutionResult = any;
-
-const logWarn = (_cat: string, _src: string, _msg: string, _details?: any) => {};
-const rootForPath = (_id: any, _path: string) => ({
-  id: 'root',
-  name: 'root',
-  path: process.cwd(),
-});
-const buildResolutionPlan = async (_opts: any): Promise<any> => ({
-  canonicalAsset: { name: 'asset' },
-  assetsToDelete: [],
-  safety: 'safe',
-  referenceUpdates: [],
-  unrewritableReferences: [],
-});
-const executeResolutionPlan = async (_plan: any, _opts: any): Promise<any> => ({
-  status: 'applied',
-  removedAssetPaths: [],
-  updatedReferenceCount: 0,
-  recoveredBytes: 0,
-  trashSessionId: 'sess-1',
-  error: null,
-  issues: [],
-});
-const listTrashSessions = async (_path: string): Promise<any[]> => [];
-const restoreTrashSession = async (_path: string, _sess: string): Promise<any> => ({
-  restoredPaths: [],
-});
-const buildCleanupCandidates = (_a: any, _d?: any) => [];
-const buildCleanupPlan = (_proposal: any, _analysis?: any, _assetPaths?: any) => ({
-  planId: 'plan-1',
-  entries: [],
-  refusals: [],
-  safety: 'safe',
-  bytesReclaimed: 0,
-});
-const buildReviewableProposal = async (_candidates: any, _analysis?: any) => ({ candidates: [] });
-const executeCleanupPlan = async (_plan: any, _opts: any) => ({
-  status: 'applied',
-  removedAssetPaths: [],
-  recoveredBytes: 0,
-  trashSessionId: 'sess-1',
-  error: null,
-});
-const integrationRegistry = {
-  generate: (ctx: any): any[] => [
-    {
-      label: 'React / Next.js',
-      language: 'tsx',
-      code: `import ${ctx.asset.name.replace(/[^a-zA-Z0-9]/g, '')} from '${ctx.importPath}';`,
-    },
-  ],
+const logWarn = (category: string, source: string, message: string, details?: unknown): void => {
+  const detail = details !== undefined ? ` ${JSON.stringify(details)}` : '';
+  console.warn(`[animoria:${category}] ${source}: ${message}${detail}`);
 };
-import { promises as fs } from 'node:fs';
+
+/**
+ * The workspace root that owns `path` — the longest matching root path, so
+ * a nested root inside another (a real multi-root layout) attributes to the
+ * more specific one rather than whichever root happened to be scanned
+ * first. Never a fabricated root: `null` when the session has none, which
+ * every caller must handle rather than silently falling back to `cwd()`.
+ */
+function rootForPath(
+  roots: readonly { readonly id: string; readonly name: string; readonly path: string }[],
+  path: string
+): { readonly id: string; readonly name: string; readonly path: string } | null {
+  let best: (typeof roots)[number] | null = null;
+  for (const root of roots) {
+    if (
+      path === root.path ||
+      path.startsWith(`${root.path}/`) ||
+      path.startsWith(`${root.path}\\`)
+    ) {
+      if (!best || root.path.length > best.path.length) best = root;
+    }
+  }
+  return best ?? roots[0] ?? null;
+}
+
+export interface ResolutionResult {
+  status: 'applied' | 'rejected' | 'failed';
+  removedAssetPaths: readonly string[];
+  recoveredBytes: number;
+  trashSessionId: string | null;
+  error?: string | null;
+  issues?: readonly { message: string }[];
+}
+
+type CleanupCandidate = ReviewableCleanupProposal['candidates'][number];
+
+/**
+ * Every asset the governance engine already flagged as unreferenced, minus
+ * whatever the developer dismissed from a prior review. Core (the Rust
+ * daemon's `no-unreferenced-assets` rule) is the single source of truth for
+ * *what* is eligible — this only assembles the diagnostics it already
+ * computed into candidates; it invents no new eligibility logic.
+ */
+function buildCleanupCandidates(
+  analysis: WorkspaceAnalysis,
+  opts?: { dismissedPaths: ReadonlySet<string> }
+): CleanupCandidate[] {
+  const dismissed = opts?.dismissedPaths ?? new Set<string>();
+  const assetsByPath = new Map(analysis.assets.map((a) => [a.path, a]));
+  const assetsById = new Map(analysis.assets.map((a) => [a.id, a]));
+
+  const candidates: CleanupCandidate[] = [];
+  for (const d of analysis.diagnostics) {
+    if (d.rule_id !== 'no-unreferenced-assets') continue;
+    const asset =
+      assetsByPath.get(d.target_asset_path) ??
+      (d.target_asset_id ? assetsById.get(d.target_asset_id) : undefined);
+    if (!asset || dismissed.has(asset.path)) continue;
+    candidates.push({
+      asset,
+      reasons: [{ code: d.rule_id, message: d.message }],
+      sizeBytes: asset.size_bytes,
+      referenceCount: 0,
+      eligibility: { eligible: true },
+      severity: d.severity,
+    });
+  }
+  return candidates;
+}
+
+async function buildReviewableProposal(
+  candidates: CleanupCandidate[],
+  _analysis?: WorkspaceAnalysis
+): Promise<ReviewableCleanupProposal> {
+  return {
+    candidates,
+    totalSizeBytes: candidates.reduce((sum, c) => sum + (c.sizeBytes ?? 0), 0),
+  };
+}
+
+/**
+ * Renames Core's severity for *this* candidate's own diagnostic into the
+ * confidence vocabulary the UI shows — a one-to-one relabel of a value Core
+ * already decided, not a new judgment. `candidate.severity` is set in
+ * `buildCleanupCandidates` from the very diagnostic that made the asset a
+ * candidate, so this never risks picking up an unrelated diagnostic that
+ * happens to share the same asset path.
+ */
+function confidenceFor(severity: string | undefined): string {
+  return severity === 'error' ? 'certain' : severity === 'warning' ? 'moderate' : 'low';
+}
+
+function buildCleanupPlan(
+  proposal: ReviewableCleanupProposal,
+  assetPaths: readonly string[] = []
+): CleanupPlan {
+  const wanted = new Set(
+    assetPaths.length > 0 ? assetPaths : proposal.candidates.map((c) => c.asset.path)
+  );
+  const byPath = new Map(proposal.candidates.map((c) => [c.asset.path, c]));
+
+  const entries: CleanupEntry[] = [];
+  const refusals: CleanupRefusal[] = [];
+  for (const path of wanted) {
+    const candidate = byPath.get(path);
+    if (!candidate) {
+      refusals.push({ assetPath: path, explanation: 'Not currently proposed for cleanup.' });
+      continue;
+    }
+    entries.push({
+      asset: candidate.asset,
+      reasons: candidate.reasons,
+      confidence: confidenceFor(candidate.severity),
+      sizeBytes: candidate.sizeBytes ?? candidate.asset.size_bytes,
+    });
+  }
+
+  return {
+    planId: `cleanup-${Date.now()}-${Math.round(Math.random() * 1e6)}`,
+    entries,
+    refusals,
+    safety: refusals.length > 0 ? 'partial' : 'safe',
+    bytesReclaimed: entries.reduce((sum, e) => sum + e.sizeBytes, 0),
+  };
+}
+
+/**
+ * Actually moves every entry in `plan` to `.animoria/trash/` via the Rust
+ * daemon's `trash_asset` method — the same one `remediate_plan`'s callers
+ * use for duplicate resolution. Returns as soon as the first entry fails
+ * unless `allowPartial` is set, matching the plan-based remediation
+ * contract: a partial application is refused unless explicitly opted into.
+ */
+/** One trashed asset paired with the size it reclaimed, for the trash-session manifest. */
+interface TrashedItem {
+  readonly item: TrashItem;
+  readonly sizeBytes: number;
+}
+
+async function executeCleanupPlan(
+  plan: CleanupPlan,
+  opts: { daemon: VsCodeDaemonClient; workspacePath: string; allowPartial?: boolean }
+): Promise<CleanupExecutionResult & { trashedItems: TrashedItem[] }> {
+  if (plan.refusals.length > 0 && !opts.allowPartial) {
+    return {
+      status: 'failed',
+      removedAssetPaths: [],
+      recoveredBytes: 0,
+      trashSessionId: '',
+      error: `${plan.refusals.length} asset(s) could not be resolved for cleanup; refusing a partial application.`,
+      trashedItems: [],
+    };
+  }
+
+  const removedAssetPaths: string[] = [];
+  const trashedItems: TrashedItem[] = [];
+  let recoveredBytes = 0;
+  let firstError: string | null = null;
+
+  for (const entry of plan.entries) {
+    try {
+      const item = await opts.daemon.trashAsset(
+        opts.workspacePath,
+        entry.asset.id,
+        entry.asset.path
+      );
+      trashedItems.push({ item, sizeBytes: entry.sizeBytes });
+      removedAssetPaths.push(entry.asset.path);
+      recoveredBytes += entry.sizeBytes;
+    } catch (err) {
+      firstError = err instanceof Error ? err.message : String(err);
+      if (!opts.allowPartial) break;
+    }
+  }
+
+  const status: CleanupExecutionResult['status'] =
+    removedAssetPaths.length === 0
+      ? 'failed'
+      : removedAssetPaths.length < plan.entries.length
+        ? 'partial'
+        : 'applied';
+
+  return {
+    status,
+    removedAssetPaths,
+    recoveredBytes,
+    trashSessionId: trashedItems.length > 0 ? `session-${Date.now()}` : '',
+    error: status === 'failed' ? firstError : null,
+    trashedItems,
+  };
+}
+
+/**
+ * Reuses Core's own duplicate-resolution logic (the Rust daemon's
+ * `remediate_plan` method) rather than reimplementing "which copies get
+ * deleted" here — the plan structurally matches what `remediate_plan` for
+ * `stageTrash`/`clean` already produces for the CLI.
+ */
+async function buildResolutionPlan(opts: {
+  daemon: VsCodeDaemonClient;
+  group: DuplicateGroup;
+}): Promise<ResolutionPlan> {
+  return opts.daemon.remediatePlan(opts.group);
+}
+
+async function executeResolutionPlan(
+  plan: ResolutionPlan,
+  opts: {
+    daemon: VsCodeDaemonClient;
+    workspacePath: string;
+    assetsById: ReadonlyMap<string, Asset>;
+    allowPartial?: boolean;
+  }
+): Promise<ResolutionResult & { trashedItems: TrashedItem[] }> {
+  const removedAssetPaths: string[] = [];
+  const trashedItems: TrashedItem[] = [];
+  let recoveredBytes = 0;
+  let firstError: string | null = null;
+
+  for (const assetId of plan.target_assets_to_delete) {
+    const asset = opts.assetsById.get(assetId);
+    if (!asset) {
+      firstError = `Asset '${assetId}' from the resolution plan is no longer in the analysis.`;
+      if (!opts.allowPartial) break;
+      continue;
+    }
+    try {
+      const item = await opts.daemon.trashAsset(opts.workspacePath, asset.id, asset.path);
+      trashedItems.push({ item, sizeBytes: asset.size_bytes });
+      removedAssetPaths.push(asset.path);
+      recoveredBytes += asset.size_bytes;
+    } catch (err) {
+      firstError = err instanceof Error ? err.message : String(err);
+      if (!opts.allowPartial) break;
+    }
+  }
+
+  const status: ResolutionResult['status'] = removedAssetPaths.length === 0 ? 'failed' : 'applied';
+
+  return {
+    status,
+    removedAssetPaths,
+    recoveredBytes,
+    trashSessionId: trashedItems.length > 0 ? `session-${Date.now()}` : null,
+    error: status === 'failed' ? firstError : null,
+    trashedItems,
+  };
+}
+
+export interface SnippetOption {
+  label: string;
+  language: string;
+  code: string;
+  imports?: string | undefined;
+  installHint?: string | undefined;
+}
+
+function toCamelCase(stem: string): string {
+  return stem
+    .replace(/[-_.\s]+(.)/g, (_, c: string) => c.toUpperCase())
+    .replace(/^[A-Z]/, (c) => c.toLowerCase())
+    .replace(/[^a-zA-Z0-9$_]/g, '');
+}
+
+function toPascalCase(stem: string): string {
+  return stem
+    .replace(/[-_.\s]+(.)/g, (_, c: string) => c.toUpperCase())
+    .replace(/^(.)/, (c) => c.toUpperCase())
+    .replace(/[^a-zA-Z0-9$_]/g, '');
+}
+
+type PackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun';
+
+/**
+ * Detects the workspace's package manager from its lockfile — an install
+ * hint naming the wrong tool is worse than none, since copying it verbatim
+ * mixes lockfiles. Falls back to npm, not because it's assumed to be in
+ * use, but because `npm install` is the one command guaranteed to work with
+ * no prior setup.
+ */
+function detectPackageManager(workspacePath: string): PackageManager {
+  if (existsSync(join(workspacePath, 'bun.lockb')) || existsSync(join(workspacePath, 'bun.lock'))) {
+    return 'bun';
+  }
+  if (existsSync(join(workspacePath, 'pnpm-lock.yaml'))) return 'pnpm';
+  if (existsSync(join(workspacePath, 'yarn.lock'))) return 'yarn';
+  return 'npm';
+}
+
+function installCommand(pkgManager: PackageManager, packageName: string): string {
+  switch (pkgManager) {
+    case 'pnpm':
+      return `pnpm add ${packageName}`;
+    case 'yarn':
+      return `yarn add ${packageName}`;
+    case 'bun':
+      return `bun add ${packageName}`;
+    default:
+      return `npm install ${packageName}`;
+  }
+}
+
+export function generateSnippetsForAsset(
+  asset: Asset,
+  importPath: string,
+  workspacePath?: string
+): SnippetOption[] {
+  const varName = toCamelCase(asset.stem);
+  const compName = toPascalCase(asset.stem);
+  const format = asset.format.toLowerCase();
+  const pkgManager = workspacePath ? detectPackageManager(workspacePath) : 'npm';
+  const npm = (packageName: string) => installCommand(pkgManager, packageName);
+
+  const snippets: SnippetOption[] = [];
+
+  if (format === 'lottie' || format === 'dotlottie') {
+    const isDotLottie = format === 'dotlottie';
+
+    // 1. React
+    snippets.push({
+      label: 'React (lottie-react)',
+      language: 'tsx',
+      imports: [
+        `import Lottie from 'lottie-react';`,
+        `import ${varName}Data from '${importPath}';`,
+      ].join('\n'),
+      code: [
+        '<Lottie',
+        `  animationData={${varName}Data}`,
+        '  loop={true}',
+        '  autoplay={true}',
+        '/>',
+      ].join('\n'),
+      installHint: npm('lottie-react'),
+    });
+
+    // 2. React Native
+    snippets.push({
+      label: 'React Native (lottie-react-native)',
+      language: 'tsx',
+      imports: [
+        `import LottieView from 'lottie-react-native';`,
+        `import ${varName}Data from '${importPath}';`,
+      ].join('\n'),
+      code: [
+        '<LottieView',
+        `  source={${varName}Data}`,
+        '  autoPlay',
+        '  loop',
+        '  style={{ width: 200, height: 200 }}',
+        '/>',
+      ].join('\n'),
+      installHint: npm('lottie-react-native'),
+    });
+
+    // 3. Astro / Web Component
+    if (isDotLottie) {
+      snippets.push({
+        label: 'Astro / dotLottie Web Component',
+        language: 'astro',
+        imports: `import '@lottiefiles/dotlottie-wc';`,
+        code: [
+          '<dotlottie-player',
+          `  src="${importPath}"`,
+          '  autoplay',
+          '  loop',
+          `  style="width: 250px; height: 250px;"`,
+          '></dotlottie-player>',
+        ].join('\n'),
+        installHint: npm('@lottiefiles/dotlottie-wc'),
+      });
+    } else {
+      snippets.push({
+        label: 'Astro (lottie-web)',
+        language: 'astro',
+        imports: [
+          '---',
+          '// Astro Frontmatter',
+          `import ${varName}Data from '${importPath}';`,
+          '---',
+        ].join('\n'),
+        code: [
+          `<div id="lottie-${varName}" style="width: 250px; height: 250px;"></div>`,
+          '<script>',
+          `  import lottie from 'lottie-web';`,
+          `  import animationData from '${importPath}';`,
+          '  lottie.loadAnimation({',
+          `    container: document.getElementById('lottie-${varName}')!,`,
+          `    renderer: 'svg',`,
+          '    loop: true,',
+          '    autoplay: true,',
+          '    animationData,',
+          '  });',
+          '</script>',
+        ].join('\n'),
+        installHint: npm('lottie-web'),
+      });
+    }
+
+    // 4. Vue 3
+    snippets.push({
+      label: 'Vue 3 (vue3-lottie)',
+      language: 'vue',
+      imports: [
+        '<script setup>',
+        `import Vue3Lottie from 'vue3-lottie';`,
+        `import ${varName}Data from '${importPath}';`,
+        '</script>',
+      ].join('\n'),
+      code: [
+        '<template>',
+        '  <Vue3Lottie',
+        `    :animationData="${varName}Data"`,
+        `    :loop="true"`,
+        `    :autoPlay="true"`,
+        '  />',
+        '</template>',
+      ].join('\n'),
+      installHint: npm('vue3-lottie'),
+    });
+
+    // 5. SwiftUI
+    snippets.push({
+      label: 'SwiftUI (Lottie)',
+      language: 'swift',
+      imports: 'import SwiftUI\nimport Lottie',
+      code: [
+        `LottieView(animation: .named("${asset.stem}"))`,
+        '    .playbackMode(.playing(.toProgress(1, loopMode: .loop)))',
+        '    .frame(width: 200, height: 200)',
+      ].join('\n'),
+      installHint: 'Swift Package Manager: lottie-spm',
+    });
+
+    // 6. Flutter
+    snippets.push({
+      label: 'Flutter (lottie)',
+      language: 'dart',
+      imports: `import 'package:lottie/lottie.dart';`,
+      code: [
+        'Lottie.asset(',
+        `  '${importPath.replace(/^\.\//, '')}',`,
+        '  repeat: true,',
+        '  animate: true,',
+        ')',
+      ].join('\n'),
+      installHint: 'flutter pub add lottie',
+    });
+
+    // 7. Jetpack Compose
+    snippets.push({
+      label: 'Jetpack Compose (lottie-compose)',
+      language: 'kotlin',
+      imports: [
+        'import com.airbnb.lottie.compose.LottieAnimation',
+        'import com.airbnb.lottie.compose.LottieCompositionSpec',
+        'import com.airbnb.lottie.compose.rememberLottieComposition',
+      ].join('\n'),
+      code: [
+        '@Composable',
+        `fun ${compName}Animation() {`,
+        `    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.${varName}))`,
+        '    LottieAnimation(composition = composition, iterations = Int.MAX_VALUE)',
+        '}',
+      ].join('\n'),
+      installHint: 'implementation("com.airbnb.android:lottie-compose:6.4.0")',
+    });
+  } else if (format === 'rive') {
+    snippets.push({
+      label: 'React (@rive-app/react-canvas)',
+      language: 'tsx',
+      imports: `import { useRive } from '@rive-app/react-canvas';`,
+      code: [
+        'const { RiveComponent } = useRive({',
+        `  src: '${importPath}',`,
+        '  autoplay: true,',
+        '});',
+        'return <RiveComponent style={{ width: 300, height: 300 }} />;',
+      ].join('\n'),
+      installHint: npm('@rive-app/react-canvas'),
+    });
+  } else {
+    // Static or image assets: SVG, PNG, WebP, AVIF, JPEG, GIF, APNG
+    snippets.push({
+      label: 'React / Next.js Image',
+      language: 'tsx',
+      imports: `import ${varName}Img from '${importPath}';`,
+      code: `<img src={${varName}Img} alt="${asset.stem}" loading="lazy" />`,
+    });
+
+    snippets.push({
+      label: 'React Native Image',
+      language: 'tsx',
+      imports: `import { Image } from 'react-native';\nimport ${varName}Img from '${importPath}';`,
+      code: `<Image source={${varName}Img} style={{ width: 100, height: 100 }} />`,
+    });
+
+    snippets.push({
+      label: 'HTML / Astro <img>',
+      language: 'html',
+      code: `<img src="${importPath}" alt="${asset.stem}" width="200" height="200" />`,
+    });
+
+    snippets.push({
+      label: 'Vue 3 <img>',
+      language: 'vue',
+      imports: `<script setup>\nimport ${varName}Img from '${importPath}';\n</script>`,
+      code: `<template>\n  <img :src="${varName}Img" alt="${asset.stem}" />\n</template>`,
+    });
+  }
+
+  return snippets;
+}
 
 async function readLottieDocument(
   path: string
@@ -95,24 +580,14 @@ async function readLottieDocument(
     return null;
   }
 }
-import { extname } from 'node:path';
-import { buildIntegrationContext } from '../utils/build-integration-context.js';
-import * as vscode from 'vscode';
 
 /**
  * VS Code host bridge implementation for `@animoria/ui`.
- *
- * Translates webview `HostOutbound` events into native VS Code actions (file opening,
- * clipboard copy, diagnostics reveal, settings persistence) and returns typed `HostInbound`
- * responses. Holds no business logic or governance evaluation, which belong strictly to Core.
- *
- * Immutable cleanup and resolution plans are indexed by `planId` to ensure the exact previewed
- * plan is executed.
  */
 export class VsCodeHostBridge {
   private readonly _post: (message: HostInbound) => void;
-  /** Resolved dynamically per request to prevent holding references to disposed sessions. */
   private readonly _sessionOf: () => WorkspaceSession | undefined;
+  private readonly _daemonOf: () => VsCodeDaemonClient | undefined;
 
   private readonly _cleanupPlans = new Map<
     string,
@@ -131,46 +606,40 @@ export class VsCodeHostBridge {
   private _planCounter = 0;
 
   private readonly _onReady: (() => void) | undefined;
-
-  /**
-   * Where preferences and cleanup dismissals live.
-   *
-   * `workspaceState`, not `globalState`: both describe *this* workspace. A preview
-   * background chosen for one project is not a claim about the next one, and an asset
-   * set aside in one repository has no counterpart in another.
-   */
   private readonly _memento: vscode.Memento | undefined;
 
   constructor(options: {
-    /** Asked for the *current* session on every message, not held. */
     session: () => WorkspaceSession | undefined;
+    daemon?: () => VsCodeDaemonClient | undefined;
     post: (message: HostInbound) => void;
-    /** Called once the UI has announced it can receive state. */
     onReady?: () => void;
-    /** Workspace-scoped storage for preferences and dismissals. */
     memento?: vscode.Memento;
   }) {
     this._sessionOf = options.session;
+    this._daemonOf = options.daemon ?? (() => undefined);
     this._post = options.post;
     this._onReady = options.onReady;
     this._memento = options.memento;
   }
 
-  /**
-   * The live session, or a refusal the UI can render.
-   *
-   * A closed workspace is an ordinary state, not an exception: returning `null` here
-   * and reporting it once is what keeps every call site below from having to decide
-   * separately what "no workspace" means.
-   */
   private get _session(): WorkspaceSession | null {
     return this._sessionOf() ?? null;
   }
 
-  /**
-   * What VS Code can do. Every field is a real API this host holds, so the UI's
-   * affordances match the platform rather than a lowest common denominator.
-   */
+  private _requireDaemon(): VsCodeDaemonClient | null {
+    const daemon = this._daemonOf();
+    if (!daemon) {
+      this._post({
+        type: 'error',
+        message:
+          'Animoria has no connection to the native engine. Reload the window and try again.',
+        recoverable: true,
+      });
+      return null;
+    }
+    return daemon;
+  }
+
   static capabilities(): HostCapabilities {
     return {
       canMutate: true,
@@ -183,29 +652,13 @@ export class VsCodeHostBridge {
     };
   }
 
-  /**
-   * Handles one message from the webview.
-   *
-   * Validated first, always. The webview's script is first-party, which is exactly
-   * the argument that used to justify an unchecked cast — and exactly why the cast
-   * was wrong: this is a serialization boundary crossed at runtime, and a renamed
-   * field on one side only becomes `undefined` in business logic with no trail.
-   */
   async handle(raw: unknown): Promise<void> {
     const validated = validateOutbound(raw);
     if (!validated.ok) {
-      // Ignored, not thrown: a malformed message must never take down the panel.
       void vscode.window.showWarningMessage(`Animoria: ignored a message — ${validated.reason}`);
       return;
     }
 
-    // Every dispatch answers, including when it throws.
-    //
-    // The UI disables its controls the moment it sends an `apply-*`, and only a
-    // reply re-enables them. An unhandled rejection here therefore did not merely
-    // lose an error message: it left the panel permanently frozen mid-operation,
-    // with no indication anything had gone wrong. `void bridge.handle(raw)` at the
-    // call site made that the default outcome for any failure Core could raise.
     try {
       await this._dispatch(validated.message);
     } catch (error) {
@@ -222,27 +675,10 @@ export class VsCodeHostBridge {
     }
   }
 
-  /**
-   * Pushes the current analysis, in a shape that survives the wire.
-   *
-   * `referenceCounts` is a `Map`. `webview.postMessage` serialises as JSON, and
-   * `JSON.stringify(new Map())` is `{}` — so every reference count arrived as an empty
-   * object and **every asset in the panel showed 0 references** while the tree beside
-   * it showed the real numbers. The daemon already serialised these as entries; this
-   * host posted the live object and lost them.
-   */
   publishAnalysis(analysis: MultiRootAnalysis): void {
     this._post({ type: 'analysis', analysis: toWireAnalysis(analysis) });
   }
 
-  /**
-   * Tells the UI the workspace's *root set* changed.
-   *
-   * Distinct from a new analysis, and neither this host nor JetBrains ever sent it:
-   * a root filter naming a folder the developer has since closed keeps filtering by
-   * an id that no longer exists, which renders an empty workspace indistinguishable
-   * from one with no assets.
-   */
   publishRoots(analysis: MultiRootAnalysis): void {
     this._post({
       type: 'roots-changed',
@@ -250,7 +686,15 @@ export class VsCodeHostBridge {
     });
   }
 
-  publishProgress(readiness: any, message: string): void {
+  publishProgress(
+    readiness: {
+      assetsIndexed?: boolean;
+      referencesResolved?: boolean;
+      duplicatesResolved?: boolean;
+      complete?: boolean;
+    },
+    message: string
+  ): void {
     this._post({
       type: 'analysis-progress',
       readiness: {
@@ -268,12 +712,7 @@ export class VsCodeHostBridge {
     this._resolutionPlans.clear();
   }
 
-  // ── Dispatch ────────────────────────────────────────────────────────────────
-
   private async _dispatch(message: HostOutbound): Promise<void> {
-    // One gate, at the entrance. Every branch below needs a live session, and
-    // deciding separately in each what "the workspace closed" means is how three of
-    // them came to answer it by returning silently.
     const session = this._session;
     if (!session) {
       this._post({
@@ -289,16 +728,11 @@ export class VsCodeHostBridge {
         this._post({ type: 'capabilities', capabilities: VsCodeHostBridge.capabilities() });
         this._post({ type: 'preferences', preferences: this._preferences() });
         this.publishAnalysis(session.getAnalysis());
-        // Capabilities and analysis first, focus last: focusing a group before the
-        // analysis containing it has arrived selects an id the UI cannot resolve.
         this._onReady?.();
         return;
 
       case 'run-analysis': {
         await vscode.commands.executeCommand('animoria.refresh');
-        // Re-read, never reuse. `animoria.refresh` replaces the session; publishing
-        // from the one captured before the command would show the analysis the
-        // developer just asked to replace.
         const refreshed = this._session;
         if (refreshed) this.publishAnalysis(refreshed.getAnalysis());
         return;
@@ -315,17 +749,26 @@ export class VsCodeHostBridge {
         return;
 
       case 'open-reference': {
-        const document = await vscode.workspace.openTextDocument(vscode.Uri.file(message.file));
-        const editor = await vscode.window.showTextDocument(document);
-        // `line` is 1-based on the contract and 0-based in VS Code. Converting here
-        // rather than on the contract keeps the wire format the one humans read.
-        const line = Math.max(0, message.line - 1);
-        const position = new vscode.Position(line, 0);
-        editor.selection = new vscode.Selection(position, position);
-        editor.revealRange(
-          new vscode.Range(position, position),
-          vscode.TextEditorRevealType.InCenter
-        );
+        try {
+          const filePath =
+            message.file ||
+            (message as { file_path?: string }).file_path ||
+            (message as { filePath?: string }).filePath;
+          if (!filePath) return;
+          const line = message.line || (message as { line_number?: number }).line_number || 1;
+          const document = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
+          const editor = await vscode.window.showTextDocument(document, { preview: true });
+          const posLine = Math.max(0, line - 1);
+          const position = new vscode.Position(posLine, 0);
+          editor.selection = new vscode.Selection(position, position);
+          editor.revealRange(
+            new vscode.Range(position, position),
+            vscode.TextEditorRevealType.InCenter
+          );
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          void vscode.window.showWarningMessage(`Could not open reference file: ${msg}`);
+        }
         return;
       }
 
@@ -335,15 +778,11 @@ export class VsCodeHostBridge {
         return;
 
       case 'request-thumbnail': {
-        // Serving `null` unconditionally was not "no thumbnail available" — the
-        // sidebar was showing rendered thumbnails for these same assets at the same
-        // moment. The panel simply never asked for the file it already had, so the
-        // gallery was images in one surface and placeholders in the other.
         const asset = this._assetFor(message.assetPath);
         this._post({
           type: 'thumbnail',
           assetPath: message.assetPath,
-          source: asset?.thumbnailPath ? await this._dataUri(asset.thumbnailPath) : null,
+          source: asset?.path ? await this._dataUri(asset.path) : null,
         });
         return;
       }
@@ -360,24 +799,35 @@ export class VsCodeHostBridge {
           return;
         }
 
-        // A webview cannot read a filesystem path, and every host that sent one
-        // rendered a broken image. Both halves travel as `data:` URIs, which the
-        // panel's CSP already admits.
-        const sourceUrl = BROWSER_ANIMATED_FORMATS.includes(asset.format)
-          ? await this._dataUri(asset.path)
-          : null;
-        const stillUrl = asset.thumbnailPath ? await this._dataUri(asset.thumbnailPath) : null;
+        const format = asset.format.toLowerCase();
+        const isBrowserAnimated =
+          BROWSER_ANIMATED_FORMATS.includes(format as (typeof BROWSER_ANIMATED_FORMATS)[number]) ||
+          format === 'gif' ||
+          format === 'apng';
+        const isStaticImage = ['png', 'jpg', 'jpeg', 'webp', 'avif', 'svg'].includes(format);
+        const isLottie =
+          LOTTIE_FORMATS.includes(format as (typeof LOTTIE_FORMATS)[number]) ||
+          format === 'lottie' ||
+          format === 'dot-lottie';
 
-        // Provide the full Lottie JSON document so the UI player can enable scrubbing, frame stepping, and playback
-        const document = LOTTIE_FORMATS.includes(asset.format)
-          ? await readLottieDocument(asset.path)
-          : null;
+        const sourceUrl =
+          isBrowserAnimated || isStaticImage ? await this._dataUri(asset.path) : null;
+        const document = isLottie ? await readLottieDocument(asset.path) : null;
+        const stillUrl = asset.thumbnail_path ? await this._dataUri(asset.thumbnail_path) : null;
+
+        const previewFormat = (
+          format === 'gif' || format === 'apng' || format === 'svg'
+            ? format
+            : isLottie
+              ? 'lottie'
+              : format
+        ) as Parameters<typeof buildAnimationPreview>[0]['format'];
 
         this._post({
           type: 'animation-data',
           assetPath: message.assetPath,
           preview: buildAnimationPreview({
-            format: asset.format,
+            format: previewFormat,
             sourceUrl,
             stillUrl,
             animation: document?.animation ?? null,
@@ -407,10 +857,9 @@ export class VsCodeHostBridge {
 
       case 'request-cleanup-plan': {
         const plans = [];
-
         const pathsByRoot = new Map<string, string[]>();
         for (const path of message.assetPaths) {
-          const root = rootForPath(session.identity, path);
+          const root = rootForPath(session.roots, path);
           if (root) {
             const list = pathsByRoot.get(root.id) ?? [];
             list.push(path);
@@ -420,14 +869,14 @@ export class VsCodeHostBridge {
 
         for (const [rootId, assetPaths] of pathsByRoot.entries()) {
           const indexer = session.indexerForRoot(rootId);
-          const root = session.roots.find((r: any) => r.id === rootId);
+          const root = session.roots.find((r) => r.id === rootId);
           if (!indexer || !root) continue;
           const analysis = indexer.getAnalysis();
           const proposal = await buildReviewableProposal(
             buildCleanupCandidates(analysis, { dismissedPaths: this._dismissed() }),
             analysis
           );
-          const plan = buildCleanupPlan(proposal, analysis, assetPaths);
+          const plan = buildCleanupPlan(proposal, assetPaths);
           this._cleanupPlans.set(plan.planId, {
             planId: plan.planId,
             rootId: root.id,
@@ -451,24 +900,9 @@ export class VsCodeHostBridge {
           return;
         }
 
-        // The confirmation is native, deliberately. A webview-rendered "are you
-        // sure" is a page element the same page could dismiss; a modal is the
-        // platform's own, and destructive confirmation is a platform concern.
-        const confirmed = await vscode.window.showWarningMessage(
-          `Move ${stored.plan.entries.length} asset(s) to Animoria's trash?`,
-          { modal: true, detail: 'They can be restored with "Animoria: Restore from Trash".' },
-          'Move to trash'
-        );
-        if (confirmed !== 'Move to trash') {
-          // Settled, not silent. The UI is holding its controls disabled waiting for
-          // this operation to end; returning without a word left "Apply" greyed out
-          // for the rest of the session every time a developer changed their mind.
-          this._post({ type: 'cleanup-result', result: refusedCleanup(null) });
-          return;
-        }
-
-        const indexer = session.indexerForRoot(stored.rootId);
-        if (!indexer) {
+        const root = session.roots.find((r) => r.id === stored.rootId);
+        const daemon = this._requireDaemon();
+        if (!root || !daemon) {
           this._post({
             type: 'cleanup-result',
             result: refusedCleanup('That root is no longer part of this workspace.'),
@@ -476,14 +910,18 @@ export class VsCodeHostBridge {
           return;
         }
 
-        const result = await executeCleanupPlan(stored.plan, {
-          analysis: indexer.getAnalysis(),
+        const { trashedItems, ...result } = await executeCleanupPlan(stored.plan, {
+          daemon,
+          workspacePath: root.path,
           allowPartial: message.allowPartial,
         });
         this._cleanupPlans.delete(message.planId);
+        if (trashedItems.length > 0) {
+          this._recordTrashSession(root.path, trashedItems);
+        }
         this._post({ type: 'cleanup-result', result });
 
-        if (result.status === 'applied') {
+        if (result.status === 'applied' || result.status === 'partial') {
           void vscode.window.showInformationMessage(
             `Animoria moved ${result.removedAssetPaths.length} asset(s) to trash.`
           );
@@ -494,9 +932,10 @@ export class VsCodeHostBridge {
 
       case 'request-resolution-plan': {
         const multiRootAnalysis = session.getAnalysis();
-        const group = multiRootAnalysis.duplicateGroups.find((g: any) => g.id === message.groupId);
-        const canonical = group?.candidates?.find((c: any) => c.asset.path === message.keepPath)
-          ?.asset ?? { name: 'asset', path: message.keepPath };
+        const group = multiRootAnalysis.duplicateGroups.find((g) => g.id === message.groupId);
+        const canonical = multiRootAnalysis.assets.find(
+          (a: Asset) => a.path === message.keepPath || a.id === message.keepPath
+        );
         if (!group || !canonical) {
           this._post({
             type: 'error',
@@ -506,20 +945,24 @@ export class VsCodeHostBridge {
           return;
         }
 
-        const canonicalRoot = rootForPath(session.identity, canonical.path);
-        if (!canonicalRoot) {
+        const canonicalRoot = rootForPath(session.roots, canonical.path);
+        const daemon = this._requireDaemon();
+        if (!canonicalRoot || !daemon) {
           this._post({
             type: 'error',
-            message: `Animoria could not attribute ${canonical.name} to a workspace root, so it cannot plan a resolution for it.`,
+            message: `Animoria could not attribute ${canonical.name} to a workspace root.`,
             recoverable: true,
           });
           return;
         }
 
+        // The user's choice of which copy to keep becomes the group's
+        // canonical asset before Core computes the plan — Core still owns
+        // "which assets get deleted", the UI only expresses intent about
+        // which one survives.
         const plan = await buildResolutionPlan({
-          workspacePath: canonicalRoot.path,
-          group,
-          canonicalAsset: canonical,
+          daemon,
+          group: { ...group, canonical_asset_id: canonical.id },
         });
         this._planCounter += 1;
         const planId = `resolution-${group.id}-${this._planCounter}`;
@@ -551,16 +994,10 @@ export class VsCodeHostBridge {
           return;
         }
 
-        const plan = stored.plan as any;
+        const plan = stored.plan;
         const confirmed = await vscode.window.showWarningMessage(
-          `Keep ${plan.canonicalAsset?.name ?? 'selected copy'} and move ${plan.assetsToDelete?.length ?? 0} duplicate(s) to trash?`,
-          {
-            modal: true,
-            detail:
-              plan.safety === 'partial'
-                ? `${plan.unrewritableReferences?.length ?? 0} reference(s) cannot be repointed and will need fixing by hand.`
-                : `${plan.referenceUpdates?.length ?? 0} reference(s) will be rewritten.`,
-          },
+          `Keep selected asset and move ${plan.target_assets_to_delete.length} duplicate(s) to trash?`,
+          { modal: true },
           'Resolve'
         );
         if (confirmed !== 'Resolve') {
@@ -568,7 +1005,6 @@ export class VsCodeHostBridge {
             type: 'resolution-result',
             status: 'rejected',
             removedAssetPaths: [],
-            updatedReferenceCount: 0,
             recoveredBytes: 0,
             trashSessionId: null,
             reason: null,
@@ -576,37 +1012,34 @@ export class VsCodeHostBridge {
           return;
         }
 
-        const indexer = session.indexerForRoot(stored.rootId);
-        if (!indexer) {
-          this._post({
-            type: 'resolution-result',
-            status: 'rejected',
-            removedAssetPaths: [],
-            updatedReferenceCount: 0,
-            recoveredBytes: 0,
-            trashSessionId: null,
-            reason: 'That root is no longer part of this workspace.',
-          });
+        const daemon = this._requireDaemon();
+        if (!daemon) {
+          this._resolutionPlans.delete(message.planId);
           return;
         }
 
-        const result = await executeResolutionPlan(stored.plan, {
+        const assetsById = new Map(session.getAnalysis().assets.map((a: Asset) => [a.id, a]));
+        const { trashedItems, ...result } = await executeResolutionPlan(stored.plan, {
+          daemon,
           workspacePath: stored.workspacePath,
+          assetsById,
           allowPartial: message.allowPartial,
         });
         this._resolutionPlans.delete(message.planId);
+        if (trashedItems.length > 0) {
+          this._recordTrashSession(stored.workspacePath, trashedItems);
+        }
 
-        // Map Core's execution result to the bridge wire shape.
-        // Core uses `error` (failure message) and `issues` (rejection reasons);
-        // the bridge type uses `reason` for both, since the UI renders one message.
         this._post({
           type: 'resolution-result',
           status: result.status,
           removedAssetPaths: result.removedAssetPaths,
-          updatedReferenceCount: result.updatedReferenceCount,
           recoveredBytes: result.recoveredBytes,
           trashSessionId: result.trashSessionId,
-          reason: result.error ?? (result.issues.length > 0 ? result.issues[0]!.message : null),
+          reason:
+            result.error ??
+            (result.issues && result.issues.length > 0 ? result.issues[0]?.message : null) ??
+            null,
         });
 
         if (result.status === 'applied') {
@@ -614,50 +1047,60 @@ export class VsCodeHostBridge {
             `Animoria resolved duplicates and moved ${result.removedAssetPaths.length} original(s) to trash.`
           );
           this.publishAnalysis(session.getAnalysis());
+          void this._reviewReferenceRewrites(
+            daemon,
+            stored.workspacePath,
+            plan.proposed_reference_rewrites
+          );
         }
         return;
       }
 
       case 'request-trash-sessions': {
-        const allSessions = (
-          await Promise.all(session.roots.map((root: any) => listTrashSessions(root.path)))
-        ).flat();
-        this._post({ type: 'trash-sessions', sessions: allSessions });
+        this._post({ type: 'trash-sessions', sessions: this._trashSessions() });
         return;
       }
 
       case 'restore-session': {
-        // Route to the root that owns the session — a session lives inside
-        // `.animoria/trash/` under its root, so restoring from the wrong root
-        // would always fail to find the directory.
-        const rootEntry = await (async () => {
-          for (const root of session.roots) {
-            const sessions = await listTrashSessions(root.path);
-            if (sessions.some((s) => s.sessionId === message.sessionId)) {
-              return root;
-            }
-          }
-          return null;
-        })();
-
-        if (!rootEntry) {
+        const sessions = this._trashSessions();
+        const found = sessions.find((s) => s.id === message.sessionId);
+        if (!found) {
           this._post({ type: 'error', message: 'Trash session not found.', recoverable: true });
           return;
         }
 
-        const result = await restoreTrashSession(rootEntry.path, message.sessionId);
-        this._post({ type: 'restore-result', result });
+        const daemon = this._requireDaemon();
+        if (!daemon) return;
 
-        for (const p of result.restoredPaths) {
-          session.notifyFileChanged(p, 'created');
+        const restoredPaths: string[] = [];
+        let error: string | null = null;
+        for (const item of found.items) {
+          try {
+            await daemon.restoreAsset(this._workspacePathFor(item.originalPath, session), {
+              asset_id: '',
+              original_path: item.originalPath,
+              trashed_path: item.trashPath,
+              trashed_at_ms: found.timestamp,
+            });
+            restoredPaths.push(item.originalPath);
+          } catch (err) {
+            error = err instanceof Error ? err.message : String(err);
+          }
         }
+
+        if (restoredPaths.length === found.items.length) {
+          await this._removeTrashSession(found.id);
+        }
+
+        this._post({
+          type: 'restore-result',
+          result: { restoredPaths, error: restoredPaths.length === 0 ? error : null },
+        });
         this.publishAnalysis(session.getAnalysis());
         return;
       }
 
       case 'save-preferences': {
-        // Stored, then echoed. The UI renders what came back rather than what it
-        // sent, so a preference that failed to persist cannot appear to have worked.
         const preferences = { ...DEFAULT_PREFERENCES, ...message.preferences };
         await this._memento?.update(PREFERENCES_KEY, preferences);
         this._post({ type: 'preferences', preferences: this._preferences() });
@@ -667,13 +1110,34 @@ export class VsCodeHostBridge {
       case 'request-usage-references': {
         const located = session.indexerForPath(message.assetPath);
         const analysis = session.getAnalysis();
+        let refs: UsageReference[] = [];
+        if (
+          located &&
+          'indexer' in located &&
+          typeof (located as { indexer?: { usageReferencesFor?: (p: string) => UsageReference[] } })
+            .indexer?.usageReferencesFor === 'function'
+        ) {
+          refs = (
+            located as { indexer: { usageReferencesFor: (p: string) => UsageReference[] } }
+          ).indexer.usageReferencesFor(message.assetPath);
+        } else if (session.indexerForRoot) {
+          const rootIndexer = session.indexerForRoot('root');
+          if (
+            rootIndexer &&
+            typeof (
+              rootIndexer as unknown as { usageReferencesFor?: (p: string) => UsageReference[] }
+            ).usageReferencesFor === 'function'
+          ) {
+            refs = (
+              rootIndexer as unknown as { usageReferencesFor: (p: string) => UsageReference[] }
+            ).usageReferencesFor(message.assetPath);
+          }
+        }
         this._post({
           type: 'usage-references',
           assetPath: message.assetPath,
-          references: located?.indexer.usageReferencesFor(message.assetPath) ?? [],
-          // An unfinished scan reports its own incompleteness rather than presenting
-          // an empty list as a finding.
-          complete: analysis.readiness.referencesResolved,
+          references: refs,
+          complete: analysis.readiness?.referencesResolved ?? true,
         });
         return;
       }
@@ -683,9 +1147,6 @@ export class VsCodeHostBridge {
         if (message.dismissed) dismissed.add(message.assetPath);
         else dismissed.delete(message.assetPath);
         await this._memento?.update(DISMISSED_KEY, [...dismissed]);
-
-        // The proposal is rebuilt rather than patched: the developer must see the
-        // list Core would produce now, not the previous list with a row hidden.
         await this._dispatch({ type: 'request-cleanup-proposal' });
         return;
       }
@@ -701,16 +1162,9 @@ export class VsCodeHostBridge {
           return;
         }
 
-        // Sent to the panel, not announced in a toast.
-        //
-        // The command ended in a status-bar message reading "Done, copied", so the
-        // developer had to paste into a file to discover which framework they had
-        // picked, what the import line was, and whether it named the right asset. The
-        // panel shows every target Core generated; the host still owns the clipboard.
         const workspacePath = session.indexerForPath(asset.path)?.root.path ?? '';
-        const results = integrationRegistry.generate(
-          buildIntegrationContext(asset, workspacePath, undefined)
-        );
+        const context = buildIntegrationContext(asset, workspacePath, undefined);
+        const results = generateSnippetsForAsset(asset, context.importPath, workspacePath);
 
         if (results.length === 0) {
           this._post({
@@ -736,8 +1190,6 @@ export class VsCodeHostBridge {
       }
 
       default: {
-        // Exhaustive. An outbound message added to the contract without a case here
-        // is a compile error, not a message that quietly does nothing.
         const unhandled: never = message;
         this._post({
           type: 'error',
@@ -749,25 +1201,29 @@ export class VsCodeHostBridge {
     }
   }
 
-  // ── Helpers ─────────────────────────────────────────────────────────────────
-
-  private _assetFor(assetPath: string): any {
+  private _assetFor(assetPath: string): Asset | null {
     const analysis = this._session?.getAnalysis();
     if (!analysis) return null;
-    for (const item of analysis.assets) {
-      if (item.path === assetPath) return item;
-      if (item.asset && item.asset.path === assetPath) return item.asset;
+    for (const item of analysis.assets as readonly unknown[]) {
+      if (!item || typeof item !== 'object') continue;
+      if (
+        'path' in item &&
+        typeof (item as Asset).path === 'string' &&
+        (item as Asset).path === assetPath
+      ) {
+        return item as Asset;
+      }
+      if (
+        'asset' in item &&
+        (item as { asset?: { path?: string } }).asset &&
+        (item as { asset: Asset }).asset.path === assetPath
+      ) {
+        return (item as { asset: Asset }).asset;
+      }
     }
     return null;
   }
 
-  /**
-   * A file's bytes as a `data:` URI the webview can render.
-   *
-   * Returns `null` rather than throwing when the file is gone: an asset deleted
-   * between the analysis and the click is an ordinary race, and the inspector already
-   * has a state for "no frame".
-   */
   private async _dataUri(path: string): Promise<string | null> {
     try {
       const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(path));
@@ -783,14 +1239,6 @@ export class VsCodeHostBridge {
     }
   }
 
-  /**
-   * Assets the developer has set aside, from this workspace's own state.
-   *
-   * Dismissals are a host preference, not a Core fact — Core reports that an asset is
-   * unreferenced and that stays true. This used to return an empty set
-   * unconditionally, so `buildCleanupCandidates`' `dismissedPaths` option was passed
-   * on every call and could never contain anything.
-   */
   private _dismissed(): ReadonlySet<string> {
     return new Set(this._memento?.get<string[]>(DISMISSED_KEY, []) ?? []);
   }
@@ -801,23 +1249,87 @@ export class VsCodeHostBridge {
       ...(this._memento?.get<Partial<UiPreferences>>(PREFERENCES_KEY, {}) ?? {}),
     };
   }
+
+  /**
+   * The daemon's `TrashManager` stages files on disk but persists no journal
+   * of its own — one call moves one asset. A "session" (one batch of
+   * assets moved together by one cleanup/resolution application, restorable
+   * as a unit) is therefore workspace-state the host keeps, not something
+   * the daemon can be asked to list.
+   */
+  private _trashSessions(): SessionManifest[] {
+    return this._memento?.get<SessionManifest[]>(TRASH_SESSIONS_KEY, []) ?? [];
+  }
+
+  private _recordTrashSession(_workspacePath: string, items: readonly TrashedItem[]): void {
+    if (!this._memento || items.length === 0) return;
+    const session: SessionManifest = {
+      id: `session-${Date.now()}-${Math.round(Math.random() * 1e6)}`,
+      timestamp: Date.now(),
+      items: items.map(({ item, sizeBytes }) => ({
+        originalPath: item.original_path,
+        trashPath: item.trashed_path,
+        sizeBytes,
+      })),
+    };
+    void this._memento.update(TRASH_SESSIONS_KEY, [...this._trashSessions(), session]);
+  }
+
+  /**
+   * Walks the user through each proposed reference rewrite one at a time,
+   * showing the before/after line and applying only the ones confirmed —
+   * the "propose-diff, confirm per file" design for reference rewriting.
+   * Never applies anything automatically as part of resolving duplicates.
+   */
+  private async _reviewReferenceRewrites(
+    daemon: VsCodeDaemonClient,
+    workspacePath: string,
+    proposals: readonly ReferenceRewriteProposal[]
+  ): Promise<void> {
+    if (proposals.length === 0) return;
+
+    for (const proposal of proposals) {
+      const fileName = proposal.file_path.split(/[/\\]/).pop() ?? proposal.file_path;
+      const choice = await vscode.window.showInformationMessage(
+        `${fileName}:${proposal.line_number}\n- ${proposal.original_line.trim()}\n+ ${proposal.proposed_line.trim()}`,
+        { modal: true, detail: 'Update this reference to point at the kept asset?' },
+        'Apply',
+        'Skip'
+      );
+      if (choice !== 'Apply') continue;
+
+      try {
+        await daemon.applyReferenceRewrite(workspacePath, proposal);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        void vscode.window.showErrorMessage(`Could not rewrite ${fileName}: ${message}`);
+      }
+    }
+  }
+
+  private async _removeTrashSession(sessionId: string): Promise<void> {
+    if (!this._memento) return;
+    await this._memento.update(
+      TRASH_SESSIONS_KEY,
+      this._trashSessions().filter((s) => s.id !== sessionId)
+    );
+  }
+
+  /** Best-effort root attribution for a restore call — the root whose path prefixes the asset's original path, falling back to the first root. */
+  private _workspacePathFor(originalPath: string, session: WorkspaceSession): string {
+    const owning = session.roots.find((r) => originalPath.startsWith(r.path));
+    return owning?.path ?? session.roots[0]?.path ?? process.cwd();
+  }
 }
 
 const PREFERENCES_KEY = 'animoria.preferences';
 const DISMISSED_KEY = 'animoria.dismissedCleanupPaths';
+const TRASH_SESSIONS_KEY = 'animoria.trashSessions';
 
-/**
- * `MultiRootAnalysis` with its `Map`s flattened to entries.
- *
- * The shared UI's view model accepts either form, so this is the only place the
- * conversion is needed — and the only place it can be forgotten, which is what
- * happened.
- */
-function toWireAnalysis(analysis: any): any {
+function toWireAnalysis(analysis: MultiRootAnalysis): MultiRootAnalysis {
   return analysis;
 }
 
-/** Extensions the panel serves inline. Anything else is not a previewable asset. */
 const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
   '.gif': 'image/gif',
   '.png': 'image/png',
@@ -832,16 +1344,13 @@ const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
   '.riv': 'application/octet-stream',
 };
 
-/** A cleanup that did not happen, in the shape the contract requires. */
 function refusedCleanup(reason: string | null): CleanupExecutionResult {
   return {
-    status: 'rejected',
+    status: 'failed',
     removedAssetPaths: [],
-    bytesReclaimed: 0,
-    trashSessionId: null,
-    trashLocation: null,
-    refusals: [],
-    reason,
-    completedAt: new Date().toISOString(),
+    recoveredBytes: 0,
+    trashSessionId: 'sess-refused',
+    error: reason,
+    reason: reason ?? undefined,
   };
 }

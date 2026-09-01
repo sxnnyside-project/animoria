@@ -21,10 +21,6 @@
           "description": "Disallows two assets with byte-identical contents.",
           "$ref": "#/definitions/severityOnly"
         },
-        "no-duplicate-names": {
-          "description": "Disallows two assets sharing the same name (case-insensitive, extension ignored).",
-          "$ref": "#/definitions/severityOnly"
-        },
         "max-file-size-kb": {
           "description": "Disallows assets larger than a configured size threshold, in kibibytes.",
           "oneOf": [

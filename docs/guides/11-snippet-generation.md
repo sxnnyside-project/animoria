@@ -1,236 +1,251 @@
 # Code Snippet Generation
 
 > **Audience:** Core engine maintainers, framework integration developers
-> **Scope:** Framework integration code snippet generation (React, Vue, Flutter, Swift, Kotlin), relative asset path resolution
+> **Scope:** Framework integration code snippet generation for animated (Lottie/dotLottie/Rive) and static asset formats, package-manager detection, import-path resolution
 > **Status:** Authoritative
-> **Primary packages:** [`@animoria/core`](../../packages/animoria-core)
+> **Primary packages:** [`packages/animoria-core-rust`](../../packages/animoria-core-rust)
 
 ## 1. Purpose
 
-This guide explains how Animoria generates framework-specific code snippets to help developers integrate animated visual assets into target codebases. Snippet generation resolves relative filesystem paths between source code target files and visual assets and formats framework code templates for React, Vue, Flutter, Swift, and Kotlin.
+This guide explains how Animoria generates framework-specific integration code snippets for a selected asset. All generation logic lives in one function, `generate_snippets_for_asset`, in [`src/integration/snippets.rs`](../../packages/animoria-core-rust/src/integration/snippets.rs) — there is no per-framework provider registry or plugin architecture; adding a new framework means editing this one function's match arms directly.
 
-## 2. Architecture
+## 2. Coverage Is Uneven By Format — Verified, Not a Bug
 
-Snippet generation is driven by `IntegrationRegistry` in `@animoria/core`:
+Reading `generate_snippets_for_asset` in full, the frameworks offered differ by asset format group, and this is real, current behavior, not an oversight to "fix" silently:
+
+| Format group | Frameworks offered |
+|---|---|
+| **Lottie / dotLottie** | React (`lottie-react`), React Native (`lottie-react-native`), Astro (dotLottie web component for `.lottie`, or `lottie-web` script tag for `.json`), Vue 3 (`vue3-lottie`), SwiftUI (`Lottie` via Swift Package Manager), Flutter (`lottie` pub package), Jetpack Compose (`lottie-compose`) |
+| **Rive** | React only (`@rive-app/react-canvas`) |
+| **Static/raster** (SVG, PNG, JPEG, WebP, AVIF, GIF, APNG) | React/Next.js `<img>`, React Native `<Image>`, plain HTML/Astro `<img>`, Vue 3 `<img>` — **no SwiftUI, Flutter, or Jetpack Compose snippet exists for static formats** |
+
+The static-format gap (no native mobile snippets) is a real limitation of the current implementation, confirmed by reading the `_ => vec![...]` fallback arm at the bottom of the `match` — it only emits the four web-oriented snippets listed above.
+
+## 3. Architecture
 
 ```mermaid
 graph TD
-    AssetRecord["Asset Record + Target Source File Path"]
-    
-    subgraph IntegrationSubsystem["Integration Subsystem"]
-        Registry["IntegrationRegistry (IntegrationRegistry.ts)"]
-        PathResolver["PathResolution (path-resolution.ts)"]
-        
-        ReactProv["ReactProvider (providers/ReactProvider.ts)"]
-        VueProv["VueProvider (providers/VueProvider.ts)"]
-        FlutterProv["FlutterProvider (providers/FlutterProvider.ts)"]
-        SwiftProv["SwiftProvider (providers/SwiftProvider.ts)"]
-        KotlinProv["KotlinProvider (providers/KotlinProvider.ts)"]
+    Request["asset stem + AssetFormat + import_path + PackageManager"]
+
+    subgraph Snippets["src/integration/snippets.rs"]
+        Detect["PackageManager::detect(workspace_root)"]
+        Generate["generate_snippets_for_asset()"]
+        CaseHelpers["to_camel_case / to_pascal_case"]
     end
 
-    subgraph Output["Snippet Result"]
-        Snippet["SnippetResult (Code String + Framework Language + Imports)"]
+    subgraph Handler["src/daemon/server.rs"]
+        Method["generateSnippet handler"]
+        FormatDetect["detect_format() (parser::heuristics)"]
+        PathCalc["import_path = relative to workspace_path, or ./<filename>"]
     end
 
-    AssetRecord --> Registry
-    Registry --> PathResolver
-    Registry --> ReactProv
-    Registry --> VueProv
-    Registry --> FlutterProv
-    Registry --> SwiftProv
-    Registry --> KotlinProv
-    ReactProv --> Snippet
-    VueProv --> Snippet
-    FlutterProv --> Snippet
-    SwiftProv --> Snippet
-    KotlinProv --> Snippet
+    Method --> FormatDetect
+    Method --> PathCalc
+    Method --> Detect
+    Detect --> Generate
+    PathCalc --> Generate
+    CaseHelpers --> Generate
+    Generate -->|Vec<SnippetOption>| Method
 ```
 
 ### Module Boundaries
 
 | Module | Location | Primary Responsibility |
 |---|---|---|
-| **Integration Registry** | [`src/integration/IntegrationRegistry.ts`](../../packages/animoria-core/src/integration/IntegrationRegistry.ts) | Authoritative registry for framework snippet providers. |
-| **Path Resolution** | [`src/integration/path-resolution.ts`](../../packages/animoria-core/src/integration/path-resolution.ts) | Computes relative paths between target source files and assets. |
-| **React Provider** | [`src/integration/providers/ReactProvider.ts`](../../packages/animoria-core/src/integration/providers/ReactProvider.ts) | Generates React / JSX component snippets (`lottie-react`). |
-| **Vue Provider** | [`src/integration/providers/VueProvider.ts`](../../packages/animoria-core/src/integration/providers/VueProvider.ts) | Generates Vue 3 template snippets (`vue3-lottie`). |
-| **Flutter Provider** | [`src/integration/providers/FlutterProvider.ts`](../../packages/animoria-core/src/integration/providers/FlutterProvider.ts) | Generates Dart / Flutter widget snippets (`lottie`). |
-| **Swift Provider** | [`src/integration/providers/SwiftProvider.ts`](../../packages/animoria-core/src/integration/providers/SwiftProvider.ts) | Generates Swift / SwiftUI view snippets (`LottieView`). |
-| **Kotlin Provider** | [`src/integration/providers/KotlinProvider.ts`](../../packages/animoria-core/src/integration/providers/KotlinProvider.ts) | Generates Jetpack Compose / Android snippets (`LottieAnimation`). |
+| **Snippet Generation** | [`src/integration/snippets.rs`](../../packages/animoria-core-rust/src/integration/snippets.rs) | `generate_snippets_for_asset` — the single function producing every `SnippetOption` for a given format. `to_camel_case`/`to_pascal_case` derive variable/component names from the asset's filename stem. |
+| **Package Manager Detection** | [`src/integration/snippets.rs`](../../packages/animoria-core-rust/src/integration/snippets.rs) (`PackageManager` enum) | Detects npm/pnpm/yarn/bun from lockfiles present at the workspace root; falls back to npm if none are found (not because npm is assumed, but because `npm install` works with no prior setup). |
+| **Daemon Handler** | [`src/daemon/server.rs`](../../packages/animoria-core-rust/src/daemon/server.rs), `"generateSnippet"` arm | Resolves the asset's format via `detect_format`, computes a best-effort relative `import_path`, detects the package manager, and calls `generate_snippets_for_asset`. |
 
-## 3. Lifecycle
-
-Snippet generation follows this execution pipeline:
+## 4. Lifecycle
 
 ```
-Target Asset Path + Target Framework Identifier
-→ IntegrationRegistry.getProvider(frameworkId)
-→ PathResolution.resolveRelativePath(targetSourceFile, assetPath)
-→ Provider.generateSnippet(asset, relativePath)
-→ SnippetResult (Code markup string + required import statements)
+Daemon receives generateSnippet { assetPath, workspacePath? }
+→ detect_format(assetPath) — if this fails, returns { results: [], error: "No snippet generator supports the asset at '<path>'" }
+→ stem = file_stem(assetPath)
+→ import_path = relative path from workspacePath to assetPath (prefixed "./", backslashes normalized to "/"),
+   or "./<filename>" if workspacePath was not given or the strip_prefix failed
+→ pkg_manager = PackageManager::detect(workspacePath) if given, else PackageManager::Npm
+→ generate_snippets_for_asset(stem, format, import_path, pkg_manager)
+→ Returns { results: Vec<SnippetOption> }
 ```
 
-## 4. Core Implementation
+## 5. Package Manager Detection
 
-### Supported Framework Snippet Providers
+```rust
+pub fn detect(workspace_root: &Path) -> Self {
+    if workspace_root.join("bun.lockb").exists() || workspace_root.join("bun.lock").exists() {
+        PackageManager::Bun
+    } else if workspace_root.join("pnpm-lock.yaml").exists() {
+        PackageManager::Pnpm
+    } else if workspace_root.join("yarn.lock").exists() {
+        PackageManager::Yarn
+    } else {
+        PackageManager::Npm
+    }
+}
+```
+Check order: Bun → pnpm → Yarn → npm (default). Each `SnippetOption.install_hint` that needs an npm-ecosystem package is generated via this detected manager (`npm install X` / `pnpm add X` / `yarn add X` / `bun add X`); Swift, Flutter, and Kotlin snippets use their own platform install hints (Swift Package Manager, `flutter pub add`, a Gradle `implementation(...)` line) regardless of the detected JS package manager.
 
-#### 1. React (`ReactProvider.ts`)
-Generates React JSX component initialization code:
+## 6. Snippet Examples (Verified From Source)
+
+### Lottie / dotLottie
+
+**React** (`lottie-react`):
+```tsx
+<Lottie
+  animationData={loadingData}
+  loop={true}
+  autoplay={true}
+/>
+```
 ```tsx
 import Lottie from 'lottie-react';
-import animationData from './assets/loading.json';
-
-export const LoadingAnimation = () => (
-  <Lottie animationData={animationData} loop={true} autoplay={true} />
-);
+import loadingData from './loading.json';
 ```
 
-#### 2. Vue (`VueProvider.ts`)
-Generates Vue 3 SFC template code:
+**Astro** — differs by whether the asset is `.json` (Lottie) or `.lottie` (dotLottie):
+- dotLottie: `<dotlottie-player src="..." autoplay loop ...></dotlottie-player>` with `import '@lottiefiles/dotlottie-wc';`
+- Lottie JSON: a `<div>` + inline `<script>` calling `lottie.loadAnimation(...)` from `lottie-web`.
+
+**SwiftUI**:
+```swift
+LottieView(animation: .named("loading"))
+    .playbackMode(.playing(.toProgress(1, loopMode: .loop)))
+    .frame(width: 200, height: 200)
+```
+Install hint: `"Swift Package Manager: lottie-spm"` (not an npm command).
+
+**Flutter**:
+```dart
+Lottie.asset(
+  'loading.json',
+  repeat: true,
+  animate: true,
+)
+```
+Install hint: `"flutter pub add lottie"`.
+
+**Jetpack Compose**:
+```kotlin
+@Composable
+fun LoadingAnimation() {
+    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.loading))
+    LottieAnimation(composition = composition, iterations = Int.MAX_VALUE)
+}
+```
+Install hint: `"implementation(\"com.airbnb.android:lottie-compose:6.4.0\")"` — a hardcoded version string in the source, not resolved dynamically.
+
+### Rive (React only)
+
+```tsx
+const { RiveComponent } = useRive({
+  src: './spinner.riv',
+  autoplay: true,
+});
+return <RiveComponent style={{ width: 300, height: 300 }} />;
+```
+Install hint uses the detected package manager for `@rive-app/react-canvas`. No other framework snippet is generated for Rive assets.
+
+### Static/raster formats
+
+```tsx
+// React / Next.js
+<img src={logoImg} alt="logo" loading="lazy" />
+```
+```tsx
+// React Native
+<Image source={logoImg} style={{ width: 100, height: 100 }} />
+```
+```html
+<!-- HTML / Astro -->
+<img src="./logo.png" alt="logo" width="200" height="200" />
+```
 ```vue
+<!-- Vue 3 -->
 <template>
-  <VueLottie :animationData="animationData" :loop="true" :autoPlay="true" />
+  <img :src="logoImg" alt="logo" />
 </template>
 ```
+None of these carry an `install_hint` (`None` in every static-format `snippet(...)` call) — no package install is needed for a plain `<img>`.
 
-#### 3. Flutter (`FlutterProvider.ts`)
-Generates Dart Flutter widget code:
-```dart
-import 'package:lottie/lottie.dart';
+## 7. Naming Helpers
 
-Widget buildAnimation() {
-  return Lottie.asset('assets/loading.json');
-}
-```
+`to_camel_case("my-cool_animation")` → `"myCoolAnimation"` (used for the imported data/image variable name).
+`to_pascal_case("my-cool_animation")` → `"MyCoolAnimation"` (used for generated component/function names, e.g. `{comp_name}Animation` in the Compose snippet). Both split on `-`, `_`, `.`, and whitespace, and drop any character that is not ASCII-alphanumeric, `$`, or `_`.
 
-#### 4. Swift (`SwiftProvider.ts`)
-Generates SwiftUI LottieView code:
-```swift
-import Lottie
-import SwiftUI
+## 8. Daemon Protocol v1
 
-struct AnimationView: View {
-  var body: some View {
-    LottieView(animation: .named("loading"))
-      .playing(loopMode: .loop)
-  }
-}
-```
+### `generateSnippet`
 
-#### 5. Kotlin (`KotlinProvider.ts`)
-Generates Android Jetpack Compose code:
-```kotlin
-import com.airbnb.lottie.compose.*
-
-@Composable
-fun AnimatedView() {
-    val composition by rememberLottieComposition(LottieCompositionSpec.Asset("loading.json"))
-    LottieAnimation(composition = composition, iterations = LottieConstants.IterateForever)
-}
-```
-
-## 5. CLI / Daemon
-
-The daemon exposes snippet generation via protocol method `generateSnippet`:
-
-### Request Payload
 ```json
-{
-  "protocol": 1,
-  "id": "req-102",
-  "method": "generateSnippet",
-  "params": {
-    "assetPath": "assets/loading.json",
-    "framework": "react",
-    "targetFilePath": "src/components/Header.tsx"
-  }
-}
+{ "protocol": 1, "id": "req-102", "method": "generateSnippet",
+  "params": { "assetPath": "assets/loading.json", "workspacePath": "/repo" } }
 ```
-
-### Response Result
 ```json
-{
-  "protocol": 1,
-  "id": "req-102",
-  "result": {
-    "framework": "react",
-    "snippet": "import Lottie from 'lottie-react';...",
-    "imports": ["import Lottie from 'lottie-react';"]
-  }
-}
+{ "protocol": 1, "id": "req-102",
+  "result": { "results": [
+    { "label": "React (lottie-react)", "language": "tsx",
+      "code": "<Lottie\n  animationData={loadingData}\n  loop={true}\n  autoplay={true}\n/>",
+      "imports": "import Lottie from 'lottie-react';\nimport loadingData from './assets/loading.json';",
+      "installHint": "pnpm add lottie-react" },
+    { "...": "one entry per applicable framework" }
+  ] } }
 ```
 
-## 6. VS Code
-
-- Extension host calls `IntegrationRegistry` directly in-process.
-- Provides context menu command "Copy Code Snippet..." allowing users to select their preferred framework.
-
-## 7. JetBrains
-
-- Plugin invokes `generateSnippet` daemon command (`GenerateSnippetAction.kt`).
-- Copies formatted code snippet to system clipboard or inserts code directly into active editor.
-
-## 8. Sandbox
-
-The local sandbox (`apps/animoria-sandbox`) renders code snippet preview cards with copy-to-clipboard buttons for testing.
+There is no `framework` request parameter — the server always returns every applicable snippet for the detected format in one call; the caller (host UI) is responsible for letting the developer pick one. If `detect_format` fails to identify the asset's format at all, the result is `{ "results": [], "error": "No snippet generator supports the asset at '<path>'" }` rather than a protocol-level error.
 
 ## 9. Contracts & Types
 
-Snippet contracts reside in [`packages/animoria-core/src/contracts.ts`](../../packages/animoria-core/src/contracts.ts):
+`SnippetOption` ([`src/integration/snippets.rs`](../../packages/animoria-core-rust/src/integration/snippets.rs)) maps to `GeneratedSnippet` in the UI bridge ([`packages/animoria-ui/src/bridge/types.ts`](../../packages/animoria-ui/src/bridge/types.ts)):
 
-```typescript
-export type FrameworkIdentifier = 'react' | 'vue' | 'flutter' | 'swift' | 'kotlin';
-
-export interface SnippetResult {
-  readonly framework: FrameworkIdentifier;
-  readonly snippet: string;
-  readonly imports: readonly string[];
+```rust
+pub struct SnippetOption {
+    pub label: String,
+    pub language: String,
+    pub code: String,
+    pub imports: Option<String>,
+    pub install_hint: Option<String>,
 }
 ```
+```typescript
+export interface GeneratedSnippet {
+  readonly label: string;
+  readonly language: string; // "tsx", "vue", "swift", "kotlin", "dart", "astro", "html"
+  readonly code: string;
+  readonly imports: string | null;
+  readonly installHint: string | null;
+}
+```
+`SnippetOption` does not exist anywhere in this codebase — not as a `ts-rs`-generated file in `packages/animoria-contracts/src/generated/`, and not as a hand-written type in `animoria-ui`. The only type on the UI side is `GeneratedSnippet`, defined directly in `packages/animoria-ui/src/bridge/types.ts`. It is a hand-authored type, not generated from Rust, and there is no evidence anywhere in the codebase — no comment, no TODO, no partial `ts-rs` annotation — that migrating it to a generated contract is planned.
 
-## 10. Tests & Fixtures
-
-- **Integration Unit Tests**: [`packages/animoria-core/tests/integration/`](../../packages/animoria-core/tests/integration)
-  - `integration-registry.test.ts`: Verifies framework provider registration and lookup.
-  - `path-resolution.test.ts`: Validates relative path calculation across nested directory trees.
-  - `providers/*.test.ts`: Tests code template generation for React, Vue, Flutter, Swift, and Kotlin providers.
-
-## 11. Extension Points
-
-### How do I add a new framework snippet provider?
-1. Create `MyFrameworkProvider.ts` implementing `IntegrationProvider` in [`packages/animoria-core/src/integration/providers/`](../../packages/animoria-core/src/integration/providers/).
-2. Register the provider in `IntegrationRegistry.ts`.
-3. Export built-in provider in `builtins.ts`.
-4. Add unit test suite under `tests/integration/providers/`.
-
-## 12. Failure Modes
+## 10. Failure Modes
 
 | Failure Mode | Root Cause | System Behavior |
 |---|---|---|
-| **Unknown Framework** | Unsupported framework identifier passed | `IntegrationRegistry` throws `unsupported-framework` error. |
-| **Path Resolution Failure** | Target file on different drive/root | `PathResolution` falls back to workspace-relative path string. |
+| **Unrecognized asset format** | `detect_format` returns `None` or an error for the given path | `generateSnippet` returns `results: []` with an explanatory `error` string; no protocol-level error. |
+| **`workspacePath` omitted or the asset path isn't under it** | Caller passes only `assetPath`, or a path outside the workspace | `import_path` falls back to `./<filename>` (just the basename, no directory structure) rather than a full relative path. |
+| **Static format requested for a native-mobile snippet** | Developer expects a SwiftUI/Flutter/Compose snippet for e.g. a PNG | None is generated — this is the coverage gap documented in Section 2, not a bug to route around silently. |
 
-## 13. Common Maintenance Tasks
+## 11. Common Maintenance Tasks
 
-### How do I test code snippet generation?
-Execute integration test suite:
-```bash
-pnpm --filter @animoria/core test tests/integration/
-```
+### How do I add a new framework snippet?
+Edit the relevant match arm in `generate_snippets_for_asset` ([`src/integration/snippets.rs`](../../packages/animoria-core-rust/src/integration/snippets.rs)) directly — e.g. push a new `snippet(...)` call into the `AssetFormat::Lottie | AssetFormat::DotLottie` arm, or extend the static-format fallback arm to close the SwiftUI/Flutter/Compose gap noted in Section 2. There is no separate provider file or registration step; everything lives in this one function.
 
-## 14. Files & Ownership
+### How do I run the snippet generation tests?
+There are none to run. `packages/animoria-core-rust/src/integration/snippets.rs` has no `#[cfg(test)] mod tests` block, dedicated or otherwise — `cargo test -p animoria-core-rust integration::snippets` will report zero matching tests. Adding coverage for this module means writing a new `#[cfg(test)] mod tests` block in `snippets.rs` (or a new integration test under `packages/animoria-core-rust/tests/`) rather than running an existing suite.
+
+## 12. Files & Ownership
 
 | Layer | Path | Responsibility |
 |---|---|---|
-| Core Subsystem | [`packages/animoria-core/src/integration/IntegrationRegistry.ts`](../../packages/animoria-core/src/integration/IntegrationRegistry.ts) | Provider registry coordinator |
-| Core Subsystem | [`packages/animoria-core/src/integration/path-resolution.ts`](../../packages/animoria-core/src/integration/path-resolution.ts) | Relative path resolution engine |
-| Core Subsystem | [`packages/animoria-core/src/integration/providers/`](../../packages/animoria-core/src/integration/providers/) | React, Vue, Flutter, Swift, Kotlin providers |
+| Rust Core | [`packages/animoria-core-rust/src/integration/snippets.rs`](../../packages/animoria-core-rust/src/integration/snippets.rs) | All snippet generation logic and package-manager detection |
+| Rust Core | [`packages/animoria-core-rust/src/daemon/server.rs`](../../packages/animoria-core-rust/src/daemon/server.rs), `"generateSnippet"` handler | Format detection, import-path resolution, daemon protocol wiring |
+| UI Subsystem | [`packages/animoria-ui/src/bridge/types.ts`](../../packages/animoria-ui/src/bridge/types.ts) | `GeneratedSnippet` type, `generate-snippet`/`snippets` bridge messages |
 
-## 15. Verification Checklist
-
-Execute snippet integration tests:
+## 13. Verification Checklist
 
 ```bash
-pnpm --filter @animoria/core test tests/integration/
+cargo test -p animoria-core-rust integration
+cargo clippy -p animoria-core-rust --all-targets -- -D warnings
 ```
-Verify snippet output formats and relative path calculations pass cleanly.
+Manually call `generateSnippet` against a Lottie `.json`, a dotLottie `.lottie`, a Rive `.riv`, and a static PNG, and confirm the returned `results` match the coverage table in Section 2 — in particular, that no SwiftUI/Flutter/Compose entry appears for the PNG.

@@ -1,188 +1,118 @@
-# Thumbnail Rendering Engine
+# Thumbnail Resolution
 
-> **Audience:** Core engine maintainers, UI developers, performance engineers
-> **Scope:** Vector Lottie frame 0 SVG rendering, embedded raster image extraction, format badge rendering, SHA-256 thumbnail caching
+> **Audience:** Core engine maintainers, UI developers
+> **Scope:** How `Asset.thumbnail_path` is resolved at scan time — native passthrough for displayable formats, generated SVG placeholder badges for Lottie/dotLottie/Rive
 > **Status:** Authoritative
-> **Primary packages:** [`@animoria/core`](../../packages/animoria-core)
+> **Primary packages:** [`packages/animoria-core-rust`](../../packages/animoria-core-rust)
 
 ## 1. Purpose
 
-This guide explains how Animoria's thumbnail rendering engine generates lightweight visual preview thumbnails and format badges for display in IDE tree views, gallery grids, hovers, and dialogs. The engine generates pure vector SVG markup or extracts embedded raster thumbnails without requiring heavy browser canvas or DOM dependencies in Node.js.
+This guide explains Animoria's current thumbnail resolution behavior.
+
+> [!IMPORTANT]
+> The current implementation ([`src/thumbnail/mod.rs`](../../packages/animoria-core-rust/src/thumbnail/mod.rs)) is deliberately minimal, and this guide describes it as-is, not as a system with caching, real raster downscaling, or content-aware vector rendering. Verified by reading the module in full: there are exactly two tiers, no cache, no cache-key hashing, no raster resizing, and no per-frame Lottie shape rendering. Any of that (a real thumbnail engine that renders actual frame content, downsamples large rasters, or caches by content hash) does not exist in `animoria-core-rust` today — it would be new work, not a rename of something already present.
 
 ## 2. Architecture
 
-Thumbnail rendering is managed by `ThumbnailEngine` in `@animoria/core`:
-
 ```mermaid
 graph TD
-    AssetCandidate["Asset File Record"]
-    
-    subgraph EngineSubsystem["Thumbnail Subsystem"]
-        CacheKey["CacheKey (thumbnail-cache-key.ts)"]
-        Engine["ThumbnailEngine (thumbnail-engine.ts)"]
-        
-        VectorRender["LottieVectorRenderer (lottie-vector-renderer.ts)"]
-        ImageExtract["EmbeddedImageExtractor (embedded-image-extractor.ts)"]
-        BadgeRender["FormatBadgeRenderer (format-badge-renderer.ts)"]
-    end
+    Asset["Asset (post-parse, is_valid known)"]
+    Check{"needs_generated_thumbnail(format)?"}
+    Passthrough["thumbnail_path = asset.path (the file itself)"]
+    Generate["render_badge_svg(asset) → .animoria/thumbnails/<stem>-<id>.svg"]
 
-    subgraph Output["Thumbnail Output"]
-        Result["ThumbnailResult (SVG / Data URI String + Cache Hit)"]
-    end
-
-    AssetCandidate --> CacheKey
-    CacheKey --> Engine
-    Engine -->|Lottie / SVG| VectorRender
-    Engine -->|dotLottie / Rive / Raster| ImageExtract
-    Engine --> BadgeRender
-    VectorRender --> Result
-    ImageExtract --> Result
-    BadgeRender --> Result
+    Asset --> Check
+    Check -->|"raster, SVG, GIF, APNG, animated-svg"| Passthrough
+    Check -->|"Lottie, dotLottie, Rive"| Generate
 ```
 
-### Module Boundaries
-
-| Module | Location | Primary Responsibility |
-|---|---|---|
-| **Thumbnail Engine** | [`src/thumbnails/thumbnail-engine.ts`](../../packages/animoria-core/src/thumbnails/thumbnail-engine.ts) | Authoritative thumbnail generation coordinator and cache manager. |
-| **Lottie Vector Renderer** | [`src/thumbnails/lottie-vector-renderer.ts`](../../packages/animoria-core/src/thumbnails/lottie-vector-renderer.ts) | Renders frame 0 vector shape paths of Lottie JSON directly into clean SVG strings. |
-| **Embedded Image Extractor** | [`src/thumbnails/embedded-image-extractor.ts`](../../packages/animoria-core/src/thumbnails/embedded-image-extractor.ts) | Extracts embedded PNG/JPEG raster thumbnails from dotLottie archives or raster formats. |
-| **Format Badge Renderer** | [`src/thumbnails/format-badge-renderer.ts`](../../packages/animoria-core/src/thumbnails/format-badge-renderer.ts) | Generates format badge indicator overlays (`LOTTIE`, `RIVE`, `SVG`, `GIF`, `APNG`). |
-| **Thumbnail Cache Key** | [`src/thumbnails/thumbnail-cache-key.ts`](../../packages/animoria-core/src/thumbnails/thumbnail-cache-key.ts) | Generates SHA-256 cache keys derived from path, file mtime, size, and render options. |
+There is no separate module boundary table here — `resolve_thumbnail`, `needs_generated_thumbnail`, `render_badge_svg`, `format_label`, `format_color`, and `escape_xml` are all private-or-public functions in the single file [`src/thumbnail/mod.rs`](../../packages/animoria-core-rust/src/thumbnail/mod.rs).
 
 ## 3. Lifecycle
 
-Thumbnail generation follows this sequence:
-
 ```
-Asset Path + Format
-→ Compute SHA-256 Cache Key (path + mtime + size + requested size)
-→ Check In-Memory Thumbnail Cache
-→ IF Cache Hit: Return cached SVG / Data URI string
-→ IF Cache Miss:
-  ┌── Lottie (.json) ────────> LottieVectorRenderer (frame 0 vector paths to SVG)
-  ├── dotLottie / Rive ──────> EmbeddedImageExtractor (extract thumbnail asset)
-  └── Raster / SVG ──────────> Image Data URI / SVG Sanitization
-→ Attach Format Badge Overlay (FormatBadgeRenderer)
-→ Store Result in Cache & Return ThumbnailResult
+resolve_thumbnail(workspace_root, asset)
+→ If !asset.is_valid: return None (no thumbnail at all for a corrupt/unparseable asset)
+→ If the format is already natively displayable (raster image, SVG, GIF, APNG,
+   Animated SVG): return Some(asset.path.clone()) — the asset's own file IS the thumbnail
+→ Otherwise (Lottie, dotLottie, Rive):
+    → Ensure .animoria/thumbnails/ exists
+    → Compute filename: "<asset.stem>-<asset.id>.svg"
+    → If that file does not already exist on disk, write a generated placeholder SVG
+    → Return Some(path to that SVG)
+→ Returns None only if the placeholder SVG could not be written (e.g. unwritable directory)
 ```
 
-## 4. Core Implementation
+## 4. Implementation Detail
 
-### Vector Lottie Rendering (`lottie-vector-renderer.ts`)
-To generate crisp vector thumbnails without booting headless Chromium or canvas dependencies:
-- Parses frame 0 shape layers (`shapes`, `path`, `rect`, `ellipse`, `fill`, `stroke`).
-- Translates shape geometries directly into standard SVG path data (`<path d="..." fill="..." />`).
-- Outputs lightweight, resolution-independent SVG markup that scales natively in IDE webviews and gallery grids.
+### Tier 1 — Passthrough
 
-### SHA-256 Thumbnail Cache Keys (`thumbnail-cache-key.ts`)
-To prevent redundant SVG rendering during fast tree view scrolling:
-- Computes SHA-256 hash over: `assetPath` + `fileMtime` + `fileSizeBytes` + `dimensionSpec`.
-- Cached thumbnail results persist in-memory in `ThumbnailEngine`. Cache entries are evicted when file modification timestamps change.
-
-### Format Badges (`format-badge-renderer.ts`)
-Generates standardized SVG format badges:
-- Badges display upper-case format labels (`LOTTIE`, `RIVE`, `SVG`, `GIF`, `APNG`).
-- Rendered using consistent token-based styling colors to ensure accessibility against light and dark IDE themes.
-
-## 5. CLI / Daemon
-
-Host clients request thumbnails via protocol method `generateThumbnail`:
-
-### Request Payload
-```json
-{
-  "protocol": 1,
-  "id": "req-98",
-  "method": "generateThumbnail",
-  "params": {
-    "assetPath": "assets/badge.json",
-    "width": 64,
-    "height": 64
-  }
+```rust
+fn needs_generated_thumbnail(format: AssetFormat) -> bool {
+    matches!(format, AssetFormat::Lottie | AssetFormat::DotLottie | AssetFormat::Rive)
 }
 ```
 
-### Response Result
-```json
-{
-  "protocol": 1,
-  "id": "req-98",
-  "result": {
-    "assetPath": "assets/badge.json",
-    "svgDataUri": "data:image/svg+xml;base64,...",
-    "cacheHit": true
-  }
-}
+For every other valid format, `resolve_thumbnail` returns the asset's own path unchanged. There is no resizing, re-encoding, or downscaling step of any kind for raster images — a 20 MB PNG's "thumbnail" is that same 20 MB PNG. Callers that need a smaller rendition (e.g. a tree-view icon) are responsible for scaling it themselves at display time.
+
+### Tier 2 — Generated SVG placeholder badge
+
+For Lottie, dotLottie, and Rive — formats with no natively displayable file — `render_badge_svg` produces a small, deterministic SVG containing only:
+- A colored rectangle background (`format_color`), one of four fixed hex colors keyed by format (`#7C3AED` Lottie, `#059669` dotLottie, `#DC2626` Rive, `#6B7280` fallback).
+- A text label naming the format (`format_label`: `"Lottie"`, `"dotLottie"`, `"Rive"`).
+- The asset's own filename (`asset.name`, XML-escaped via `escape_xml`).
+
+```rust
+format!(
+    r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <rect width="256" height="256" fill="{color}" opacity="0.12"/>
+  <rect x="0" y="0" width="256" height="8" fill="{color}"/>
+  <text x="128" y="118" ...>{label}</text>
+  <text x="128" y="148" ...>{name}</text>
+</svg>"#
+)
 ```
 
-## 6. VS Code
+This is a static badge, not a rendering of frame 0 (or any frame) of the animation's actual shapes/paths. No vector geometry from the Lottie/Rive document is read or translated into SVG markup. The badge only communicates "this is a Lottie/dotLottie/Rive asset named X" — nothing about what the animation actually looks like.
 
-- Extension host calls `ThumbnailEngine` directly in-process.
-- Generates data URIs for TreeView item icons and hover preview cards.
+### "Caching"
 
-## 7. JetBrains
+The only cache-like behavior is a file-existence check: `if !target.exists() { write badge }`. The generated SVG's filename embeds the asset's stable `asset.id`, so once written it is reused indefinitely — there is no invalidation on file mtime, size, or content change, and no in-memory cache at all. If the underlying Lottie/Rive file's *name* stays the same after being edited, the badge (which never inspected its content) is unaffected anyway; if the *format* were to somehow change for the same id, the stale badge on disk would keep being served.
 
-- IntelliJ plugin invokes `generateThumbnail` daemon command (`AnimoriaGalleryPanel.kt:397`).
-- Renders thumbnails in JCEF gallery grid cells.
+## 5. Daemon Protocol v1
 
-## 8. Sandbox
+Thumbnails are not requested by format/dimension parameters. `generateThumbnail` simply reads whatever `Asset.thumbnail_path` already resolved to at scan time and returns it as a base64 `data:` URI — see [Guide 09](./09-asset-preview-inspection.md#4-core-implementation) for that handler. There is no `width`/`height` parameter honored anywhere in this pipeline; any such parameter in an older document referred to the pre-v2.0.0 TypeScript engine and does not apply here.
 
-The local sandbox (`apps/animoria-sandbox`) uses pre-rendered SVG data URIs to demonstrate gallery grid thumbnail layouts in Vite.
-
-## 9. Contracts & Types
-
-Thumbnail types reside in [`packages/animoria-core/src/contracts.ts`](../../packages/animoria-core/src/contracts.ts):
-
-```typescript
-export interface ThumbnailResult {
-  readonly assetPath: string;
-  readonly svgDataUri: string;
-  readonly cacheHit: boolean;
-  readonly width: number;
-  readonly height: number;
-}
-```
-
-## 10. Tests & Fixtures
-
-- **Thumbnail Unit Tests**: [`packages/animoria-core/tests/thumbnails/`](../../packages/animoria-core/tests/thumbnails)
-  - `thumbnail-engine.test.ts`: Verifies thumbnail generation, badge rendering, and cache key eviction.
-  - `lottie-vector-renderer.test.ts`: Tests frame 0 SVG path rendering.
-  - `embedded-image-extractor.test.ts`: Verifies image extraction from dotLottie/Rive archives.
-
-## 11. Extension Points
-
-### How do I support thumbnail extraction for a new format?
-Implement a new renderer/extractor module in `packages/animoria-core/src/thumbnails/` and register dispatch logic in `ThumbnailEngine.generate()`.
-
-## 12. Failure Modes
+## 6. Failure Modes
 
 | Failure Mode | Root Cause | System Behavior |
 |---|---|---|
-| **Empty Shape Layer** | Lottie has no fill/stroke on frame 0 | `LottieVectorRenderer` falls back to format badge thumbnail. |
-| **Corrupt Image Asset** | Unreadable raster payload | `EmbeddedImageExtractor` catches error and returns fallback format badge SVG. |
+| **Invalid asset** | `asset.is_valid == false` | `resolve_thumbnail` returns `None` immediately — no thumbnail attempted at all. |
+| **Unwritable `.animoria/thumbnails/`** | Read-only workspace, permissions | `fs::create_dir_all` or `fs::write` fails; `resolve_thumbnail` returns `None`. The daemon's `generateThumbnail` then reports `dataUri: null`. |
+| **Stale badge after edits** | The generated SVG already exists for this `asset.id` | It is never regenerated — see the "Caching" note above. |
 
-## 13. Common Maintenance Tasks
+## 7. Common Maintenance Tasks
 
-### How do I clear the thumbnail cache?
-Call `ThumbnailEngine.clearCache()` or restart the daemon session.
+### How do I add real raster downscaling or Lottie frame rendering?
+This is genuinely new functionality, not present today. It would require adding an image-processing dependency (raster downscaling) or a vector-shape interpreter reading Lottie's `shapes`/`path`/`fill`/`stroke` structures (frame rendering), plus a real cache keyed by content hash + requested size if performance matters — none of which exists in `src/thumbnail/mod.rs` currently.
 
-## 14. Files & Ownership
+### How do I run the thumbnail unit tests?
+```bash
+cargo test -p animoria-core-rust thumbnail
+```
+There is no dedicated unit test module for `src/thumbnail/mod.rs`: it has no `#[cfg(test)] mod tests` block, and no file under `packages/animoria-core-rust/tests/` references thumbnail generation. Whatever coverage this module has today comes only indirectly, through broader `AssetIndex`/scan integration tests exercising code paths that happen to call into it.
+
+## 8. Files & Ownership
 
 | Layer | Path | Responsibility |
 |---|---|---|
-| Core Subsystem | [`packages/animoria-core/src/thumbnails/thumbnail-engine.ts`](../../packages/animoria-core/src/thumbnails/thumbnail-engine.ts) | Thumbnail coordinator & cache manager |
-| Core Subsystem | [`packages/animoria-core/src/thumbnails/lottie-vector-renderer.ts`](../../packages/animoria-core/src/thumbnails/lottie-vector-renderer.ts) | Frame 0 Lottie vector SVG renderer |
-| Core Subsystem | [`packages/animoria-core/src/thumbnails/embedded-image-extractor.ts`](../../packages/animoria-core/src/thumbnails/embedded-image-extractor.ts) | Embedded raster image extractor |
-| Core Subsystem | [`packages/animoria-core/src/thumbnails/format-badge-renderer.ts`](../../packages/animoria-core/src/thumbnails/format-badge-renderer.ts) | Format badge SVG renderer |
-| Core Subsystem | [`packages/animoria-core/src/thumbnails/thumbnail-cache-key.ts`](../../packages/animoria-core/src/thumbnails/thumbnail-cache-key.ts) | SHA-256 cache key builder |
+| Rust Core | [`packages/animoria-core-rust/src/thumbnail/mod.rs`](../../packages/animoria-core-rust/src/thumbnail/mod.rs) | Thumbnail path resolution: passthrough or generated SVG badge |
+| Rust Core | [`packages/animoria-core-rust/src/daemon/preview.rs`](../../packages/animoria-core-rust/src/daemon/preview.rs) | Reads the resolved thumbnail file into a `data:` URI for hosts |
 
-## 15. Verification Checklist
-
-Execute thumbnail test suite:
+## 9. Verification Checklist
 
 ```bash
-pnpm --filter @animoria/core test tests/thumbnails/
+cargo test -p animoria-core-rust thumbnail
+cargo clippy -p animoria-core-rust --all-targets -- -D warnings
 ```
-Verify vector rendering, cache key computation, and badge rendering unit tests pass.
+Manually scan a workspace containing a raster image, an SVG, a Lottie file, and a Rive file; confirm `thumbnail_path` on the resulting assets points at the raster/SVG file itself, and at a newly-created `.animoria/thumbnails/*.svg` badge for the Lottie and Rive assets.

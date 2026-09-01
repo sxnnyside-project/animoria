@@ -1,4 +1,4 @@
-import type { ResolutionPlan, UsageReference } from '@animoria/contracts';
+import type { Asset, ResolutionPlan, UsageReference } from '@animoria/contracts';
 import type {
   HostCapabilities,
   HostInbound,
@@ -54,20 +54,7 @@ export const SANDBOX_CAPABILITIES: HostCapabilities = {
     'This action is unavailable in the Sandbox. The harness is read-only by construction — it exercises every screen without touching the filesystem.',
 };
 
-/**
- * `MultiRootAnalysis` as JSON puts it on the wire.
- *
- * Only the part that differs is described: `referenceCounts` is a `Map` in the
- * contract and cannot survive `JSON.stringify`, so the dev bridge sends pairs and the
- * host rebuilds the map.
- */
-type WireAnalysis = Omit<MultiRootAnalysis, 'roots'> & {
-  readonly roots: readonly (Omit<MultiRootAnalysis['roots'][number], 'analysis'> & {
-    readonly analysis: Omit<MultiRootAnalysis['roots'][number]['analysis'], 'referenceCounts'> & {
-      readonly referenceCounts?: readonly (readonly [string, number])[];
-    };
-  })[];
-};
+type WireAnalysis = MultiRootAnalysis;
 
 /** One line in the harness's event log. Sandbox-only instrumentation. */
 export interface SandboxLogEntry {
@@ -165,11 +152,8 @@ export class SandboxHost {
         return;
 
       case 'request-thumbnail': {
-        // `MultiRootAnalysis.assets` holds `AttributedAsset` — `{rootId, rootName,
-        // asset}` — not bare assets. Reading `.path` off the wrapper produced
-        // `undefined` for every asset, so the harness silently showed a placeholder
-        // for thumbnails Core had actually rendered.
-        const thumbnailPath = this._assetFor(message.assetPath)?.thumbnailPath;
+        const asset = this._assetFor(message.assetPath);
+        const thumbnailPath = asset?.thumbnail_path ?? asset?.path;
         this._emit({
           type: 'thumbnail',
           assetPath: message.assetPath,
@@ -199,13 +183,15 @@ export class SandboxHost {
             } | null>(`/api/lottie-document?assetPath=${encodeURIComponent(asset.path)}`)
           : null;
 
+        const stillUrl = asset.thumbnail_path ? this._fileUrl(asset.thumbnail_path) : null;
+
         this._emit({
           type: 'animation-data',
           assetPath: message.assetPath,
           preview: buildAnimationPreview({
             format: asset.format,
             sourceUrl: this._fileUrl(asset.path),
-            stillUrl: asset.thumbnailPath ? this._fileUrl(asset.thumbnailPath) : null,
+            stillUrl,
             animation: document?.animation ?? null,
             totalFrames: document?.totalFrames ?? 0,
             frameRate: document?.frameRate ?? 0,
@@ -346,10 +332,26 @@ export class SandboxHost {
   }
 
   /** The asset Core attributed to this path, or `null`. Never re-derived from the path. */
-  private _assetFor(assetPath: string) {
-    return (
-      this._analysis?.assets.find((entry: any) => entry.asset.path === assetPath)?.asset ?? null
-    );
+  private _assetFor(assetPath: string): Asset | null {
+    if (!this._analysis) return null;
+    for (const item of this._analysis.assets as readonly unknown[]) {
+      if (!item || typeof item !== 'object') continue;
+      if (
+        'path' in item &&
+        typeof (item as Asset).path === 'string' &&
+        (item as Asset).path === assetPath
+      ) {
+        return item as Asset;
+      }
+      if (
+        'asset' in item &&
+        (item as { asset?: { path?: string } }).asset &&
+        (item as { asset: Asset }).asset.path === assetPath
+      ) {
+        return (item as { asset: Asset }).asset;
+      }
+    }
+    return null;
   }
 
   private _fileUrl(path: string): string {
@@ -374,19 +376,8 @@ export class SandboxHost {
     const analysis = await this._get<WireAnalysis>('/api/analysis');
     if (!analysis) return;
 
-    const rehydrated: MultiRootAnalysis = {
-      ...analysis,
-      roots: analysis.roots.map((entry) => ({
-        ...entry,
-        analysis: {
-          ...entry.analysis,
-          referenceCounts: new Map(entry.analysis.referenceCounts ?? []),
-        },
-      })),
-    };
-
-    this._analysis = rehydrated;
-    this._emit({ type: 'analysis', analysis: rehydrated });
+    this._analysis = analysis;
+    this._emit({ type: 'analysis', analysis });
   }
 
   private async _get<T>(url: string): Promise<T | null> {

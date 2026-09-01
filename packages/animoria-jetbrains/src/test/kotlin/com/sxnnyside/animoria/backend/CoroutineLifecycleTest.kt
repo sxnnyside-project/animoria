@@ -68,8 +68,11 @@ class CoroutineLifecycleTest {
             "The coroutine scope must be project-scoped, not application-scoped — an " +
                 "application-scoped service would reintroduce the same leak GlobalScope had.",
         )
+        // Whitespace-insensitive: ktlint may wrap a multi-supertype class header
+        // across lines, and this checks what it declares, not how it is laid out.
+        val classHeader = Regex("""class\s+AnimoriaCoroutineScope\s*:\s*([\s\S]*?)\{""").find(source)?.groupValues?.get(1)
         assertTrue(
-            source.contains("CoroutineScope") && source.contains("class AnimoriaCoroutineScope : Disposable, CoroutineScope"),
+            classHeader != null && classHeader.contains("Disposable") && classHeader.contains("CoroutineScope"),
             "The service must implement Disposable and CoroutineScope so the platform disposes it on project close.",
         )
     }

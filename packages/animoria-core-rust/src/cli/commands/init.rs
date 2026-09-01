@@ -1,6 +1,6 @@
+use crate::cli::ui::{accent, brand, success, title, warning};
 use std::fs;
 use std::path::Path;
-use crate::cli::ui::{accent, brand, success, title, warning};
 
 pub fn execute_init(target_path: &Path, force: bool) -> anyhow::Result<i32> {
     let canonical = fs::canonicalize(target_path).unwrap_or_else(|_| target_path.to_path_buf());
@@ -29,7 +29,10 @@ pub fn execute_init(target_path: &Path, force: bool) -> anyhow::Result<i32> {
                 "no-gif": "off"
             }
         });
-        fs::write(&config_path, serde_json::to_string_pretty(&default_config)? + "\n")?;
+        fs::write(
+            &config_path,
+            serde_json::to_string_pretty(&default_config)? + "\n",
+        )?;
         println!("  {} Created {}", success("✔"), success(".animoriarc.json"));
     }
 

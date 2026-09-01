@@ -13,6 +13,38 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.0.0] — 2026-08-31
+
+### Added
+
+- **CLI `restore` command**: lists and restores a `clean --apply` trash session, reusing the same journal the daemon already recorded.
+- **CLI global flags**: `--verbose`/`-v`, `--quiet`/`-q`, `--no-color`; output respects `NO_COLOR` and non-TTY pipes.
+- **Property-based fuzz tests** (`proptest`) for the Lottie/Rive/PNG/GIF/WebP/SVG parsers against arbitrary and truncated-signature input.
+- **Path-containment checks** on every trash/restore operation, in both the daemon and the CLI (`TrashManager::require_within_workspace`).
+- A cap on the daemon's NDJSON line reader (64 MiB), replacing an unbounded `BufRead::lines()`.
+
+### Changed
+
+- **Engine replaced**: `@animoria/core` (TypeScript) is retired; `animoria-core-rust` is now the sole engine behind the CLI, the daemon, and every IDE host. See `packages/animoria-core-rust/README.md` for real before/after numbers.
+- **`clean` no longer mutates by default**: it previews what would move; `--apply` is required to actually stage files. Previously `--dry-run` was opt-in.
+- **`report`'s exit code now reflects governance errors**, matching `check` — it previously always returned `0`.
+- **Release pipeline builds and ships the real Rust binary**: `build-native-daemon` compiles native per platform instead of the retired Node SEA binary, and the VS Code extension now bundles a per-platform binary in its `.vsix` (it previously shipped none).
+
+### Fixed
+
+- Invalid workspace paths passed to `scan`/`check`/`report`/`clean` now fail with a clear error and non-zero exit, instead of silently reporting "0 assets, all clear."
+- JetBrains: a `MissingFieldException` crash on decoding any real multi-root analysis — `MultiRootAnalysisData.assets`/`.diagnostics` were typed for an attribution wrapper the daemon never sends.
+- VS Code: a cleanup candidate's confidence badge could reflect an unrelated diagnostic on the same asset path, from a second, weaker lookup instead of the diagnostic that actually produced the candidate.
+- VS Code: the health-score state (excellent/good/fair/poor) could disagree with Core's own letter grade — it was derived from a different, hand-picked set of score cutoffs.
+
+### Removed
+
+- **`@animoria/core`** (the TypeScript engine), its Node SEA build (`build:sea`), and every fallback path to it — the CLI, the daemon binary resolvers, and the release pipeline are Rust-only now.
+- **`animoria-jetbrains`'s Node/`cli.js` daemon fallback** — a platform with no bundled native binary now fails explicitly instead of spawning a system Node install.
+- **`ResolutionPlan.references_to_rewrite` / `ResolutionResult.updatedReferenceCount`**, across the wire contract, the daemon, and both IDE hosts. The field was never implemented in the Rust engine — always an empty list / `0` — but VS Code's duplicate-resolution confirmation dialog used it to claim "N reference(s) will be rewritten," a capability that does not exist. Removed rather than left as a stub; see `docs/guides/07-duplicates-resolution.md` for what real reference-rewriting would require.
+
+---
+
 ## [1.0.0] — 2026-08-12
 
 ### Added
@@ -70,7 +102,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/sxnnyside-project/animoria/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/sxnnyside-project/animoria/releases/tag/v1.0.0
 [0.2.0]: https://github.com/sxnnyside-project/animoria/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/sxnnyside-project/animoria/releases/tag/v0.1.0

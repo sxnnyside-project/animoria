@@ -1,5 +1,5 @@
-use animoria_core::contracts::asset::{AssetFormat, AssetKind};
 use animoria_core::contracts::analysis::LifecycleState;
+use animoria_core::contracts::asset::{AssetFormat, AssetKind};
 use animoria_core::indexer::AssetIndex;
 use std::fs::{self, File};
 use std::io::Write;
@@ -131,14 +131,21 @@ fn test_vertical_slice_1_unified_asset_discovery() {
     );
 
     // Verify format and kind classification
-    let motion_assets: Vec<_> = assets.iter().filter(|a| a.kind == AssetKind::Motion).collect();
-    let static_assets: Vec<_> = assets.iter().filter(|a| a.kind == AssetKind::Static).collect();
+    let motion_assets: Vec<_> = assets
+        .iter()
+        .filter(|a| a.kind == AssetKind::Motion)
+        .collect();
+    let static_assets: Vec<_> = assets
+        .iter()
+        .filter(|a| a.kind == AssetKind::Static)
+        .collect();
 
     assert_eq!(motion_assets.len(), 6, "Expected 6 motion assets");
     assert_eq!(static_assets.len(), 5, "Expected 5 static assets");
 
     // Verify individual format recognition
-    let format_map: std::collections::HashSet<AssetFormat> = assets.iter().map(|a| a.format).collect();
+    let format_map: std::collections::HashSet<AssetFormat> =
+        assets.iter().map(|a| a.format).collect();
     assert!(format_map.contains(&AssetFormat::Lottie));
     assert!(format_map.contains(&AssetFormat::DotLottie));
     assert!(format_map.contains(&AssetFormat::Rive));

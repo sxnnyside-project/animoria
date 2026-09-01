@@ -14,6 +14,7 @@ use crate::deduplication::{find_duplicate_groups, hash_assets_in_parallel};
 use crate::governance::{AnalysisContext, GovernanceEngine, GovernancePolicy};
 use crate::parser::{detect_format, ParserRegistry};
 use crate::scanner::WorkspaceScanner;
+use crate::thumbnail::resolve_thumbnail;
 use crate::tracing::AssetReferenceDetector;
 
 #[derive(Debug, Clone)]
@@ -27,6 +28,7 @@ pub struct AssetIndex {
     health_score: HealthScoreReport,
     state: LifecycleState,
     parser_registry: ParserRegistry,
+    incomplete_count: usize,
 }
 
 impl AssetIndex {
@@ -46,6 +48,7 @@ impl AssetIndex {
             },
             state: LifecycleState::Initializing,
             parser_registry: ParserRegistry::new(),
+            incomplete_count: 0,
         }
     }
 
@@ -59,6 +62,17 @@ impl AssetIndex {
 
     pub fn state(&self) -> LifecycleState {
         self.state
+    }
+
+    /// Transitions a `Ready` index to `Stale` — called by a host when its own
+    /// file watcher observes a change this index hasn't re-scanned yet. The
+    /// engine has no filesystem watcher of its own; this only records a
+    /// transition the host already knows about. A no-op outside `Ready`
+    /// (e.g. a scan already in flight shouldn't be downgraded to `Stale`).
+    pub fn mark_stale(&mut self) {
+        if self.state == LifecycleState::Ready {
+            self.state = LifecycleState::Stale;
+        }
     }
 
     pub fn assets(&self) -> Vec<Asset> {
@@ -87,7 +101,16 @@ impl AssetIndex {
     pub fn ingest_file(&mut self, path: &Path) -> Option<Asset> {
         let format_res = detect_format(path)?;
 
-        let metadata = fs::metadata(path).ok()?;
+        let metadata = match fs::metadata(path) {
+            Ok(m) => m,
+            Err(_) => {
+                // Scanner found this candidate, but it's gone or unreadable
+                // by the time we stat it (deleted mid-scan, permissions) —
+                // a real gap in this scan's coverage, not a normal skip.
+                self.incomplete_count += 1;
+                return None;
+            }
+        };
         let size_bytes = metadata.len();
         let mtime_ms = metadata
             .modified()
@@ -164,6 +187,7 @@ impl AssetIndex {
             dimensions: None,
             motion,
             static_meta,
+            thumbnail_path: None,
             is_valid: is_valid_discovery,
             error: error_discovery,
         };
@@ -173,21 +197,33 @@ impl AssetIndex {
             self.parser_registry.parse_asset(path, &mut asset);
         }
 
+        asset.thumbnail_path = resolve_thumbnail(&self.root_path, &asset);
+
         self.assets.insert(id, asset.clone());
         Some(asset)
     }
 
     /// Full workspace governance analysis pipeline:
     /// Ingest ➔ Binary SHA-256 Hashing ➔ Deduplication ➔ Multi-Syntax Usage Tracing ➔ Rule Evaluation
-    pub fn scan_workspace(&mut self, custom_ignore_patterns: &[String]) -> anyhow::Result<WorkspaceAnalysis> {
+    pub fn scan_workspace(
+        &mut self,
+        custom_ignore_patterns: &[String],
+    ) -> anyhow::Result<WorkspaceAnalysis> {
         self.state = LifecycleState::Analyzing;
         self.assets.clear();
         self.references.clear();
         self.duplicate_groups.clear();
         self.diagnostics.clear();
+        self.incomplete_count = 0;
 
         // 1. Filesystem crawler
-        let scanner = WorkspaceScanner::new(self.root_path.clone(), custom_ignore_patterns)?;
+        let scanner = match WorkspaceScanner::new(self.root_path.clone(), custom_ignore_patterns) {
+            Ok(s) => s,
+            Err(e) => {
+                self.state = LifecycleState::Failed;
+                return Err(e);
+            }
+        };
         let candidates = scanner.scan_candidates();
 
         for candidate in candidates {
@@ -206,7 +242,14 @@ impl AssetIndex {
         self.duplicate_groups = find_duplicate_groups(&asset_list);
 
         // 4. Multi-syntax source code reference tracing
-        let detector = AssetReferenceDetector::new(self.root_path.clone(), custom_ignore_patterns)?;
+        let detector =
+            match AssetReferenceDetector::new(self.root_path.clone(), custom_ignore_patterns) {
+                Ok(d) => d,
+                Err(e) => {
+                    self.state = LifecycleState::Failed;
+                    return Err(e);
+                }
+            };
         self.references = detector.detect_references(&asset_list);
 
         // 5. Governance policy & rule evaluation
@@ -224,7 +267,11 @@ impl AssetIndex {
         self.diagnostics = diagnostics;
         self.health_score = health_score;
 
-        self.state = LifecycleState::Ready;
+        self.state = if self.incomplete_count > 0 {
+            LifecycleState::Incomplete
+        } else {
+            LifecycleState::Ready
+        };
         Ok(self.to_workspace_analysis())
     }
 
@@ -252,4 +299,52 @@ fn compute_asset_id(path: &Path) -> String {
     let hash = hasher.finalize();
     let hex: String = hash[..8].iter().map(|b| format!("{:02x}", b)).collect();
     format!("asset-{}", hex)
+}
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+
+    #[test]
+    fn mark_stale_only_transitions_out_of_ready() {
+        let mut index = AssetIndex::new("root".to_string(), PathBuf::from("/tmp"));
+        assert_eq!(index.state(), LifecycleState::Initializing);
+
+        index.mark_stale();
+        assert_eq!(
+            index.state(),
+            LifecycleState::Initializing,
+            "mark_stale must be a no-op outside Ready"
+        );
+
+        index.state = LifecycleState::Ready;
+        index.mark_stale();
+        assert_eq!(index.state(), LifecycleState::Stale);
+    }
+
+    #[test]
+    fn ingest_file_on_a_vanished_candidate_counts_as_incomplete() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut index = AssetIndex::new("root".to_string(), dir.path().to_path_buf());
+
+        let ghost = dir.path().join("ghost.svg");
+        assert!(index.ingest_file(&ghost).is_none());
+        assert_eq!(index.incomplete_count, 1);
+    }
+
+    #[test]
+    fn scan_workspace_on_a_clean_tree_reaches_ready_with_zero_incomplete() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("icon.svg"),
+            r#"<svg xmlns="http://www.w3.org/2000/svg"></svg>"#,
+        )
+        .unwrap();
+
+        let mut index = AssetIndex::new("root".to_string(), dir.path().to_path_buf());
+        let analysis = index.scan_workspace(&[]).expect("scan should succeed");
+
+        assert_eq!(analysis.state, LifecycleState::Ready);
+        assert_eq!(index.incomplete_count, 0);
+    }
 }

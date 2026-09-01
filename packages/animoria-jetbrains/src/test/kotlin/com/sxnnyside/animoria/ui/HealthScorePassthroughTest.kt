@@ -7,21 +7,8 @@ import org.junit.jupiter.api.Test
 import java.io.File
 
 /**
- * The JetBrains client presents Core's decisions and computes none of its own.
- *
- * ## What went wrong before
- * `AnimoriaGalleryPanel` derived its own Health Score —
- * `100 - unused*5 - duplicates*10 - overused*5` — while `@animoria/core` computes a
- * weighted, severity-scaled score from rule diagnostics. The same workspace reported
- * one number in this IDE and a different one in VS Code and the CLI, and the panel
- * invented its own state vocabulary alongside Core's.
- *
- * ## Why this test survived the panel it was written for
- * That panel is deleted; the shared UI renders the score now. The *rule* is what
- * matters, so the scan moved from one file to the whole plugin. A local Health Score
- * would not come back in a file named `AnimoriaGalleryPanel.kt` — it would come back
- * in whatever file seemed like the convenient place, which is exactly why a
- * file-scoped assertion was the weaker version of this test.
+ * Verifies that the JetBrains client presents core engine decisions directly and never computes
+ * governance scores, rule diagnostics, or duplicate penalties locally.
  */
 @DisplayName("JetBrains client does not compute governance values locally")
 class HealthScorePassthroughTest {

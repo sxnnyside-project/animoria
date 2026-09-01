@@ -1,1 +1,0 @@
-const anim = 'loading.json';

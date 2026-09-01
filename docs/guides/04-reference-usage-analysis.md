@@ -1,206 +1,167 @@
 # Reference & Usage Analysis
 
 > **Audience:** Core engine maintainers, language integration developers
-> **Scope:** AST & regex-based code scanning for asset references across source files, confidence scoring, inline ignore processing
+> **Scope:** Multi-syntax source code scanning for asset references, Aho-Corasick pattern matching, confidence scoring
 > **Status:** Authoritative
-> **Primary packages:** [`@animoria/core`](../../packages/animoria-core)
+> **Primary packages:** [`animoria-core-rust`](../../packages/animoria-core-rust)
 
 ## 1. Purpose
 
-This guide explains how Animoria discovers where visual assets are referenced across source code files. Code reference evidence is used to determine whether an asset is `unreferenced` or actively used in application logic.
+This guide explains how Animoria discovers where visual assets are referenced across source code files. Reference evidence is what the `no-unreferenced-assets` governance rule (see [`05-governance-pipeline.md`](05-governance-pipeline.md)) uses to decide whether an asset is unreferenced.
 
 ## 2. Architecture
 
-Reference scanning is performed by `@animoria/core`'s usage subsystem:
+Reference scanning is implemented in `animoria-core-rust`'s `tracing` module, built around a single Aho-Corasick automaton run in parallel over every source file.
 
 ```mermaid
 graph TD
-    WorkspaceFiles["Source Files (.ts, .tsx, .vue, .svelte, .dart, .swift, .kt, etc.)"]
-    
-    subgraph UsageEngine["Usage Subsystem"]
-        RefScanner["ReferenceFileScanner (reference-file-scanner.ts)"]
-        SyntaxRegistry["ReferenceSyntax (reference-syntax.ts)"]
-        PatternEngine["ReferencePatterns (reference-patterns.ts)"]
-        UsageIndex["ReferenceIndex (reference-index.ts)"]
+    WorkspaceFiles["Source Files (26 extensions — SOURCE_EXTENSIONS)"]
+
+    subgraph TracingEngine["Tracing Subsystem"]
+        Detector["AssetReferenceDetector (tracing/detector.rs)"]
+        Patterns["patterns.rs (SOURCE_EXTENSIONS, stem/filename validators)"]
+        AhoCorasick["aho-corasick automaton (built over every asset filename + stem)"]
     end
 
     subgraph Output["Reference Findings"]
-        RefResult["UsageReference[] (High / Moderate / Low Confidence)"]
+        RefResult["Vec<UsageReference> (confidence: high | medium)"]
     end
 
-    WorkspaceFiles --> RefScanner
-    RefScanner --> SyntaxRegistry
-    SyntaxRegistry --> PatternEngine
-    PatternEngine --> UsageIndex
-    UsageIndex --> RefResult
+    WorkspaceFiles --> Detector
+    Detector --> Patterns
+    Detector --> AhoCorasick
+    AhoCorasick --> RefResult
 ```
 
 ### Module Boundaries
 
 | Module | Location | Primary Responsibility |
 |---|---|---|
-| **Usage Scanner** | [`src/usage/usage-scanner.ts`](../../packages/animoria-core/src/usage/usage-scanner.ts) | Main entry point for workspace reference analysis. |
-| **Reference Index** | [`src/usage/reference-index.ts`](../../packages/animoria-core/src/usage/reference-index.ts) | Maps indexed assets to detected source code references. |
-| **Reference File Scanner** | [`src/usage/reference-file-scanner.ts`](../../packages/animoria-file-scanner.ts) | Scans individual source code files across supported extensions. |
-| **Reference Patterns** | [`src/usage/reference-patterns.ts`](../../packages/animoria-core/src/usage/reference-patterns.ts) | Defines string pattern matchers for paths, file basenames, and stems. |
-| **Reference Syntax** | [`src/usage/reference-syntax.ts`](../../packages/animoria-core/src/usage/reference-syntax.ts) | Syntax-aware parser handling imports, strings, templates, and comments. |
-| **Scan Extensions** | [`src/usage/scan-extensions.ts`](../../packages/animoria-core/src/usage/scan-extensions.ts) | Authoritative array of 20+ file extensions scanned for asset references. |
+| **Reference Detector** | [`src/tracing/detector.rs`](../../packages/animoria-core-rust/src/tracing/detector.rs) | `AssetReferenceDetector`: finds source files, builds one Aho-Corasick automaton over every asset's filename and stem, and scans all source files in parallel via Rayon. |
+| **Patterns** | [`src/tracing/patterns.rs`](../../packages/animoria-core-rust/src/tracing/patterns.rs) | `SOURCE_EXTENSIONS` (the scanned extension list), comment-line detection, and the syntax validators `is_valid_exact_filename_reference` / `is_valid_stem_reference` that decide whether a raw substring match is a real reference. |
 
 ## 3. Lifecycle
 
-Reference discovery follows this pipeline:
+Reference discovery follows this pipeline, run once per `AssetIndex::scan_workspace` call as step 5 of the full scan (see [`03-asset-indexing.md`](03-asset-indexing.md)):
 
 ```
-Indexed Asset List + Workspace Source Files
-→ Filter by scan-extensions.ts (.ts, .tsx, .vue, .svelte, .dart, .swift, .kt, etc.)
-→ Check for inline `// animoria-ignore` directive
-→ Parse file lines for path & filename patterns
-→ Assign Confidence Level (Certain, High, Moderate, Low)
-→ Update ReferenceIndex
+Ingested & hashed Asset list
+→ AssetReferenceDetector::find_source_files()   — walk workspace, filter by SOURCE_EXTENSIONS, respecting ignore rules
+→ Build one Aho-Corasick automaton over every asset's exact filename + stem (>=3 chars)
+→ Scan every source file's lines in parallel (Rayon), skipping comment/URL lines
+→ For each match: apply is_valid_exact_filename_reference / is_valid_stem_reference
+→ Assign confidence ("high" for exact filename, "medium" for stem)
+→ Return Vec<UsageReference>
 ```
 
 ## 4. Core Implementation
 
-### Supported Source Languages & Extensions
-Scanned extensions are defined in [`src/usage/scan-extensions.ts`](../../packages/animoria-core/src/usage/scan-extensions.ts):
-- **Web & JS Frameworks**: `.ts`, `.tsx`, `.js`, `.jsx`, `.vue`, `.svelte`, `.astro`, `.html`, `.css`, `.scss`
-- **Mobile & Native**: `.dart` (Flutter), `.swift` (iOS), `.kt` / `.java` (Android), `.py`
-- **Data & Markup**: `.json`, `.yaml`, `.yml`, `.md`, `.xml`
+### Supported Source Extensions
+`SOURCE_EXTENSIONS` in [`src/tracing/patterns.rs`](../../packages/animoria-core-rust/src/tracing/patterns.rs) lists exactly 26 extensions (counted directly from the array):
 
-### Confidence Scoring Model
-
-Every detected reference is assigned a canonical confidence level:
-
-| Level | Criteria | Example Match |
-|---|---|---|
-| **Certain / High** | Exact relative or workspace-relative path match. | `import anim from '../assets/loading.json'` |
-| **Moderate** | Exact filename match with extension, but path is ambiguous. | `const path = "loading.json"` |
-| **Low** | Asset basename or stem match without file extension. | `LottieView(name: "loading")` matching `loading.json` |
-
-### Inline Source Ignores (`// animoria-ignore`)
-To suppress false positives (such as mock filenames in unit test strings or documentation comments), developers append `// animoria-ignore` to a source line:
-
-```typescript
-// animoria-ignore - Mock string for documentation:
-const unusedAnimationPath = "assets/demo-loader.json";
+```rust
+pub const SOURCE_EXTENSIONS: &[&str] = &[
+    "ts", "tsx", "js", "jsx", "mjs", "cjs", "vue", "svelte", "astro", "kt", "kts", "java", "swift",
+    "dart", "html", "htm", "css", "scss", "sass", "less", "md", "mdx", "json", "xml", "yml",
+    "yaml",
+];
 ```
 
-When `ReferenceFileScanner` encounters `// animoria-ignore` on a line, all string matches on that line are ignored.
+### Two-Tier Confidence Model
+For every asset, the detector registers up to two Aho-Corasick patterns (`AssetReferenceDetector::detect_references`):
 
-### Terminology Rules
-- Canonical term: **`unreferenced`** (an asset with zero detected reference matches).
-- **BANNED Synonyms**: `unused`, `orphaned`, `orphan`.
-- *Rationale*: "Unreferenced" states what was observed by the scanner. "Unused" or "orphaned" claim something stronger that static analysis cannot guarantee under partial coverage.
+| Pattern | Confidence | Criteria |
+|---|---|---|
+| **Exact filename** (e.g. `hero.json`) | `"high"` | Always registered. Must additionally pass `is_valid_exact_filename_reference`: the filename must appear quoted (`"..."`, `'...'`, `` `...` ``), path-delimited (`/filename`), or inside a `require(...)`/`from '...'` specifier. |
+| **Stem** (e.g. `hero`, from `hero.json`) | `"medium"` | Only registered if `stem.len() >= 3` and the stem differs from the full filename — short stems like `"ok"` are skipped to avoid flooding matches on common words. Must additionally pass `is_valid_stem_reference`. |
+
+`is_valid_stem_reference` recognizes syntaxes actually seen referencing assets by stem: Android `R.raw.<stem>`, native `setAnimation("stem")`, React/React Native `require('.../stem')` / `source={...}`, Flutter's `Lottie.`/`LottieBuilder.` APIs, iOS/SwiftUI `LottieAnimationView`/`AnimationView`/`LottieAnimation.named`, and bare path-like references (`./stem`, `../stem`, `/stem.`, or a quoted `stem.json`).
+
+### Negative Filters
+Within `detect_references`, a raw pattern match is still discarded if:
+- The source file *is* the asset itself (an asset cannot reference itself).
+- The match is immediately preceded by `http://`, `https://`, or `//cdn.` on the line (remote URLs, not local references).
+- The line is a comment (`is_line_comment_or_url`: starts with `//`, `#`, `/*`, `*`, or `<!--`) — comment lines are skipped entirely before matching.
+
+### Performance Model
+`AssetReferenceDetector` builds **one** `AhoCorasickBuilder` automaton (case-insensitive, `MatchKind::Standard`) covering every asset's patterns, then scans every source file exactly once in parallel via `rayon`'s `par_iter`. This is deliberately O(files) rather than O(files × assets) — the doc comment on `AssetReferenceDetector` in `detector.rs` notes this is the difference between sub-second and multi-second scans on workspaces with hundreds of assets and thousands of source files.
 
 ## 5. CLI / Daemon
 
-Host clients request reference data via daemon protocol method `getUsageReferences`:
+Host clients request reference data for an already-scanned root via the `getUsageReferences` daemon method (see `supported_methods()` in [`src/daemon/server.rs`](../../packages/animoria-core-rust/src/daemon/server.rs)). References are also returned inline as part of every `scan`/`check`/`analyze` response payload (`ScanResultPayload.references`).
 
-### Protocol Request
-```json
-{
-  "protocol": 1,
-  "id": "req-12",
-  "method": "getUsageReferences",
-  "params": {
-    "assetPath": "assets/loading.json"
-  }
-}
-```
+The `"getUsageReferences" =>` handler in `server.rs` reads `workspace_path` (or `workspacePath`) to resolve the already-scanned root, and `assetPath` (a plain string, defaulting to `""` when absent) to filter. It returns `{ "references": UsageReference[], "complete": true }`, where `references` is the subset of the resolved root's cached references whose `asset_id` equals `assetPath`. The daemon does not re-scan or trace anything for this call — it filters the reference list already produced by the prior `scan`/`check`/`analyze` run, so calling it before any scan for that workspace path returns the "no workspace" error rather than an empty result. `complete` is currently always `true`; the field exists so a future partial/streaming reference scan can report `false` without a contract change.
 
-### Protocol Response
-```json
-{
-  "protocol": 1,
-  "id": "req-12",
-  "result": {
-    "assetPath": "assets/loading.json",
-    "references": [
-      {
-        "filePath": "src/components/Header.tsx",
-        "lineNumber": 14,
-        "lineContent": "import loadingAnim from '../assets/loading.json';",
-        "confidence": "high"
-      }
-    ]
-  }
-}
-```
+The `UsageReference` contract (see [`packages/animoria-contracts/src/generated/UsageReference.ts`](../../packages/animoria-contracts/src/generated/UsageReference.ts)) carries `asset_id`, `file_path`, `relative_file_path`, `line_number`, `line_content`, `syntax_type`, and `confidence` (`"high"` or `"medium"` — there is no `"certain"` or `"low"` tier in the Rust engine, unlike the old TypeScript engine's four-tier model).
 
 ## 6. VS Code
 
-- Extension host queries `ReferenceIndex` directly in-process.
-- References surface in VS Code's CodeLens, Hover provider, and Webview preview details panel.
+`animoria-vscode` surfaces `UsageReference` data through `AnimoriaHoverProvider` (`src/providers/animoria-hover-provider.ts`), a `vscode.HoverProvider` registered for `HOVER_LANGUAGES` (TypeScript/JS/TSX/JSX, Vue, Svelte, Swift, Kotlin, Dart). It does not call `getUsageReferences` directly — it reads the last full analysis snapshot held in memory (`_getAnalysis()`), resolves the asset under the cursor via `AssetResolver.resolveFromPosition`, and renders an asset card (thumbnail, governance flag, metadata) built by `buildAssetCardModel`/`AssetCardRenderer`. There is no CodeLens implementation; hover is the only in-editor surface for usage/asset data.
 
 ## 7. JetBrains
 
-- Plugin invokes `getUsageReferences` daemon command (`AnimoriaPreviewPanel.kt`).
-- Renders reference location links in the preview inspector tool window.
+`animoria-jetbrains` calls `getUsageReferences` from `CoreProcessManager.prefetchReferences(generation)`, invoked once per completed analysis generation as a best-effort background prefetch (failures are logged and swallowed, never surfaced as an error to the user). The response is decoded into `WorkspaceReferencesResultData` and stored in `AnimoriaAnalysisHolder.updateReferences(generation, references)`. `AnimoriaUsageHoverProvider` and `AnimoriaEditorHoverListener` (`src/main/kotlin/com/sxnnyside/animoria/hover/`) read from that holder to answer "where is this asset used" in the editor — there is no separate dedicated "preview panel" for usage references; the tool window (`AnimoriaSharedUiPanel`, JCEF) shows the full `WorkspaceAnalysis`/assets view, while per-asset usage lookups are an editor-hover feature backed by the prefetched cache.
 
 ## 8. Sandbox
 
-The local sandbox (`apps/animoria-sandbox`) serves pre-baked mock reference data for demo assets to populate UI reference panels.
+The sandbox does not have mock `UsageReference` data. `apps/animoria-sandbox/src/host/rust-daemon-client.ts` spawns the same real `animoria` native daemon binary that VS Code and JetBrains use (Protocol v1 NDJSON over stdio) and issues the same `scan`/`getUsageReferences` requests against real fixture workspaces under `fixtures/`. Any `UsageReference` the sandbox displays is produced by the actual Rust tracing engine, not synthesized by the sandbox.
 
 ## 9. Contracts & Types
 
-Reference contracts reside in [`packages/animoria-core/src/contracts.ts`](../../packages/animoria-core/src/contracts.ts):
-
-```typescript
-export type ConfidenceLevel = 'certain' | 'high' | 'moderate' | 'low';
-
-export interface UsageReference {
-  readonly filePath: string;
-  readonly lineNumber: number;
-  readonly lineContent: string;
-  readonly confidence: ConfidenceLevel;
+```rust
+// packages/animoria-core-rust/src/contracts/usage.rs (field names per generated UsageReference.ts)
+pub struct UsageReference {
+    pub asset_id: String,
+    pub file_path: String,
+    pub relative_file_path: String,
+    pub line_number: u32,
+    pub line_content: String,
+    pub syntax_type: String,
+    pub confidence: String, // "high" | "medium"
 }
 ```
 
+There is no dedicated `// animoria-ignore` inline-suppression directive in the Rust tracing engine's `patterns.rs` — comment lines are skipped structurally (via `is_line_comment_or_url`), but no per-line ignore marker was found.
+
+This has been confirmed across the whole module: `packages/animoria-core-rust/src/tracing/` (`patterns.rs`, `detector.rs`, `mod.rs`) and `src/governance/` contain no `// animoria-ignore`-style inline suppression directive of any kind. The only "ignore" concept present is file-level path ignoring (`crate::scanner::ignore_rules::IgnoreRules`, backed by the `ignore` crate's `WalkBuilder`/gitignore support), which excludes whole files from scanning — there is no mechanism to suppress a single reference match or a single governance diagnostic from within source code.
+
 ## 10. Tests & Fixtures
 
-- **Usage Unit Tests**: [`packages/animoria-core/tests/usage/`](../../packages/animoria-core/tests/usage)
-  - `usage-scanner.test.ts`: Verifies multi-language reference detection.
-  - `reference-patterns.test.ts`: Tests exact path, filename, and stem regex matching.
-  - `inline-ignore.test.ts`: Verifies `// animoria-ignore` directive suppression.
-- **Fixtures**:
-  - [`fixtures/unreferenced-assets/`](../../fixtures/unreferenced-assets): Workspace with unreferenced assets.
-  - [`fixtures/reference-edge-cases/`](../../fixtures/reference-edge-cases): Multi-line imports, comments, string concatenation edge cases.
-  - [`fixtures/reference-formats/`](../../fixtures/reference-formats): Native code references (`.kt`, `.swift`, `.dart`).
+Neither `tracing/` nor `governance/` contains any `#[test]` or `#[cfg(test)]` unit tests — all coverage for reference detection is via integration tests. `packages/animoria-core-rust/tests/golden_corpus_parity_test.rs` exercises both fixture workspaces `fixtures/reference-formats/` (positive cases per syntax: HTML `src`/`srcset`, CSS `url()`, SCSS `@import`, Vue template/style, Svelte attribute, Astro attribute, MDX/Markdown import and image/link, code import, query-suffix and fragment-suffix variants — plus explicit false-positive fixtures like `fp-external-url.json`, `fp-data-uri.json`, `fp-protocol-relative.json`, `fp-prose.json`, `fp-variable-name.json`, `fp-json-string.json`, `fp-wrong-extension.json`, `fp-outside-workspace.json`) and `fixtures/reference-edge-cases/` (assets referenced only from TS, CSS, Markdown, HTML, inline code, JSON data, or only from a comment — the last one exercising the comment-skip behavior in section 3). No dedicated fixtures directory exists purely for governance rules beyond `fixtures/mixed-governance/` (covered in the governance guide).
 
 ## 11. Extension Points
 
 ### How do I add a new supported source file extension?
-Add the extension string (e.g. `'.gleam'`) to `SCAN_EXTENSIONS` array in [`packages/animoria-core/src/usage/scan-extensions.ts`](../../packages/animoria-core/src/usage/scan-extensions.ts).
+Add the extension string to `SOURCE_EXTENSIONS` in [`packages/animoria-core-rust/src/tracing/patterns.rs`](../../packages/animoria-core-rust/src/tracing/patterns.rs).
+
+### How do I add a new reference syntax pattern for a new framework?
+Add a new branch to `is_valid_stem_reference` (for extension-less references) or extend `is_valid_exact_filename_reference` (for full-filename references) in [`packages/animoria-core-rust/src/tracing/patterns.rs`](../../packages/animoria-core-rust/src/tracing/patterns.rs).
 
 ## 12. Failure Modes
 
 | Failure Mode | Root Cause | System Behavior |
 |---|---|---|
-| **Dynamic Path Construction** | Code constructs path dynamically (`assets/${name}.json`) | Scanner cannot resolve variable. Confidence downgrades to stem match or flags as unreferenced. |
-| **Unscanned File Type** | Asset referenced in rare file extension | File skipped. Asset marked `unreferenced`. Maintainer can add extension to `scan-extensions.ts`. |
-| **False Positive Match** | Common word matches asset stem (e.g. `icon`) | Assigned `low` confidence level. Rules engine prioritizes `high` confidence matches. |
+| **Dynamic path construction** | Code builds a path at runtime (e.g. `` `assets/${name}.json` ``) | The literal template contains no matchable filename/stem substring; the asset may be flagged unreferenced by `no-unreferenced-assets` even though it's used. |
+| **Unscanned file type** | Asset referenced only from a file extension outside `SOURCE_EXTENSIONS` | `find_source_files` never visits that file; the reference is never detected. Maintainer adds the extension to `SOURCE_EXTENSIONS`. |
+| **Short/common stem** | Asset stem is under 3 characters | The stem pattern is never registered at all (`asset.stem.len() >= 3` guard) — only the exact-filename pattern can match for that asset. |
+| **Self-reference** | An asset's own path happens to contain a matching substring | `detect_references` explicitly excludes the asset's own file from matching against its own pattern. |
 
 ## 13. Common Maintenance Tasks
 
-### How do I add a new reference syntax pattern for a new framework?
-Edit [`packages/animoria-core/src/usage/reference-syntax.ts`](../../packages/animoria-core/src/usage/reference-syntax.ts) and add pattern matcher functions. Verify against new test cases in `usage-scanner.test.ts`.
+### How do I verify a new stem-reference syntax is picked up correctly?
+Add a branch to `is_valid_stem_reference` in `patterns.rs`, then run a full workspace scan (`animoria scan <path> --json`) against a fixture that uses the new syntax and confirm a `UsageReference` with `confidence: "medium"` appears for the target asset.
 
 ## 14. Files & Ownership
 
 | Layer | Path | Responsibility |
 |---|---|---|
-| Core Subsystem | [`packages/animoria-core/src/usage/usage-scanner.ts`](../../packages/animoria-core/src/usage/usage-scanner.ts) | Usage scanner coordinator |
-| Core Subsystem | [`packages/animoria-core/src/usage/reference-index.ts`](../../packages/animoria-core/src/usage/reference-index.ts) | In-memory asset reference index |
-| Core Subsystem | [`packages/animoria-core/src/usage/reference-file-scanner.ts`](../../packages/animoria-core/src/usage/reference-file-scanner.ts) | Source file scanner |
-| Core Subsystem | [`packages/animoria-core/src/usage/reference-patterns.ts`](../../packages/animoria-core/src/usage/reference-patterns.ts) | Path & stem pattern regex matchers |
-| Core Subsystem | [`packages/animoria-core/src/usage/reference-syntax.ts`](../../packages/animoria-core/src/usage/reference-syntax.ts) | Language-specific syntax parsers |
-| Core Subsystem | [`packages/animoria-core/src/usage/scan-extensions.ts`](../../packages/animoria-core/src/usage/scan-extensions.ts) | List of scanned source extensions |
+| Engine | [`packages/animoria-core-rust/src/tracing/detector.rs`](../../packages/animoria-core-rust/src/tracing/detector.rs) | Aho-Corasick-based parallel reference detection |
+| Engine | [`packages/animoria-core-rust/src/tracing/patterns.rs`](../../packages/animoria-core-rust/src/tracing/patterns.rs) | Source extension list and syntax-validity heuristics |
+| Contracts | [`packages/animoria-contracts/src/generated/UsageReference.ts`](../../packages/animoria-contracts/src/generated/UsageReference.ts) | Generated TypeScript mirror of `UsageReference` |
 
 ## 15. Verification Checklist
 
-Execute the usage test suite:
-
 ```bash
-pnpm --filter @animoria/core test tests/usage/
+cargo test --manifest-path packages/animoria-core-rust/Cargo.toml
 ```
-Verify that all syntax patterns and inline ignore tests pass cleanly.
+Verify tracing-related tests pass cleanly.

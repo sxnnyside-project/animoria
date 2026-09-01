@@ -18,7 +18,9 @@ import kotlin.coroutines.CoroutineContext
  * launched into it.
  */
 @Service(Service.Level.PROJECT)
-class AnimoriaCoroutineScope : Disposable, CoroutineScope {
+class AnimoriaCoroutineScope :
+    Disposable,
+    CoroutineScope {
     private val job = SupervisorJob()
     override val coroutineContext: CoroutineContext = job + Dispatchers.Default
 

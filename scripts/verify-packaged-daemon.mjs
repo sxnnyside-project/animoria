@@ -48,13 +48,13 @@ function fail(message) {
 }
 
 if (!existsSync(nativeRoot))
-  fail(`no packaged daemon under ${nativeRoot}. Run: pnpm package:jetbrains-daemon`);
+  fail(`no packaged daemon under ${nativeRoot}. Run: pnpm package:native-daemon`);
 
 const platforms = readdirSync(nativeRoot, { withFileTypes: true }).filter((entry) =>
   entry.isDirectory()
 );
 if (platforms.length === 0)
-  fail('no platform directories under native/. Run: pnpm package:jetbrains-daemon');
+  fail('no platform directories under native/. Run: pnpm package:native-daemon');
 
 const required = requiredMethods();
 if (required.length === 0) fail('could not read REQUIRED_METHODS from CoreProcessManager.kt');
@@ -74,8 +74,10 @@ for (const platform of platforms) {
     console.log(`[verify-packaged-daemon] ${platform.name}: skipped (this runner is ${here})`);
     continue;
   }
-  // build-sea.mjs names the Windows binary with a `.exe` suffix.
-  const binaryName = platform.name.startsWith('win32') ? 'animoria-core.exe' : 'animoria-core';
+  // The native Rust binary is `animoria` (`animoria.exe` on Windows) — not
+  // `animoria-core`, the legacy Node SEA binary's name, which nothing this
+  // migration produces is ever called.
+  const binaryName = platform.name.startsWith('win32') ? 'animoria.exe' : 'animoria';
   const binary = join(nativeRoot, platform.name, binaryName);
   if (!existsSync(binary)) fail(`${platform.name}: the packaged daemon executable is missing`);
   await verify(binary, platform.name);
@@ -93,7 +95,11 @@ console.log(`[verify-packaged-daemon] OK — ${required.length} required methods
 
 async function verify(binary, platformName) {
   await new Promise((resolve) => {
-    const daemon = spawn(binary, ['daemon', workspace]);
+    // The daemon takes no CLI arguments — every request (including which
+    // workspace to scan) travels as NDJSON over stdin. An extra positional
+    // argument here made clap reject the process outright before it could
+    // answer anything.
+    const daemon = spawn(binary, ['daemon']);
     let buffer = '';
     let stderr = '';
     const timer = setTimeout(() => {
@@ -171,8 +177,31 @@ async function verify(binary, platformName) {
             daemon.kill();
             fail(`${platformName}: the packaged daemon cannot answer ${missing.join(', ')}`);
           }
+          // getUsageReferences needs a scanned workspace to answer against —
+          // calling it with nothing indexed yet fails on `invalid-params`
+          // regardless of whether the method itself works.
+          send({
+            protocol: 1,
+            id: 'scan',
+            method: 'scan',
+            params: { workspace_path: workspace },
+          });
+        }
+
+        if (message.id === 'scan') {
+          if (message.error) {
+            clearTimeout(timer);
+            answered = true;
+            daemon.kill();
+            fail(`${platformName}: scan failed — ${message.error.code}: ${message.error.message}`);
+          }
           // Declared is not the same as working. Call the one that shipped broken.
-          send({ protocol: 1, id: 'usage', method: 'getUsageReferences' });
+          send({
+            protocol: 1,
+            id: 'usage',
+            method: 'getUsageReferences',
+            params: { workspace_path: workspace, assetPath: '' },
+          });
         }
 
         if (message.id === 'usage') {

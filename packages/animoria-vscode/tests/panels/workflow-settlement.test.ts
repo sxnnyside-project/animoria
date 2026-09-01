@@ -5,25 +5,8 @@ import { VsCodeHostBridge } from '../../src/panels/vscode-host-bridge.js';
 import { mockVscodeState, resetTestWorkspace } from '../harness.js';
 
 /**
- * Every operation the UI waits on ends in an answer.
- *
- * ## The regression this suite exists for
- * The shared UI disables its destructive controls the moment it sends an `apply-*`
- * and re-enables them only when a reply arrives. The VS Code bridge had five paths
- * that returned without replying — a dismissed confirmation dialog, a missing
- * indexer, an unattributable root, and any exception at all, since the panel invoked
- * the handler as `void bridge.handle(raw)` and nothing caught a rejection.
- *
- * The visible result was a panel frozen mid-operation. **Dismissing a "move to trash"
- * confirmation disabled the Apply button for the rest of the session**, with no error,
- * no log line and no way back except closing the panel. Every unit test passed: each
- * asserted what the bridge does when the developer says *yes*.
- *
- * ## What is asserted here
- * Not that the operation succeeds — that the operation *settles*. A settled failure
- * and a settled refusal are both correct outcomes; an unanswered request is not an
- * outcome at all. This is the shape of assertion the audit found missing everywhere:
- * every suite tested the happy path of a two-state interaction.
+ * Verifies that every asynchronous UI workflow settles (resolving or rejecting with an explicit message reply)
+ * so that interactive webview controls are never left in a permanently disabled state.
  */
 
 function analysisStub(overrides: Partial<WorkspaceAnalysis> = {}): WorkspaceAnalysis {

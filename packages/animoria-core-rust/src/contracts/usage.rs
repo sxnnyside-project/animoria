@@ -7,7 +7,10 @@ use ts_rs::TS;
 #[cfg_attr(feature = "ts-bindings", derive(TS))]
 #[cfg_attr(
     feature = "ts-bindings",
-    ts(export, export_to = "../../../packages/animoria-contracts/src/generated/")
+    ts(
+        export,
+        export_to = "../../../packages/animoria-contracts/src/generated/"
+    )
 )]
 pub struct UsageReference {
     pub asset_id: String,

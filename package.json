@@ -19,16 +19,16 @@
     "audit": "pnpm audit",
     "sandbox": "turbo run dev --filter=animoria-sandbox",
     "package:vscode": "pnpm --filter animoria-vscode package",
-    "package:jetbrains-daemon": "pnpm --filter @animoria/core build:sea && node scripts/copy-sea-into-jetbrains.mjs && node scripts/verify-packaged-daemon.mjs",
-    "package:jetbrains": "pnpm --filter @animoria/ui build && pnpm package:jetbrains-daemon && cd packages/animoria-jetbrains && ./gradlew buildPlugin",
+    "package:native-daemon": "cargo build --release --manifest-path packages/animoria-core-rust/Cargo.toml && node scripts/copy-native-daemon.mjs && node scripts/verify-packaged-daemon.mjs",
+    "package:jetbrains": "pnpm --filter @animoria/ui build && pnpm package:native-daemon && cd packages/animoria-jetbrains && ./gradlew buildPlugin",
     "package:all": "pnpm package:vscode && pnpm package:jetbrains",
     "prepare": "husky",
     "verify:packaged-daemon": "node scripts/verify-packaged-daemon.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
-    "@commitlint/cli": "^21.2.1",
-    "@commitlint/config-conventional": "^21.2.0",
+    "@commitlint/cli": "^21.2.2",
+    "@commitlint/config-conventional": "^21.2.2",
     "husky": "^9.1.7",
     "turbo": "latest",
     "typescript": "^5.9.3"

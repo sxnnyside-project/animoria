@@ -3,11 +3,29 @@ import * as vscode from 'vscode';
 
 export type HealthState = 'excellent' | 'good' | 'fair' | 'poor';
 
-export function describeHealthState(score: number): HealthState {
-  if (score >= 90) return 'excellent';
-  if (score >= 75) return 'good';
-  if (score >= 50) return 'fair';
-  return 'poor';
+/**
+ * Buckets Core's own letter grade into an icon/label tier.
+ *
+ * This used to re-derive a *second* categorization from `report.score` with
+ * its own cutoffs (90/75/50) — different boundaries than the ones Core uses
+ * to assign `grade` (90/80/70/60, `governance/engine.rs`). The two could
+ * disagree: a score of 76 was Core's grade "C" and this host's "good" at the
+ * same time, in the same tooltip. Bucketing the grade Core already decided
+ * keeps the boundary in one place; this only chooses which icon a letter
+ * gets, which is a presentation call, not a governance one.
+ */
+export function describeHealthState(grade: string): HealthState {
+  switch (grade.toUpperCase()) {
+    case 'A':
+      return 'excellent';
+    case 'B':
+      return 'good';
+    case 'C':
+    case 'D':
+      return 'fair';
+    default:
+      return 'poor';
+  }
 }
 
 const HEALTH_STATE_ICONS: Readonly<Record<HealthState, string>> = {
@@ -43,7 +61,7 @@ export function presentHealthScore(
     };
   }
 
-  const state = describeHealthState(report.score);
+  const state = describeHealthState(report.grade);
   const stateLabel = HEALTH_STATE_LABELS[state];
   const icon = new vscode.ThemeIcon(HEALTH_STATE_ICONS[state]);
 

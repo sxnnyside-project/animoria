@@ -1,20 +1,35 @@
-import { spawn, type ChildProcess } from 'node:child_process';
-import { createInterface, type Interface } from 'node:readline';
+import { type ChildProcess, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { type Interface, createInterface } from 'node:readline';
 import type {
-  WorkspaceAnalysis,
   DuplicateGroup,
-  UsageReference,
-  TrashItem,
+  ReferenceRewriteProposal,
   ResolutionPlan,
+  TrashItem,
+  UsageReference,
+  WorkspaceAnalysis,
 } from '@animoria/contracts';
 
-export const PROTOCOL_VERSION = 1;
+export interface DaemonRequestEnvelope {
+  protocol: number;
+  id: string;
+  method: string;
+  params: Record<string, unknown>;
+}
 
-/**
- * Metadata and capabilities returned by the native engine during Protocol v1 handshake.
- */
+export interface DaemonResponseEnvelope {
+  protocol: number;
+  id: string;
+  result?: unknown;
+  error?: {
+    code: string;
+    message: string;
+    detail?: string;
+  };
+}
+
 export interface HelloResult {
   engine: string;
   version: string;
@@ -23,9 +38,6 @@ export interface HelloResult {
   capabilities: string[];
 }
 
-/**
- * Result payload returned from full workspace analysis operations.
- */
 export interface DaemonScanResult {
   analysis: WorkspaceAnalysis;
   references: UsageReference[];
@@ -33,78 +45,54 @@ export interface DaemonScanResult {
 }
 
 /**
- * Structured error details returned by the daemon on request failure.
- */
-export interface DaemonError {
-  code: string;
-  message: string;
-  detail?: string;
-}
-
-/**
- * Protocol v1 NDJSON response envelope.
- */
-export interface DaemonResponseEnvelope<T = any> {
-  protocol: number;
-  id: string;
-  result?: T;
-  error?: DaemonError;
-}
-
-/**
- * Async client for the native `animoria daemon` process communicating over Protocol v1 stdio NDJSON.
- *
- * Handles binary discovery, process lifecycle supervision, line-buffered JSON parsing,
- * and concurrent request/response correlation by unique request IDs.
+ * Client for communicating with the Animoria native daemon process over Protocol v1 (NDJSON).
  */
 export class VsCodeDaemonClient {
-  private process: ChildProcess | null = null;
-  private readline: Interface | null = null;
+  private process?: ChildProcess | undefined;
+  private readline?: Interface | undefined;
+  private requestIdCounter = 0;
   private pendingRequests = new Map<
     string,
-    { resolve: (val: any) => void; reject: (err: Error) => void }
+    { resolve: (val: unknown) => void; reject: (err: Error) => void }
   >();
-  private reqIdCounter = 0;
+  private readonly binaryPath?: string;
 
-  constructor(private binaryPath?: string) {
-    if (!this.binaryPath) {
-      this.binaryPath = this.resolveBinary();
-    }
+  constructor(binaryPath?: string, extensionPath?: string) {
+    this.binaryPath = binaryPath ?? this.resolveBinaryPath(extensionPath);
   }
 
   /**
-   * Resolves the native `animoria` executable from environment overrides or release/debug artifacts.
+   * Resolves the canonical path to the native Animoria binary.
    */
-  private resolveBinary(): string {
-    const customBin = process.env.ANIMORIA_DAEMON_BIN || process.env.ANIMORIA_BINARY_PATH;
-    if (customBin && existsSync(customBin)) {
-      return customBin;
+  private resolveBinaryPath(extensionPath?: string): string {
+    const custom = process.env.ANIMORIA_BINARY_PATH;
+    if (custom && existsSync(custom)) {
+      return custom;
     }
 
+    const home = homedir();
     const isWindows = process.platform === 'win32';
     const binaryName = isWindows ? 'animoria.exe' : 'animoria';
 
-    const home = process.env.HOME || process.env.USERPROFILE || '';
     const candidates = [
+      extensionPath ? join(extensionPath, 'bin', binaryName) : '',
       resolve(__dirname, '../bin', binaryName),
-      resolve(__dirname, '../../bin', binaryName),
       resolve(__dirname, 'bin', binaryName),
-      resolve(__dirname, '../../../packages/animoria-core-rust/target/release', binaryName),
-      resolve(__dirname, '../../../packages/animoria-core-rust/target/debug', binaryName),
-      resolve(__dirname, '../../../../packages/animoria-core-rust/target/release', binaryName),
-      resolve(__dirname, '../../../../packages/animoria-core-rust/target/debug', binaryName),
-      resolve(__dirname, '../../../animoria-core-rust/target/release', binaryName),
-      resolve(__dirname, '../../../animoria-core-rust/target/debug', binaryName),
-      resolve(__dirname, '../../../../animoria-core-rust/target/release', binaryName),
+      resolve(process.cwd(), 'bin', binaryName),
+      resolve(process.cwd(), 'packages/animoria-vscode/bin', binaryName),
       resolve(process.cwd(), 'packages/animoria-core-rust/target/release', binaryName),
       resolve(process.cwd(), 'packages/animoria-core-rust/target/debug', binaryName),
+      resolve(process.cwd(), '../animoria-core-rust/target/release', binaryName),
+      resolve(process.cwd(), '../animoria-core-rust/target/debug', binaryName),
       resolve(process.cwd(), 'target/release', binaryName),
       resolve(process.cwd(), 'target/debug', binaryName),
+      resolve(process.cwd(), '../../target/release', binaryName),
+      resolve(process.cwd(), '../../target/debug', binaryName),
       join(home, '.cargo/bin', binaryName),
       `/opt/homebrew/bin/${binaryName}`,
       `/usr/local/bin/${binaryName}`,
       binaryName,
-    ];
+    ].filter(Boolean);
 
     for (const cand of candidates) {
       if (cand !== binaryName && existsSync(cand)) {
@@ -134,70 +122,87 @@ export class VsCodeDaemonClient {
 
     this.readline = createInterface({
       input: this.process.stdout!,
-      crlfDelay: Infinity,
+      crlfDelay: Number.POSITIVE_INFINITY,
     });
 
-    this.readline.on('line', (line) => {
-      const trimmed = line.trim();
-      if (!trimmed || !trimmed.startsWith('{')) return;
+    this.readline.on('line', (line) => this.handleLine(line));
 
-      try {
-        const response = JSON.parse(trimmed) as DaemonResponseEnvelope;
-        const reqId = response.id;
-        const pending = this.pendingRequests.get(reqId);
-
-        if (pending) {
-          this.pendingRequests.delete(reqId);
-          if (!response.error) {
-            pending.resolve(response.result);
-          } else {
-            pending.reject(new Error(`[${response.error.code}] ${response.error.message}`));
-          }
-        }
-      } catch {
-        // Silently ignore malformed non-JSON output on stdout
+    this.process.stderr?.on('data', (chunk: Buffer) => {
+      const text = chunk.toString();
+      if (text.trim()) {
+        console.warn(`[Animoria Native Daemon Log] ${text.trim()}`);
       }
+    });
+
+    this.process.on('exit', (code, signal) => {
+      this.rejectAllPending(new Error(`Daemon process exited (code=${code}, signal=${signal})`));
+      this.process = undefined;
     });
 
     this.process.on('error', (err) => {
-      for (const [, pending] of this.pendingRequests) {
-        pending.reject(err);
+      this.rejectAllPending(err);
+      this.process = undefined;
+    });
+  }
+
+  private handleLine(line: string) {
+    const trimmed = line.trim();
+    if (!trimmed || !trimmed.startsWith('{')) return;
+
+    try {
+      const response = JSON.parse(trimmed) as DaemonResponseEnvelope;
+      const reqId = response.id;
+      const pending = this.pendingRequests.get(reqId);
+
+      if (pending) {
+        this.pendingRequests.delete(reqId);
+        if (!response.error) {
+          pending.resolve(response.result);
+        } else {
+          pending.reject(new Error(`[${response.error.code}] ${response.error.message}`));
+        }
       }
-      this.pendingRequests.clear();
-    });
+    } catch {
+      // Silently ignore malformed non-JSON output on stdout
+    }
+  }
 
-    this.process.on('exit', () => {
-      this.process = null;
-      this.readline = null;
-    });
-
-    await this.hello();
+  private rejectAllPending(err: Error) {
+    for (const [, pending] of this.pendingRequests) {
+      pending.reject(err);
+    }
+    this.pendingRequests.clear();
   }
 
   /**
    * Sends a framed Protocol v1 request and awaits the correlated response.
    */
-  private async request<T>(method: string, params: Record<string, any> = {}): Promise<T> {
+  private async request<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
     if (!this.process) {
       await this.start();
     }
 
-    const id = `vscode-req-${++this.reqIdCounter}`;
+    const id = `req-${++this.requestIdCounter}`;
     const envelope = JSON.stringify({
-      protocol: PROTOCOL_VERSION,
+      protocol: 1,
       id,
       method,
       params,
     });
 
     return new Promise<T>((resolve, reject) => {
-      this.pendingRequests.set(id, { resolve, reject });
-      this.process!.stdin!.write(envelope + '\n');
+      this.pendingRequests.set(id, { resolve: resolve as (val: unknown) => void, reject });
+      this.process?.stdin?.write(`${envelope}\n`);
     });
   }
 
   public async hello(): Promise<HelloResult> {
     return this.request<HelloResult>('hello');
+  }
+
+  /** Liveness check. Answered in arrival order like any other request, so it confirms the daemon is alive between operations — not concurrently during a long-running one. */
+  public async ping(): Promise<{ ready: boolean; uptime_ms: number }> {
+    return this.request('ping');
   }
 
   public async scan(
@@ -220,12 +225,14 @@ export class VsCodeDaemonClient {
     });
   }
 
-  public async createRemediationPlan(duplicateGroup: DuplicateGroup): Promise<ResolutionPlan> {
+  /** Builds a `ResolutionPlan` for keeping one candidate in a duplicate group. */
+  public async remediatePlan(duplicateGroup: DuplicateGroup): Promise<ResolutionPlan> {
     return this.request<ResolutionPlan>('remediate_plan', {
       duplicate_group: duplicateGroup,
     });
   }
 
+  /** Moves one asset to `.animoria/trash/` and returns the resulting `TrashItem`. */
   public async trashAsset(
     workspacePath: string,
     assetId: string,
@@ -238,30 +245,43 @@ export class VsCodeDaemonClient {
     });
   }
 
-  public async restoreAsset(
-    workspacePath: string,
-    item: TrashItem
-  ): Promise<{ restored: boolean }> {
-    return this.request<{ restored: boolean }>('restore_asset', {
+  /** Restores a previously trashed asset to its original location. */
+  public async restoreAsset(workspacePath: string, trashItem: TrashItem): Promise<void> {
+    await this.request('restore_asset', {
       workspace_path: workspacePath,
-      trash_item: item,
+      trash_item: trashItem,
     });
   }
 
   /**
-   * Shuts down the daemon process gracefully.
+   * Applies one already-confirmed reference-rewrite proposal to disk. The
+   * daemon refuses (throws) if the target line no longer matches
+   * `proposal.original_line` — the confirmation was for that exact line.
    */
+  public async applyReferenceRewrite(
+    workspacePath: string,
+    proposal: ReferenceRewriteProposal
+  ): Promise<void> {
+    await this.request('applyReferenceRewrite', { workspace_path: workspacePath, proposal });
+  }
+
   public async shutdown(): Promise<void> {
     if (!this.process) return;
+
     try {
       await this.request('shutdown');
     } catch {
-      // Best-effort shutdown
+      // Process may already be closed
     } finally {
+      if (this.readline) {
+        this.readline.close();
+        this.readline = undefined;
+      }
       if (this.process) {
         this.process.kill();
-        this.process = null;
+        this.process = undefined;
       }
+      this.rejectAllPending(new Error('Daemon client shut down.'));
     }
   }
 }

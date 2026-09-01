@@ -21,6 +21,7 @@ import com.sxnnyside.animoria.backend.AnimoriaAnalysisHolder
 import com.sxnnyside.animoria.backend.AnimoriaCoroutineScope
 import com.sxnnyside.animoria.backend.CoreProcessManager
 import com.sxnnyside.animoria.backend.JetBrainsAsset
+import com.sxnnyside.animoria.backend.StaticAssetData
 import com.sxnnyside.animoria.logging.AnimoriaLogger
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.buildJsonObject
@@ -149,9 +150,20 @@ class AnimoriaGalleryPanel(
             return
         }
 
-        model.setAssets(analysis.assets)
+        model.setAssets(analysis.assets.filter { it.kind == "motion" })
+        model.setStaticAssets(
+            analysis.assets.filter { it.kind == "static" }.map {
+                StaticAssetData(
+                    path = it.path,
+                    name = it.name,
+                    stem = it.stem,
+                    format = it.format,
+                    sizeBytes = it.sizeBytes,
+                )
+            },
+        )
         model.setAnalysis(analysis)
-        requestThumbnails(analysis.assets)
+        requestThumbnails(analysis.assets.filter { it.kind == "motion" })
     }
 
     /** Shows a terminal daemon failure in the tree rather than an empty gallery. */
@@ -167,7 +179,20 @@ class AnimoriaGalleryPanel(
 
     private fun selectedAsset(): JetBrainsAsset? {
         val node = tree.lastSelectedPathComponent as? DefaultMutableTreeNode ?: return null
-        return (node.userObject as? AnimatedAssetNode)?.asset
+        val uo = node.userObject
+        if (uo is AnimatedAssetNode) return uo.asset
+        if (uo is StaticAssetNode) {
+            return JetBrainsAsset(
+                path = uo.asset.path,
+                name = uo.asset.name,
+                stem = uo.asset.stem,
+                format = uo.asset.format,
+                kind = "static",
+                sizeBytes = uo.asset.sizeBytes,
+            )
+        }
+        if (uo is GovernanceIssueNode) return uo.asset
+        return null
     }
 
     /**
@@ -244,7 +269,8 @@ class AnimoriaGalleryPanel(
         return runCatching {
             val root =
                 File(
-                    com.intellij.openapi.application.PathManager.getSystemPath(),
+                    com.intellij.openapi.application.PathManager
+                        .getSystemPath(),
                     "animoria/thumbnails/${project.locationHash}",
                 )
             root.mkdirs()

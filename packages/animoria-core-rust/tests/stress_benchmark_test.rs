@@ -49,9 +49,7 @@ impl BenchmarkWorkspace {
                 }
                 1 => {
                     // SVG
-                    let svg = format!(
-                        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>"#
-                    );
+                    let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>"#;
                     self.write_file(&format!("assets/{folder}/icon_{i}.svg"), svg.as_bytes());
                 }
                 2 => {
@@ -104,7 +102,10 @@ fn test_stress_and_throughput_1000_assets() {
     let ws = BenchmarkWorkspace::new();
     let total_assets = 1000;
 
-    println!("\n=== GENERATING STRESS TEST WORKSPACE ({} ASSETS) ===", total_assets);
+    println!(
+        "\n=== GENERATING STRESS TEST WORKSPACE ({} ASSETS) ===",
+        total_assets
+    );
     ws.populate_scale_workspace(total_assets);
 
     println!("=== RUNNING NATIVE RUST CORE WORKSPACE PIPELINE ===");
@@ -118,7 +119,10 @@ fn test_stress_and_throughput_1000_assets() {
     println!("📊 Discovered Assets: {}", analysis.assets.len());
     println!("🔍 Traced References: {}", index.references().len());
     println!("👥 Duplicate Groups: {}", index.duplicate_groups().len());
-    println!("🩺 Health Score: {}% (Grade {})", analysis.health_score.score, analysis.health_score.grade);
+    println!(
+        "🩺 Health Score: {}% (Grade {})",
+        analysis.health_score.score, analysis.health_score.grade
+    );
 
     assert_eq!(analysis.state, LifecycleState::Ready);
     assert_eq!(analysis.assets.len(), total_assets);

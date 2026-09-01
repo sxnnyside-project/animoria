@@ -2,6 +2,14 @@ use crate::contracts::analysis::{DiagnosticSeverity, RuleDiagnostic};
 use crate::governance::context::AnalysisContext;
 use crate::governance::rule::Rule;
 
+/// Flags every non-canonical copy in a duplicate group as an error.
+///
+/// The canonical asset (`DuplicateGroup::canonical_asset_id`, chosen by
+/// `deduplication::cluster::find_duplicate_groups`) is deliberately exempt:
+/// someone has to be "the original" for a diagnostic to make sense as
+/// "delete this, keep that," and the alternative — flagging every copy
+/// including the one meant to survive — would make `clean`'s own target
+/// indistinguishable from what it's being asked to remove.
 pub struct NoDuplicateContentRule;
 
 impl Rule for NoDuplicateContentRule {

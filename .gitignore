@@ -36,8 +36,7 @@ Thumbs.db
 # `copySharedUi` task into `build/generated-resources/web/`, not from the source tree.
 packages/animoria-jetbrains/src/main/resources/assets/
 
-# Self-contained native CLI binaries — regenerated per-platform by `scripts/build-sea.mjs`
-packages/animoria-core/sea/
+# Native CLI binaries — regenerated per-platform by `scripts/copy-native-daemon.mjs`
 packages/animoria-jetbrains/src/main/resources/native/
 
 # Editor and AI tooling local caches

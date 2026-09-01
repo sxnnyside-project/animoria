@@ -1,14 +1,12 @@
+/// <reference types="node" />
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 /**
- * The gates that make "shared UI" true rather than aspirational.
- *
- * Each one corresponds to a specific failure the audit found. They are asserted here,
- * in the package they constrain, so a violation fails the package's own build rather
- * than surfacing as a broken IDE later.
+ * Architectural invariant assertions for `@animoria/ui`:
+ * Ensures zero host leakages, pure web component boundaries, and adherence to design tokens.
  */
 
 const SRC = fileURLToPath(new URL('../src', import.meta.url));

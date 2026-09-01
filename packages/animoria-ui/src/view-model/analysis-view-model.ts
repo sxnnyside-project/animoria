@@ -5,6 +5,7 @@ import type {
   RuleDiagnostic,
   WorkspaceAnalysis,
 } from '@animoria/contracts';
+import type { CleanupReason, MultiRootAnalysis } from '../bridge/types.js';
 
 export interface AttributedAsset {
   readonly rootId: string;
@@ -42,7 +43,7 @@ export const ALL_ROOTS: RootFilter = { kind: 'all' };
 export type ReferenceState = 'resolved' | 'incomplete' | 'unavailable';
 
 export interface AnalysisViewModel {
-  readonly analysis: WorkspaceAnalysis;
+  readonly analysis: WorkspaceAnalysis | MultiRootAnalysis;
   readonly state: string;
   readonly stateLabel: string;
 
@@ -65,44 +66,134 @@ export interface AnalysisViewModel {
 }
 
 export function buildAnalysisViewModel(
-  analysis: WorkspaceAnalysis,
+  analysis: WorkspaceAnalysis | MultiRootAnalysis,
   filter: RootFilter = ALL_ROOTS
 ): AnalysisViewModel {
-  const rootId = analysis.root_id || 'root';
-  const rootName = analysis.root_path
-    ? analysis.root_path.split('/').pop() || 'Workspace'
+  if ('roots' in analysis && Array.isArray(analysis.roots)) {
+    const multi = analysis;
+    const roots: RootSummary[] = multi.roots.map((root) => ({
+      rootId: root.root_id || 'root',
+      rootName: root.root_path ? root.root_path.split(/[/\\]/).pop() || 'Root' : 'Root',
+      rootPath: root.root_path,
+      assetCount: root.assets.length,
+      findingCount: root.diagnostics.length,
+      healthScore: root.health_score?.score ?? 100,
+    }));
+
+    const assets: AttributedAsset[] = [];
+    const diagnostics: AttributedDiagnostic[] = [];
+    const byAsset = new Map<string, RuleDiagnostic[]>();
+    const byRule = new Map<string, AttributedDiagnostic[]>();
+    const rootIdByAssetPath = new Map<string, string>();
+    const referenceCounts = new Map<string, number>();
+
+    const rawCounts = (
+      multi as { referenceCounts?: ReadonlyMap<string, number> | Record<string, number> }
+    ).referenceCounts;
+    if (rawCounts instanceof Map) {
+      for (const [k, v] of rawCounts.entries()) {
+        referenceCounts.set(k, v);
+      }
+    } else if (rawCounts && typeof rawCounts === 'object') {
+      for (const [k, v] of Object.entries(rawCounts)) {
+        referenceCounts.set(k, Number(v) || 0);
+      }
+    }
+
+    for (const root of multi.roots) {
+      const rootId = root.root_id || 'root';
+      const rootName = root.root_path ? root.root_path.split(/[/\\]/).pop() || 'Root' : 'Root';
+      const isFiltered = filter.kind === 'root' && filter.rootId !== rootId;
+      if (isFiltered) continue;
+
+      for (const asset of root.assets) {
+        assets.push({ rootId, rootName, asset });
+        rootIdByAssetPath.set(asset.path, rootId);
+        if (!referenceCounts.has(asset.path)) {
+          referenceCounts.set(asset.path, 0);
+        }
+      }
+
+      for (const diagnostic of root.diagnostics) {
+        const item: AttributedDiagnostic = { rootId, rootName, diagnostic };
+        diagnostics.push(item);
+        const assetPath = diagnostic.target_asset_path || '';
+        if (assetPath) {
+          const list = byAsset.get(assetPath) ?? [];
+          list.push(diagnostic);
+          byAsset.set(assetPath, list);
+        }
+        const ruleId = diagnostic.rule_id || 'general';
+        const ruleList = byRule.get(ruleId) ?? [];
+        ruleList.push(item);
+        byRule.set(ruleId, ruleList);
+      }
+    }
+
+    const sections: FindingSection[] = [...byRule.entries()]
+      .map(([ruleId, entries]) => ({
+        ruleId,
+        label: humanizeRuleId(ruleId),
+        diagnostics: entries,
+      }))
+      .sort(
+        (a, b) => b.diagnostics.length - a.diagnostics.length || a.ruleId.localeCompare(b.ruleId)
+      );
+
+    return {
+      analysis: multi,
+      state: 'ready',
+      stateLabel: 'Ready',
+      roots,
+      filter,
+      isSingleRoot: multi.roots.length === 1,
+      activeRootId: filter.kind === 'root' ? filter.rootId : null,
+      assets,
+      assetCount: assets.length,
+      sections,
+      findingCount: diagnostics.length,
+      diagnosticsByAssetPath: byAsset,
+      rootIdByAssetPath,
+      referenceCounts,
+      duplicateGroups: multi.duplicateGroups,
+      health: multi.roots[0]?.health_score ?? null,
+      isEmpty: assets.length === 0,
+    };
+  }
+
+  const single = analysis as WorkspaceAnalysis;
+  const rootId = single.root_id || 'root';
+  const rootName = single.root_path
+    ? single.root_path.split(/[/\\]/).pop() || 'Workspace'
     : 'Workspace';
 
   const rootSummary: RootSummary = {
     rootId,
     rootName,
-    rootPath: analysis.root_path,
-    assetCount: analysis.assets.length,
-    findingCount: analysis.diagnostics.length,
-    healthScore: analysis.health_score?.score ?? (analysis as any).health?.report?.score ?? 100,
+    rootPath: single.root_path,
+    assetCount: single.assets.length,
+    findingCount: single.diagnostics.length,
+    healthScore: single.health_score?.score ?? 100,
   };
 
   const isFiltered = filter.kind === 'root' && filter.rootId !== rootId;
-  const rawAssets = Array.isArray(analysis.assets) ? analysis.assets : [];
-  const rawDiagnostics = Array.isArray(analysis.diagnostics) ? analysis.diagnostics : [];
+  const rawAssets = Array.isArray(single.assets) ? single.assets : [];
+  const rawDiagnostics = Array.isArray(single.diagnostics) ? single.diagnostics : [];
 
   const assets: AttributedAsset[] = isFiltered
     ? []
-    : rawAssets.map((raw: any) => {
-        const asset: Asset = raw.asset ? raw.asset : raw;
-        return {
-          rootId,
-          rootName,
-          asset: {
-            ...asset,
-            name: asset.name || (asset.path ? asset.path.split(/[/\\]/).pop() || 'asset' : 'asset'),
-            size_bytes: asset.size_bytes ?? (asset as any).sizeBytes ?? 0,
-            format: asset.format || 'unknown',
-            kind: asset.kind || 'static',
-            is_valid: asset.is_valid ?? (asset as any).status !== 'error',
-          },
-        };
-      });
+    : rawAssets.map((asset: Asset) => ({
+        rootId,
+        rootName,
+        asset: {
+          ...asset,
+          name: asset.name || (asset.path ? asset.path.split(/[/\\]/).pop() || 'asset' : 'asset'),
+          size_bytes: asset.size_bytes ?? 0,
+          format: asset.format || 'unknown',
+          kind: asset.kind || 'static',
+          is_valid: asset.is_valid ?? true,
+        },
+      }));
 
   const byAsset = new Map<string, RuleDiagnostic[]>();
   const byRule = new Map<string, AttributedDiagnostic[]>();
@@ -116,18 +207,9 @@ export function buildAnalysisViewModel(
 
   const diagnostics: AttributedDiagnostic[] = isFiltered
     ? []
-    : rawDiagnostics.map((raw: any) => {
-        const ruleId = raw.rule_id || raw.ruleId || 'general';
-        const assetPath = raw.target_asset_path || raw.targetAssetPath || raw.asset?.path || '';
-        const diagnostic: RuleDiagnostic = {
-          rule_id: ruleId,
-          severity: raw.severity || 'warning',
-          message: raw.message || 'Governance diagnostic',
-          target_asset_path: assetPath,
-          evidence_file: raw.evidence_file || raw.evidence?.file,
-          evidence_line: raw.evidence_line || raw.evidence?.line,
-          evidence_excerpt: raw.evidence_excerpt || raw.evidence?.excerpt,
-        };
+    : rawDiagnostics.map((diagnostic: RuleDiagnostic) => {
+        const ruleId = diagnostic.rule_id || 'general';
+        const assetPath = diagnostic.target_asset_path || '';
         const item: AttributedDiagnostic = { rootId, rootName, diagnostic };
         if (assetPath) {
           const list = byAsset.get(assetPath) ?? [];
@@ -151,9 +233,9 @@ export function buildAnalysisViewModel(
     );
 
   return {
-    analysis,
-    state: analysis.state,
-    stateLabel: describeLifecycle(analysis.state),
+    analysis: single,
+    state: single.state,
+    stateLabel: describeLifecycle(single.state),
     roots: [rootSummary],
     filter,
     isSingleRoot: true,
@@ -166,12 +248,12 @@ export function buildAnalysisViewModel(
     rootIdByAssetPath,
     referenceCounts,
     duplicateGroups: [],
-    health: analysis.health_score ?? (analysis as any).health?.report ?? null,
+    health: single.health_score ?? null,
     isEmpty: assets.length === 0,
   };
 }
 
-function humanizeRuleId(ruleId: string = ''): string {
+function humanizeRuleId(ruleId = ''): string {
   const safeId = ruleId || 'General';
   const words = safeId.replace(/^no-/, '').replace(/-/g, ' ');
   return words.charAt(0).toUpperCase() + words.slice(1);
@@ -194,8 +276,9 @@ export function confidenceLabel(confidence: string): string {
   return confidence.toUpperCase();
 }
 
-export function cleanupReasonLabel(reason: string): string {
-  return reason;
+export function cleanupReasonLabel(reason: string | CleanupReason): string {
+  if (typeof reason === 'string') return reason;
+  return reason.message || reason.code;
 }
 
 export function formatBytes(bytes: number): string {

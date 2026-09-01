@@ -1,14 +1,25 @@
-use std::fs;
-use std::path::Path;
 use crate::cli::ui::{
-    accent, brand, dim, format_bytes, grade_badge, success, title, warning, BOLD, RESET,
+    self, accent, brand, dim, format_bytes, grade_badge, success, title, warning,
 };
+use crate::cli::workspace::resolve_workspace_path;
+use crate::contracts::analysis::DiagnosticSeverity;
 use crate::indexer::AssetIndex;
+use std::path::Path;
 
 pub fn execute_report(target_path: &Path, json: bool) -> anyhow::Result<i32> {
-    let canonical = fs::canonicalize(target_path).unwrap_or_else(|_| target_path.to_path_buf());
+    let (bold, reset) = (ui::bold_start(), ui::reset());
+    let canonical = resolve_workspace_path(target_path)?;
     let mut index = AssetIndex::new(canonical.to_string_lossy().to_string(), canonical);
     let analysis = index.scan_workspace(&[])?;
+
+    // Mirrors `check`'s exit code so `report` is usable as a CI gate too —
+    // it used to always return 0, which meant a report full of errors and a
+    // clean workspace looked identical to anything scripted against it.
+    let has_errors = analysis
+        .diagnostics
+        .iter()
+        .any(|d| d.severity == DiagnosticSeverity::Error);
+    let exit_code = if has_errors { 1 } else { 0 };
 
     if json {
         let payload = serde_json::json!({
@@ -17,18 +28,33 @@ pub fn execute_report(target_path: &Path, json: bool) -> anyhow::Result<i32> {
             "references_count": index.references().len(),
         });
         println!("{}", serde_json::to_string_pretty(&payload)?);
-        return Ok(0);
+        return Ok(exit_code);
     }
 
     let health = &analysis.health_score;
     let duplicate_groups = index.duplicate_groups();
 
-    println!("\n{} {}\n", brand("animoria"), title("Audit & Health Report"));
+    if ui::is_quiet() {
+        println!(
+            "{}% ({}) | {} asset(s) | {} duplicate group(s)",
+            health.score,
+            health.grade,
+            analysis.assets.len(),
+            duplicate_groups.len()
+        );
+        return Ok(exit_code);
+    }
+
+    println!(
+        "\n{} {}\n",
+        brand("animoria"),
+        title("Audit & Health Report")
+    );
 
     // Health Score Card
     println!("  ╭────────────────────────────────────────────────────────╮");
     println!(
-        "  │  Health Score: {BOLD}{}%{RESET}  │  Grade: {} │  Total Assets: {BOLD}{}{RESET}  │",
+        "  │  Health Score: {bold}{}%{reset}  │  Grade: {} │  Total Assets: {bold}{}{reset}  │",
         health.score,
         grade_badge(&health.grade),
         analysis.assets.len()
@@ -66,7 +92,7 @@ pub fn execute_report(target_path: &Path, json: bool) -> anyhow::Result<i32> {
         );
         for g in duplicate_groups {
             println!(
-                "    • {BOLD}{}{RESET} (SHA-256: {})",
+                "    • {bold}{}{reset} (SHA-256: {})",
                 g.id,
                 dim(&g.content_hash[..8])
             );
@@ -102,5 +128,5 @@ pub fn execute_report(target_path: &Path, json: bool) -> anyhow::Result<i32> {
     }
 
     println!("  {}\n", dim(&format!("Summary: {}", health.summary)));
-    Ok(0)
+    Ok(exit_code)
 }

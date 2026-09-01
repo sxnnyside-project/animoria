@@ -1,7 +1,7 @@
+use crate::contracts::asset::AssetFormat;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
-use crate::contracts::asset::AssetFormat;
 
 /// Fast heuristic format detector based on file extensions, magic bytes, and structural signatures.
 /// Returns `Some(Ok(format))` if recognized as a visual asset,
@@ -71,7 +71,9 @@ fn detect_dotlottie(path: &Path) -> Option<Result<AssetFormat, String>> {
     if header.len() >= 4 && header[0..4] == [0x50, 0x4B, 0x03, 0x04] {
         Some(Ok(AssetFormat::DotLottie))
     } else {
-        Some(Err("Invalid dotLottie archive: missing ZIP magic bytes".to_string()))
+        Some(Err(
+            "Invalid dotLottie archive: missing ZIP magic bytes".to_string()
+        ))
     }
 }
 
@@ -85,7 +87,9 @@ fn detect_rive(path: &Path) -> Option<Result<AssetFormat, String>> {
     if header.len() >= 4 && &header[0..4] == b"RIVE" {
         Some(Ok(AssetFormat::Rive))
     } else {
-        Some(Err("Invalid Rive binary: missing RIVE header bytes".to_string()))
+        Some(Err(
+            "Invalid Rive binary: missing RIVE header bytes".to_string()
+        ))
     }
 }
 
@@ -186,7 +190,9 @@ fn detect_avif(path: &Path) -> Option<Result<AssetFormat, String>> {
         Err(e) => return Some(Err(format!("Cannot read AVIF file: {e}"))),
     };
 
-    let is_avif = header.windows(8).any(|w| w == b"ftypavif" || w == b"ftypavis");
+    let is_avif = header
+        .windows(8)
+        .any(|w| w == b"ftypavif" || w == b"ftypavis");
     if is_avif {
         Some(Ok(AssetFormat::Avif))
     } else {

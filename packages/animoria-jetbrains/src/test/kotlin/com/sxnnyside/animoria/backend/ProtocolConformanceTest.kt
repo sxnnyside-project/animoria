@@ -8,15 +8,8 @@ import org.junit.jupiter.api.Test
 import java.io.File
 
 /**
- * The JetBrains client speaks protocol v1, and nothing else.
- *
- * ## Why source-level
- * Driving a real daemon from a Gradle test would require the built Node artifact to
- * be present, which couples this module's tests to another package's build. The
- * daemon side of the protocol is exercised against a real spawned binary in
- * `@animoria/core`'s own suite; what can only be checked *here* is that the Kotlin
- * client's half of the contract matches — the envelope it writes, the version it
- * claims, and the fact that it no longer speaks the old dialect.
+ * Verifies that the JetBrains client conforms strictly to Protocol v1 envelopes,
+ * version declarations, and RPC semantics.
  */
 @DisplayName("JetBrains client conforms to daemon protocol v1")
 class ProtocolConformanceTest {
@@ -25,7 +18,8 @@ class ProtocolConformanceTest {
 
     private fun source(): String {
         assertTrue(manager.exists(), "expected ${manager.absolutePath}")
-        return manager.readText()
+        return manager
+            .readText()
             .replace(Regex("""/\*.*?\*/""", RegexOption.DOT_MATCHES_ALL), "")
             .lines()
             .joinToString("\n") { it.substringBefore("//") }
@@ -35,17 +29,17 @@ class ProtocolConformanceTest {
     @DisplayName("declares the same protocol version the daemon does")
     fun protocolVersionsAgree() {
         // A plugin and a daemon that disagree here produce a mismatch banner at every
-        // startup — visible, but only after shipping. The TypeScript constant is the
-        // source of truth; this asserts the Kotlin copy tracks it.
-        val protocolTs =
-            File("../animoria-core/src/daemon/protocol.ts").readText()
+        // startup — visible, but only after shipping. The Rust daemon is the source
+        // of truth; this asserts the Kotlin copy tracks it.
+        val protocolRs =
+            File("../animoria-core-rust/src/daemon/server.rs").readText()
         val declared =
-            Regex("""PROTOCOL_VERSION\s*=\s*(\d+)""").find(protocolTs)?.groupValues?.get(1)
+            Regex("""PROTOCOL_VERSION:\s*u32\s*=\s*(\d+)""").find(protocolRs)?.groupValues?.get(1)
 
         assertEquals(
             declared,
             CoreProcessManager.PROTOCOL_VERSION.toString(),
-            "CoreProcessManager.PROTOCOL_VERSION must match @animoria/core's PROTOCOL_VERSION",
+            "CoreProcessManager.PROTOCOL_VERSION must match daemon PROTOCOL_VERSION",
         )
     }
 

@@ -7,11 +7,47 @@ on:
     branches: [main]
 
 jobs:
+  rust-core:
+    name: Rust core (clippy, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Cache cargo registry & build
+        uses: actions/cache@6849a6489940f00c2f30c0fb92c6274307ccb58a # v4.1.2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/animoria-core-rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('packages/animoria-core-rust/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+      - name: Format check (rustfmt)
+        run: cargo fmt --manifest-path packages/animoria-core-rust/Cargo.toml --check
+      - name: Lint (clippy -D warnings)
+        run: cargo clippy --manifest-path packages/animoria-core-rust/Cargo.toml --all-targets -- -D warnings
+      - name: Test
+        run: cargo test --manifest-path packages/animoria-core-rust/Cargo.toml
+
+  rust-deny:
+    name: Rust advisory & license check (cargo-deny)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@34899fc7ba81ca0ab32e27c24864ca82f38f91f5 # v2.0.14
+        with:
+          command: check
+          arguments: --manifest-path packages/animoria-core-rust/Cargo.toml
+
   format:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
@@ -24,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
@@ -37,7 +73,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
@@ -50,7 +86,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
@@ -63,7 +99,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
@@ -77,7 +113,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
@@ -88,8 +124,6 @@ jobs:
           java-version: '17'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build @animoria/core
-        run: pnpm --filter @animoria/core build
       - name: Build @animoria/ui
         run: pnpm --filter @animoria/ui build
       - name: Compile Kotlin
@@ -114,7 +148,7 @@ jobs:
     needs: [build, jetbrains]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
@@ -123,19 +157,21 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: '17'
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Install vsce
         run: npm install -g @vscode/vsce
       - name: Build all packages
         run: pnpm build
+      - name: Build native daemon executable
+        run: cargo build --release --manifest-path packages/animoria-core-rust/Cargo.toml
+      - name: Copy native daemon into VS Code and JetBrains resources
+        run: node scripts/copy-native-daemon.mjs
       - name: Package VS Code extension (dry run)
         working-directory: packages/animoria-vscode
         run: vsce package --no-dependencies -o /tmp/animoria-vscode-ci.vsix
-      - name: Build native daemon executable
-        run: pnpm --filter @animoria/core build:sea
-      - name: Copy native daemon into JetBrains resources
-        run: node scripts/copy-sea-into-jetbrains.mjs
       - name: Build JetBrains plugin assets
         run: |
           mkdir -p packages/animoria-jetbrains/src/main/resources/assets

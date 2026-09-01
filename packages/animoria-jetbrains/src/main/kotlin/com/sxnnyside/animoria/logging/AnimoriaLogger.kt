@@ -5,20 +5,8 @@ import com.intellij.notification.NotificationType
 import com.intellij.openapi.diagnostic.Logger
 
 /**
- * Routes `@animoria/core`'s diagnostic log entries from the CLI daemon to
- * IntelliJ's `Logger` channel, and — for errors and warnings — to the
- * "Animoria" notification group as well.
- *
- * ## Why both
- * `Logger` entries land in IntelliJ's global `idea.log`, mixed with every
- * other plugin and platform component — effectively undiscoverable without
- * already knowing to look there. The notification group surfaces in the
- * IDE's **Event Log** tool window (`View → Tool Windows → Notifications`,
- * or bottom status bar), filterable by plugin, and persists across the
- * session — the same practical discoverability VS Code's dedicated
- * "Animoria" Output channel provides. Only warnings and errors go there;
- * routine info/debug stays in `Logger` only, since a notification per
- * scan-progress tick would be noise, not a diagnostic surface.
+ * Routes diagnostic log entries from the native CLI daemon to IntelliJ's `Logger` channel
+ * and surfaces critical errors/warnings in the IDE notification center.
  */
 object AnimoriaLogger {
     private val log = Logger.getInstance("Animoria")
@@ -66,19 +54,13 @@ object AnimoriaLogger {
         type: NotificationType,
     ) {
         try {
-            NotificationGroupManager.getInstance()
+            NotificationGroupManager
+                .getInstance()
                 .getNotificationGroup(NOTIFICATION_GROUP_ID)
                 .createNotification(message, type)
                 .notify(null)
         } catch (error: Exception) {
-            // Best-effort only — a missing or misconfigured notification group must
-            // never prevent the Logger call above from succeeding, which has already
-            // happened by the time this runs.
-            //
-            // Recorded through `log` rather than `warn`, both because `warn` would
-            // re-enter this method and because an entirely empty catch is the shape
-            // this codebase now refuses on principle: the audit found one hiding a
-            // contract mismatch that had silenced the whole plugin.
+            // Best-effort notification delivery — failures are logged without re-throwing
             log.warn("Animoria: could not post a notification — ${error.message}")
         }
     }

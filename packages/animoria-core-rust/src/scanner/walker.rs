@@ -1,19 +1,9 @@
+use super::ignore_rules::IgnoreRules;
 use ignore::WalkBuilder;
 use std::path::{Path, PathBuf};
-use super::ignore_rules::IgnoreRules;
 
 pub const RECOGNIZED_EXTENSIONS: &[&str] = &[
-    "json",
-    "lottie",
-    "riv",
-    "gif",
-    "apng",
-    "svg",
-    "png",
-    "jpg",
-    "jpeg",
-    "webp",
-    "avif",
+    "json", "lottie", "riv", "gif", "apng", "svg", "png", "jpg", "jpeg", "webp", "avif",
 ];
 
 pub struct WorkspaceScanner {

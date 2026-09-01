@@ -139,7 +139,7 @@ describe('preview — a Lottie arrives playable, not as a picture', () => {
         stem: 'broken',
         format: 'lottie',
         sizeBytes: 10,
-        thumbnailPath: thumbnail,
+        thumbnail_path: thumbnail,
       },
     ] as unknown as WorkspaceAnalysis['assets']);
 

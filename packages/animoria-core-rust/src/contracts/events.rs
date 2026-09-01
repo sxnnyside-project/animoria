@@ -7,7 +7,10 @@ use ts_rs::TS;
 #[cfg_attr(feature = "ts-bindings", derive(TS))]
 #[cfg_attr(
     feature = "ts-bindings",
-    ts(export, export_to = "../../../packages/animoria-contracts/src/generated/")
+    ts(
+        export,
+        export_to = "../../../packages/animoria-contracts/src/generated/"
+    )
 )]
 #[serde(rename_all = "kebab-case")]
 pub enum AssetChangeKind {
@@ -22,7 +25,10 @@ pub enum AssetChangeKind {
 #[cfg_attr(feature = "ts-bindings", derive(TS))]
 #[cfg_attr(
     feature = "ts-bindings",
-    ts(export, export_to = "../../../packages/animoria-contracts/src/generated/")
+    ts(
+        export,
+        export_to = "../../../packages/animoria-contracts/src/generated/"
+    )
 )]
 pub struct AssetChange {
     pub change_id: String,
@@ -46,7 +52,10 @@ pub struct AssetChange {
 #[cfg_attr(feature = "ts-bindings", derive(TS))]
 #[cfg_attr(
     feature = "ts-bindings",
-    ts(export, export_to = "../../../packages/animoria-contracts/src/generated/")
+    ts(
+        export,
+        export_to = "../../../packages/animoria-contracts/src/generated/"
+    )
 )]
 #[serde(rename_all = "kebab-case")]
 pub enum AuditEventKind {
@@ -62,7 +71,10 @@ pub enum AuditEventKind {
 #[cfg_attr(feature = "ts-bindings", derive(TS))]
 #[cfg_attr(
     feature = "ts-bindings",
-    ts(export, export_to = "../../../packages/animoria-contracts/src/generated/")
+    ts(
+        export,
+        export_to = "../../../packages/animoria-contracts/src/generated/"
+    )
 )]
 pub struct AuditEvent {
     pub event_id: String,

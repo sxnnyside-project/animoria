@@ -3,22 +3,8 @@ import { customElement, property, state } from 'lit/decorators.js';
 import type { GeneratedSnippet } from '../bridge/types.js';
 
 /**
- * The generated snippet, shown rather than promised.
- *
- * ## What this replaces
- * "Generate Code Snippet" ended in a status-bar message reading *"Done, copied."* The
- * developer had to paste into a file to discover which framework they had picked, what
- * the import line was, and whether it referenced the right asset. A toast is an
- * assertion about a clipboard; this is the code.
- *
- * ## Why the code stays until it is dismissed
- * A snippet is something a developer reads while typing something else. Anything that
- * clears it on the next click — a notification timeout, a focus change, opening the
- * file it is meant for — makes it useless for its actual purpose.
- *
- * ## Why the copy button lives inside the block
- * The clipboard action belongs to the thing being copied. A copy button in a toolbar
- * above three code blocks is a button whose target the reader has to infer.
+ * Visual code snippet panel displaying framework integration snippets (React, Vue, Flutter, Compose, Swift)
+ * with interactive tab switching, syntax display, and copy-to-clipboard functionality.
  */
 @customElement('animoria-snippet-panel')
 export class AnimoriaSnippetPanel extends LitElement {

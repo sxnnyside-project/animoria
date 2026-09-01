@@ -3,7 +3,7 @@ plugins {
     id("org.jetbrains.intellij") version "1.17.4"
     kotlin("plugin.serialization") version "2.4.10"
     id("io.gitlab.arturbosch.detekt") version "1.23.8"
-    id("org.jlleitschuh.gradle.ktlint") version "12.1.0"
+    id("org.jlleitschuh.gradle.ktlint") version "14.2.0"
 }
 
 group = "com.sxnnyside.animoria"
@@ -110,11 +110,11 @@ val copySharedUi by tasks.registering(Copy::class) {
  *
  * ## The defect this exists for
  * `buildPlugin` had no dependency on the daemon at all. The binary is produced by
- * `pnpm --filter @animoria/core build:sea` and copied in by
- * `scripts/copy-sea-into-jetbrains.mjs` — two npm steps that Gradle knew nothing
- * about. So `./gradlew buildPlugin` happily packaged whatever binary happened to be
- * lying in `resources/native/`, including one built before the Core change the plugin
- * now depends on.
+ * `cargo build --release -p animoria-core-rust` and copied in by
+ * `scripts/copy-native-daemon.mjs` — steps Gradle knows nothing about. So
+ * `./gradlew buildPlugin` happily packaged whatever binary happened to be lying in
+ * `resources/native/`, including one built before the Core change the plugin now
+ * depends on.
  *
  * That is exactly what shipped: a plugin calling `getUsageReferences` against a
  * daemon built before that method existed, reporting
@@ -128,35 +128,42 @@ val copySharedUi by tasks.registering(Copy::class) {
  */
 val verifyBundledDaemon by tasks.registering {
     val nativeDir = file("src/main/resources/native")
-    val coreDist = rootProject.file("../animoria-core/dist")
+    // Core is the Rust engine now — `animoria-core-rust`, not the legacy
+    // `animoria-core` TS package this used to compare against. That
+    // comparison silently no-opped once the legacy `dist/` stopped being
+    // rebuilt, which is how a stale native binary stopped being caught.
+    val coreSrc = rootProject.file("../animoria-core-rust/src")
 
     doLast {
         val platforms = nativeDir.listFiles()?.filter { it.isDirectory }.orEmpty()
         require(platforms.isNotEmpty()) {
             "No bundled Animoria daemon found under ${nativeDir.absolutePath}. " +
-                "Run: pnpm package:jetbrains-daemon"
+                "Run: pnpm package:native-daemon"
         }
 
-        if (!coreDist.exists()) return@doLast
+        if (!coreSrc.exists()) return@doLast
 
         val newestCore =
-            coreDist.walkTopDown().filter { it.isFile && it.extension == "js" }
+            coreSrc
+                .walkTopDown()
+                .filter { it.isFile && it.extension == "rs" }
                 .maxOfOrNull { it.lastModified() } ?: return@doLast
 
         for (platform in platforms) {
-            // build-sea.mjs names the Windows binary with a `.exe` suffix —
-            // an unqualified "animoria-core" only ever matched the other
-            // three platforms, so win32-x64 failed this check unconditionally.
-            val binaryName = if (platform.name.startsWith("win32")) "animoria-core.exe" else "animoria-core"
+            // The native binary is named `animoria` (build-sea.mjs's Rust
+            // equivalent, `cargo build --release -p animoria-core-rust`) —
+            // not `animoria-core`, which was the legacy Node SEA binary's
+            // name and never matched anything this migration produces.
+            val binaryName = if (platform.name.startsWith("win32")) "animoria.exe" else "animoria"
             val binary = File(platform, binaryName)
             require(binary.exists()) {
                 "The bundled daemon for ${platform.name} is missing its executable. " +
-                    "Run: pnpm package:jetbrains-daemon"
+                    "Run: pnpm package:native-daemon"
             }
             require(binary.lastModified() >= newestCore) {
-                "The bundled daemon for ${platform.name} is older than @animoria/core. " +
+                "The bundled daemon for ${platform.name} is older than animoria-core-rust. " +
                     "It will refuse methods this plugin depends on, reporting them as " +
-                    "declared-but-not-implemented. Run: pnpm package:jetbrains-daemon"
+                    "declared-but-not-implemented. Run: pnpm package:native-daemon"
             }
         }
     }
@@ -198,7 +205,11 @@ val verifyNoInternalApi by tasks.registering {
     dependsOn(tasks.named("runPluginVerifier"))
 
     doLast {
-        val reports = layout.buildDirectory.dir("reports/pluginVerifier").get().asFile
+        val reports =
+            layout.buildDirectory
+                .dir("reports/pluginVerifier")
+                .get()
+                .asFile
         require(reports.isDirectory) { "No plugin verifier report at ${reports.absolutePath}" }
 
         val verdicts =

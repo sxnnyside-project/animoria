@@ -9,6 +9,10 @@
 //! - **Error**: `{"protocol": 1, "id": "req-1", "result": null, "error": {"code": "invalid-params", "message": "..."}}`
 //! - **Version Guard**: Any request with `protocol != 1` is immediately rejected with `unsupported-version`.
 
+pub mod audit;
+pub mod cleanup;
+pub mod preview;
+pub mod report;
 pub mod server;
 
 pub use server::DaemonServer;

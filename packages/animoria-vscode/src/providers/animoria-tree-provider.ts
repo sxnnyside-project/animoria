@@ -1,4 +1,4 @@
-import { basename } from 'node:path';
+import { basename, relative } from 'node:path';
 import type {
   Asset,
   DuplicateGroup,
@@ -49,8 +49,18 @@ export class AnimoriaTreeItem extends vscode.TreeItem {
   public asset: Asset;
   public usageRefs: AnimoriaUsageItem[] = [];
 
-  constructor(asset: Asset, thumbnailPath: string | undefined, badges: readonly AssetBadge[] = []) {
-    super(asset.stem, vscode.TreeItemCollapsibleState.None);
+  constructor(
+    asset: Asset,
+    thumbnailPath: string | undefined,
+    badges: readonly AssetBadge[] = [],
+    hasReferences = false
+  ) {
+    super(
+      asset.stem,
+      hasReferences
+        ? vscode.TreeItemCollapsibleState.Collapsed
+        : vscode.TreeItemCollapsibleState.None
+    );
 
     this.asset = asset;
     this.id = asset.path;
@@ -67,7 +77,8 @@ export class AnimoriaTreeItem extends vscode.TreeItem {
       const dims = asset.dimensions ? `${asset.dimensions.width}×${asset.dimensions.height}` : '';
       const fps = asset.motion?.fps ? `${Math.round(asset.motion.fps)}fps` : '';
       const dur = asset.motion?.duration_secs ? `${asset.motion.duration_secs.toFixed(1)}s` : '';
-      summary = [fps, dur, dims].filter(Boolean).join(' · ');
+      const formatUpper = asset.format.toUpperCase();
+      summary = [formatUpper, fps, dur, dims].filter(Boolean).join(' · ');
 
       if (thumbnailPath) {
         this.iconPath = vscode.Uri.file(thumbnailPath);
@@ -89,6 +100,21 @@ export class AnimoriaTreeItem extends vscode.TreeItem {
       title: 'Open Preview',
       arguments: [asset],
     };
+  }
+}
+
+// ── Folder tree item ─────────────────────────────────────────────────────────
+
+export class AnimoriaFolderItem extends vscode.TreeItem {
+  constructor(
+    public readonly folderName: string,
+    public readonly relativePath: string,
+    public readonly assets: readonly Asset[]
+  ) {
+    super(folderName, vscode.TreeItemCollapsibleState.Expanded);
+    this.description = `${assets.length}`;
+    this.iconPath = new vscode.ThemeIcon('folder');
+    this.contextValue = 'animoriaFolder';
   }
 }
 
@@ -158,13 +184,18 @@ export class AnimoriaGovernanceIssueItem extends vscode.TreeItem {
   }
 }
 
-// ── Sections ─────────────────────────────────────────────────────────────────
+// ── Category Sections ────────────────────────────────────────────────────────
 
-export class AnimoriaAssetsSectionItem extends vscode.TreeItem {
-  constructor(count: number, label = 'Visual Assets') {
+export class AnimoriaSectionItem extends vscode.TreeItem {
+  constructor(
+    public readonly kind: 'motion' | 'static' | 'duplicates',
+    count: number,
+    label: string,
+    icon: string
+  ) {
     super(`${label} (${count})`, vscode.TreeItemCollapsibleState.Expanded);
-    this.iconPath = new vscode.ThemeIcon('layers');
-    this.contextValue = 'animoriaAssetsSection';
+    this.iconPath = new vscode.ThemeIcon(icon);
+    this.contextValue = `animoriaSection_${kind}`;
   }
 }
 
@@ -173,10 +204,11 @@ export type AssetViewMode = 'flat' | 'tree';
 type AnyTreeElement =
   | AnimoriaHealthScoreItem
   | AnimoriaTreeItem
+  | AnimoriaFolderItem
   | AnimoriaUsageItem
   | AnimoriaGovernanceSectionItem
   | AnimoriaGovernanceIssueItem
-  | AnimoriaAssetsSectionItem;
+  | AnimoriaSectionItem;
 
 export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElement> {
   private _assets: Asset[] = [];
@@ -224,45 +256,116 @@ export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElem
         .map((d) => new AnimoriaGovernanceIssueItem(d));
     }
 
-    if (element instanceof AnimoriaAssetsSectionItem) {
-      return this._buildAssetItems();
+    if (element instanceof AnimoriaSectionItem) {
+      if (element.kind === 'motion') {
+        return this._buildAssetItems(this._assets.filter((a) => a.kind === 'motion'));
+      }
+      if (element.kind === 'static') {
+        return this._buildAssetItems(this._assets.filter((a) => a.kind === 'static'));
+      }
+    }
+
+    if (element instanceof AnimoriaFolderItem) {
+      return this._buildAssetItems(element.assets, element.relativePath);
+    }
+
+    if (element instanceof AnimoriaTreeItem) {
+      const refs = this._references.filter(
+        (r) =>
+          r.asset_id === element.asset.path ||
+          r.asset_id === element.asset.id ||
+          r.asset_id === element.asset.stem ||
+          r.asset_id === element.asset.name
+      );
+      return refs.map((r) => new AnimoriaUsageItem(r));
     }
 
     return [];
   }
 
-  private _buildAssetItems(): AnyTreeElement[] {
+  private _buildAssetItems(targetAssets: readonly Asset[], parentFolder = ''): AnyTreeElement[] {
     const filtered = this._query
-      ? this._assets.filter(
+      ? targetAssets.filter(
           (a) =>
             a.name.toLowerCase().includes(this._query.toLowerCase()) ||
             a.stem.toLowerCase().includes(this._query.toLowerCase())
         )
-      : this._assets;
+      : targetAssets;
 
-    return filtered.map((a) => {
-      const badges: AssetBadge[] = [];
-      const hasUnref = this._diagnostics.some(
-        (d) => d.rule_id === 'no-unreferenced-assets' && d.target_asset_path === a.path
-      );
-      if (hasUnref) {
-        badges.push({ kind: 'unreferenced', severity: 'warning', message: 'Unreferenced asset' });
-      }
-      const hasDup = this._diagnostics.some(
-        (d) => d.rule_id === 'no-duplicate-content' && d.target_asset_path === a.path
-      );
-      if (hasDup) {
-        badges.push({ kind: 'duplicate', severity: 'error', message: 'Duplicate content' });
+    if (this._viewMode === 'tree') {
+      const folders = new Map<string, { fullDir: string; assets: Asset[] }>();
+      const rootAssets: Asset[] = [];
+
+      for (const a of filtered) {
+        const fullRel = this._workspacePath ? relative(this._workspacePath, a.path) : a.path;
+        const rel = parentFolder ? relative(parentFolder, fullRel) : fullRel;
+        const parts = rel.split(/[/\\]/).filter(Boolean);
+        if (parts.length > 1) {
+          const firstSegment = parts[0]!;
+          const fullDir = parentFolder ? `${parentFolder}/${firstSegment}` : firstSegment;
+          const entry = folders.get(firstSegment) ?? { fullDir, assets: [] };
+          entry.assets.push(a);
+          folders.set(firstSegment, entry);
+        } else {
+          rootAssets.push(a);
+        }
       }
 
-      return new AnimoriaTreeItem(a, this._thumbnails.get(a.path), badges);
-    });
+      const folderItems = Array.from(folders.entries()).map(
+        ([segName, { fullDir, assets }]) => new AnimoriaFolderItem(segName, fullDir, assets)
+      );
+      const fileItems = rootAssets.map((a) => this._createTreeItem(a));
+      return [...folderItems, ...fileItems];
+    }
+
+    return filtered.map((a) => this._createTreeItem(a));
+  }
+
+  private _createTreeItem(a: Asset): AnimoriaTreeItem {
+    const badges: AssetBadge[] = [];
+    const hasUnref = this._diagnostics.some(
+      (d) => d.rule_id === 'no-unreferenced-assets' && d.target_asset_path === a.path
+    );
+    if (hasUnref) {
+      badges.push({ kind: 'unreferenced', severity: 'warning', message: 'Unreferenced asset' });
+    }
+    const hasDup = this._diagnostics.some(
+      (d) => d.rule_id === 'no-duplicate-content' && d.target_asset_path === a.path
+    );
+    if (hasDup) {
+      badges.push({ kind: 'duplicate', severity: 'error', message: 'Duplicate content' });
+    }
+
+    const hasReferences = this._references.some(
+      (r) =>
+        r.asset_id === a.path ||
+        r.asset_id === a.id ||
+        r.asset_id === a.stem ||
+        r.asset_id === a.name
+    );
+    return new AnimoriaTreeItem(
+      a,
+      a.thumbnail_path ?? this._thumbnails.get(a.path),
+      badges,
+      hasReferences
+    );
   }
 
   private _getRootChildren(): AnyTreeElement[] {
     const healthItem = [new AnimoriaHealthScoreItem(this._health)];
-    const assetsSection =
-      this._assets.length > 0 ? [new AnimoriaAssetsSectionItem(this._assets.length)] : [];
+
+    const motionCount = this._assets.filter((a) => a.kind === 'motion').length;
+    const staticCount = this._assets.filter((a) => a.kind === 'static').length;
+
+    const sections: AnyTreeElement[] = [];
+    if (motionCount > 0) {
+      sections.push(
+        new AnimoriaSectionItem('motion', motionCount, 'Animated Assets', 'play-circle')
+      );
+    }
+    if (staticCount > 0) {
+      sections.push(new AnimoriaSectionItem('static', staticCount, 'Static Assets', 'file-media'));
+    }
 
     const sectionMap = new Map<string, number>();
     for (const d of this._diagnostics) {
@@ -279,7 +382,7 @@ export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElem
         )
     );
 
-    return [...healthItem, ...assetsSection, ...governanceSections];
+    return [...healthItem, ...sections, ...governanceSections];
   }
 
   updateAnalysis(
@@ -289,7 +392,7 @@ export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElem
   ): void {
     this._assets = analysis.assets;
     this._diagnostics = analysis.diagnostics;
-    this._health = analysis.health_score;
+    this._health = analysis.health_score ?? null;
     this._references = references;
     this._duplicateGroups = duplicateGroups;
     this._workspacePath = analysis.root_path;
@@ -298,6 +401,11 @@ export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElem
 
   setSearchQuery(q: string): void {
     this._query = q;
+    this._onDidChangeTreeData.fire(undefined);
+  }
+
+  setThumbnail(path: string, thumbnailPath: string): void {
+    this._thumbnails.set(path, thumbnailPath);
     this._onDidChangeTreeData.fire(undefined);
   }
 

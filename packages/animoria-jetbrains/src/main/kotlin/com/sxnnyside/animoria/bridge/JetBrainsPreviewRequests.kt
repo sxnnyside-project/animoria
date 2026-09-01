@@ -45,7 +45,12 @@ internal class JetBrainsPreviewRequests(
                 runCatching {
                     manager().sendCommand("generateThumbnail", buildJsonObject { put("assetPath", assetPath) })
                 }.getOrNull()
-            val source = response?.jsonObject?.get("dataUri")?.jsonPrimitive?.contentOrNull
+            val source =
+                response
+                    ?.jsonObject
+                    ?.get("dataUri")
+                    ?.jsonPrimitive
+                    ?.contentOrNull
             post(
                 buildJsonObject {
                     put("type", "thumbnail")

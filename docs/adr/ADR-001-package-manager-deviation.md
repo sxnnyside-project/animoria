@@ -39,7 +39,7 @@ The project deviates from the default Bun package manager recommendation while r
 
 * **Concept:** Use `pnpm` workspace protocol (`workspace:*`) with hard-linked content-addressable storage, coordinated by Turborepo.
 * **Pros:**
-  * **Strict Non-Flat Dependency Isolation:** Uses symlinks to prevent phantom dependencies across `@animoria/core`, `animoria-vscode`, and `animoria-sandbox`.
+  * **Strict Non-Flat Dependency Isolation:** Uses symlinks to prevent phantom dependencies across `@animoria/contracts`, `@animoria/ui`, `animoria-vscode`, and `animoria-sandbox`.
   * **Disk & CI Cache Efficiency:** Monorepo dependencies are stored once globally and hard-linked, enabling fast, reproducible CI caching.
   * **Deterministic Workspace Linking:** Native `workspace:*` semantics ensure local cross-package dependencies are resolved accurately without accidental registry fetches.
   * **First-Class Pipeline Caching:** Seamless integration with `turbo` for topological task orchestration (`turbo build`, `turbo test`, `turbo lint`).

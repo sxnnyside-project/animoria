@@ -1,9 +1,9 @@
-use std::collections::HashSet;
-use std::path::Path;
+use super::policy::GovernancePolicy;
 use crate::contracts::asset::Asset;
 use crate::contracts::duplicates::DuplicateGroup;
 use crate::contracts::usage::UsageReference;
-use super::policy::GovernancePolicy;
+use std::collections::HashSet;
+use std::path::Path;
 
 pub struct AnalysisContext<'a> {
     pub workspace_root: &'a Path,
@@ -22,10 +22,16 @@ impl<'a> AnalysisContext<'a> {
         duplicate_groups: &'a [DuplicateGroup],
         policy: &'a GovernancePolicy,
     ) -> Self {
-        let referenced_asset_ids: HashSet<String> = references
-            .iter()
-            .map(|r| r.asset_id.clone())
-            .collect();
+        let mut referenced_asset_ids = HashSet::new();
+        for r in references {
+            referenced_asset_ids.insert(r.asset_id.clone());
+            for asset in assets {
+                if asset.path == r.asset_id || asset.id == r.asset_id {
+                    referenced_asset_ids.insert(asset.id.clone());
+                    referenced_asset_ids.insert(asset.path.clone());
+                }
+            }
+        }
 
         Self {
             workspace_root,
@@ -37,14 +43,20 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
-    pub fn is_asset_referenced(&self, asset_id: &str) -> bool {
-        self.referenced_asset_ids.contains(asset_id)
+    pub fn is_asset_referenced(&self, asset_id_or_path: &str) -> bool {
+        self.referenced_asset_ids.contains(asset_id_or_path)
     }
 
-    pub fn references_for_asset(&self, asset_id: &str) -> Vec<&UsageReference> {
+    pub fn references_for_asset(&self, asset_id_or_path: &str) -> Vec<&UsageReference> {
         self.references
             .iter()
-            .filter(|r| r.asset_id == asset_id)
+            .filter(|r| {
+                r.asset_id == asset_id_or_path
+                    || self.assets.iter().any(|a| {
+                        (a.id == asset_id_or_path || a.path == asset_id_or_path)
+                            && (r.asset_id == a.path || r.asset_id == a.id)
+                    })
+            })
             .collect()
     }
 }

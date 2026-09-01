@@ -53,26 +53,28 @@ This package contains the reusable visual components, cards, state panels, and d
 
 ## Host Bridge Protocol (`HostBridge`)
 
-Host environments communicate with `<animoria-workspace>` through a typed message bridge:
+Host environments communicate with `<animoria-workspace>` through a typed message bridge (`src/bridge/types.ts`):
 
 ```typescript
 export interface HostBridge {
-  postMessage(message: HostInboundMessage): void;
-  onMessage(handler: (message: HostOutboundMessage) => void): () => void;
-  capabilities: HostCapabilities;
+  send(message: HostOutbound): void;
+  subscribe(listener: (message: HostInbound) => void): () => void;
 }
 ```
 
-### Inbound Events (Host → UI)
-* `workspaceAnalysisUpdated`: Pushes fresh `WorkspaceAnalysis` data on index completion.
-* `scanProgress`: Pushes percentage and file counters during active scanning passes.
-* `themeChanged`: Notifies components of IDE theme shifts.
+`HostOutbound`/`HostInbound` are discriminated unions on `type`; every variant is enumerated at runtime in `OUTBOUND_TYPES`/`INBOUND_TYPES` for conformance testing across hosts.
 
-### Outbound Commands (UI → Host)
-* `openAsset`: Opens the asset file in the IDE editor.
-* `revealReference`: Jumps to a specific line in a referencing code file.
-* `executeCleanup`: Requests execution of a validated `CleanupPlan`.
-* `resolveDuplicates`: Requests execution of a `ResolutionPlan`.
+### Inbound (Host → UI) — a representative subset
+* `analysis`: the current `MultiRootAnalysis`, pushed after every scan.
+* `analysis-progress`: readiness flags and a status message while a scan is running.
+* `capabilities`: what this host allows (`canMutate`, `canRestore`, etc.) — components disable controls the host can't fulfill rather than hiding them.
+* `usage-references`, `animation-data`, `thumbnail`, `cleanup-proposal`, `cleanup-plan`: responses to the matching outbound request.
+
+### Outbound (UI → Host) — a representative subset
+* `open-asset` / `reveal-asset` / `open-reference`: navigation, always carrying the `rootId` Core attributed the target to — the UI never re-derives which root a path belongs to.
+* `request-cleanup-plan` / `apply-cleanup-plan`: preview, then execute, a cleanup.
+* `request-resolution-plan` / `apply-resolution-plan`: same shape, for duplicate resolution.
+* `restore-session`: restores a trash session by id.
 
 ---
 
@@ -82,15 +84,17 @@ Components consume design tokens defined in `src/styles/tokens.css`. IDE hosts b
 
 ```css
 :root {
-  --animoria-bg: var(--vscode-editor-background, var(--jb-editor-background, #1e1e1e));
-  --animoria-fg: var(--vscode-editor-foreground, var(--jb-editor-foreground, #cccccc));
-  --animoria-border: var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
-  --animoria-accent: #3b82f6;
-  --animoria-error: #ef4444;
-  --animoria-warning: #f59e0b;
-  --animoria-success: #10b981;
+  --animoria-bg-primary: var(--vscode-sideBar-background, #1e1e1e);
+  --animoria-text-primary: var(--vscode-foreground, #cccccc);
+  --animoria-border: var(--vscode-widget-border, #3e3e42);
+  --animoria-accent: var(--vscode-button-background, #0e639c);
+  --animoria-danger: var(--vscode-errorForeground, #e05252);
+  --animoria-warning: var(--vscode-charts-yellow, #d8a012);
+  --animoria-success: var(--vscode-charts-green, #4ec26b);
 }
 ```
+
+Each host maps its own theme variables onto these once (VS Code's mapping lives in `animoria-workspace-panel.ts`); components never reference a host-specific variable directly, only `--animoria-*`.
 
 ---
 

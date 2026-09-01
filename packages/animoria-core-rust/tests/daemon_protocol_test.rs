@@ -29,6 +29,41 @@ fn test_daemon_protocol_lifecycle() {
     let hello_val = hello_resp.result.expect("Result expected");
     assert_eq!(hello_val["engine"], "animoria-core-rust");
     assert_eq!(hello_val["protocol_version"], 1);
+    assert_eq!(hello_val["version"], env!("CARGO_PKG_VERSION"));
+
+    // 1.5 Ping — liveness, independent of any scan having run
+    let ping_req = DaemonRequest {
+        protocol: PROTOCOL_VERSION,
+        id: "req-ping".to_string(),
+        method: "ping".to_string(),
+        params: serde_json::json!({}),
+    };
+    let (ping_resp, should_exit) = server.handle_request(ping_req);
+    assert!(ping_resp.error.is_none());
+    assert!(!should_exit);
+    let ping_val = ping_resp.result.expect("Result expected");
+    assert_eq!(ping_val["ready"], true);
+    assert!(ping_val["uptime_ms"].as_u64().is_some());
+
+    // 1.6 Aggregate health scores across simulated multi-root results — the
+    // daemon does this weighting so no host has to reimplement it.
+    let aggregate_req = DaemonRequest {
+        protocol: PROTOCOL_VERSION,
+        id: "req-aggregate".to_string(),
+        method: "aggregateHealthScores".to_string(),
+        params: serde_json::json!({
+            "roots": [
+                { "report": { "score": 40, "grade": "F", "categories": [], "summary": "" }, "asset_count": 5 },
+                { "report": { "score": 95, "grade": "A", "categories": [], "summary": "" }, "asset_count": 500 }
+            ]
+        }),
+    };
+    let (aggregate_resp, should_exit) = server.handle_request(aggregate_req);
+    assert!(aggregate_resp.error.is_none());
+    assert!(!should_exit);
+    let aggregate_val = aggregate_resp.result.expect("Result expected");
+    assert_eq!(aggregate_val["score"], 94);
+    assert_eq!(aggregate_val["grade"], "A");
 
     // 2. Scan Workspace Request (clean-workspace)
     let clean_ws = fixtures_root().join("clean-workspace");
@@ -46,7 +81,41 @@ fn test_daemon_protocol_lifecycle() {
     assert!(scan_resp.error.is_none());
     assert!(!should_exit);
     let scan_val = scan_resp.result.expect("Scan result expected");
-    assert!(scan_val["analysis"]["assets"].as_array().unwrap().len() > 0);
+    assert!(!scan_val["analysis"]["assets"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+
+    // 2.5 A completed scan must produce a real AnalysisSnapshot and a
+    // ScanCompleted AuditEvent, both retrievable afterward — not just
+    // contract types with no producer.
+    let snapshots_req = DaemonRequest {
+        protocol: PROTOCOL_VERSION,
+        id: "req-snapshots".to_string(),
+        method: "listAnalysisSnapshots".to_string(),
+        params: serde_json::json!({ "workspace_path": clean_ws.to_string_lossy().to_string() }),
+    };
+    let (snapshots_resp, _) = server.handle_request(snapshots_req);
+    let snapshots_val = snapshots_resp.result.expect("snapshots result expected");
+    let snapshots = snapshots_val.as_array().expect("snapshots array");
+    assert!(
+        !snapshots.is_empty(),
+        "scan must record at least one AnalysisSnapshot"
+    );
+
+    let audit_req = DaemonRequest {
+        protocol: PROTOCOL_VERSION,
+        id: "req-audit".to_string(),
+        method: "listAuditEvents".to_string(),
+        params: serde_json::json!({ "workspace_path": clean_ws.to_string_lossy().to_string() }),
+    };
+    let (audit_resp, _) = server.handle_request(audit_req);
+    let audit_val = audit_resp.result.expect("audit result expected");
+    let audit_events = audit_val.as_array().expect("audit events array");
+    assert!(
+        audit_events.iter().any(|e| e["kind"] == "scan-completed"),
+        "scan must record a ScanCompleted audit event"
+    );
 
     // 3. Scan Duplicates Workspace (same alive server instance)
     let dup_ws = fixtures_root().join("duplicates");
@@ -82,7 +151,51 @@ fn test_daemon_protocol_lifecycle() {
     assert!(plan_resp.error.is_none());
     assert!(!should_exit);
     let plan_val = plan_resp.result.expect("Plan result expected");
-    assert!(plan_val["target_assets_to_delete"].as_array().unwrap().len() > 0);
+    assert!(!plan_val["target_assets_to_delete"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+
+    // 4.5 `remediate_plan` — VS Code's only path to a resolution plan, which
+    // takes no `workspace_path` — must still compute reference-rewrite
+    // proposals when exactly one root is scanned, by falling back to that
+    // sole index rather than staying in the old context-free, always-empty
+    // path now that a second root (`dup_ws`) isn't in the mix here.
+    let mut single_root_server = DaemonServer::new();
+    let single_scan_req = DaemonRequest {
+        protocol: PROTOCOL_VERSION,
+        id: "req-single-scan".to_string(),
+        method: "scan".to_string(),
+        params: serde_json::json!({
+            "workspace_path": dup_ws.to_string_lossy().to_string()
+        }),
+    };
+    let (single_scan_resp, _) = single_root_server.handle_request(single_scan_req);
+    let single_scan_val = single_scan_resp.result.expect("scan result expected");
+    let single_dup_groups = single_scan_val["duplicate_groups"].as_array().unwrap();
+    assert!(!single_dup_groups.is_empty());
+
+    let mut any_rewrites = false;
+    for (i, group) in single_dup_groups.iter().enumerate() {
+        let single_plan_req = DaemonRequest {
+            protocol: PROTOCOL_VERSION,
+            id: format!("req-single-plan-{i}"),
+            method: "remediate_plan".to_string(),
+            params: serde_json::json!({ "duplicate_group": group }),
+        };
+        let (single_plan_resp, _) = single_root_server.handle_request(single_plan_req);
+        let single_plan_val = single_plan_resp.result.expect("plan result expected");
+        let rewrites = single_plan_val["proposed_reference_rewrites"]
+            .as_array()
+            .expect("proposed_reference_rewrites array");
+        if !rewrites.is_empty() {
+            any_rewrites = true;
+        }
+    }
+    assert!(
+        any_rewrites,
+        "remediate_plan should propose reference rewrites for at least one duplicate group when exactly one root is scanned"
+    );
 
     // 5. Unsupported Method Error Handling
     let bad_req = DaemonRequest {

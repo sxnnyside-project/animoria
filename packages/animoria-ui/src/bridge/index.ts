@@ -10,15 +10,22 @@
  */
 export type {
   AnimationPreview,
+  CleanupEntry,
+  CleanupExecutionResult,
+  CleanupPlan,
+  CleanupRefusal,
   GeneratedSnippet,
   HostBridge,
   HostCapabilities,
   HostInbound,
   HostOutbound,
-  UiPreferences,
   MultiRootAnalysis,
+  RestoreResult,
+  ReviewableCleanupProposal,
   RootCleanupPlan,
   RootCleanupProposal,
+  SessionManifest,
+  UiPreferences,
 } from './types.js';
 export {
   BROWSER_ANIMATED_FORMATS,

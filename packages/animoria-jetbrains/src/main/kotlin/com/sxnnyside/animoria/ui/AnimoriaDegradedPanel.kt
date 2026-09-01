@@ -14,26 +14,14 @@ import javax.swing.JComponent
 import javax.swing.JPanel
 
 /**
- * D-09: the JCEF-unavailable state, as one actionable panel.
+ * Degraded fallback panel rendered when JCEF (Chromium Embedded Framework) is unavailable.
  *
- * ## Why this is not a second UI
- * The plugin previously carried a ~1,700-line Swing stack as a "fallback" — a
- * complete second implementation of the gallery, preview, cleanup and duplicate
- * screens. It was the branch that hid every action from every user, and it was the
- * only branch with a test.
- *
- * The honest replacement is not a smaller second UI. It is **one screen that says
- * what is wrong, how to fix it, and offers the one operation that does not need a
- * browser at all**: run the analysis and open the report in the editor. A developer
- * whose IDE has JCEF disabled is not served by a degraded gallery; they are served
- * by knowing why they cannot see the real one.
- *
- * ## Why the report button is here
- * Governance is the product's actual value, and the report is a text document the
- * platform can already display. Offering it means the plugin is useful even in this
- * state, rather than being a wall of apology.
+ * Explains JCEF runtime requirements, provides links to enable IDE hardware acceleration / runtime JCEF,
+ * and allows executing headless governance reports directly into standard editor tabs.
  */
-class AnimoriaDegradedPanel(private val project: Project) {
+class AnimoriaDegradedPanel(
+    private val project: Project,
+) {
     val component: JComponent = JPanel(BorderLayout())
 
     init {

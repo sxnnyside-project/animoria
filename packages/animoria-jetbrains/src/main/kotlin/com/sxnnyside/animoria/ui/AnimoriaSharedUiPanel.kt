@@ -22,39 +22,13 @@ import javax.swing.JComponent
 import javax.swing.JPanel
 
 /**
- * The single JCEF surface, hosting `@animoria/ui`.
+ * Embedded JCEF webview panel hosting `@animoria/ui`.
  *
- * ## What this replaces
- * Two panels holding 1,322 lines of HTML, CSS and JavaScript inside Kotlin string
- * templates — a gallery (279 lines) that was a degraded reimplementation of the
- * sandbox's, and a preview (1,043) that was a third implementation of VS Code's.
- * Neither was type-checked, neither was linted, and both emitted `--vscode-*` CSS
- * variables from `JBColor` values because the shared token layer was written in VS
- * Code's vocabulary.
+ * Encapsulates the Chromium Embedded Framework browser instance, binds the
+ * bidirectional [JetBrainsHostBridge] via `JBCefJSQuery`, and delivers inbound events
+ * using Base64 data transport to guarantee safe evaluation.
  *
- * ## The state-transport fix (the reason this class exists at all)
- * `AnimoriaGalleryPanel` pushed state with:
- *
- * ```kotlin
- * val js = "if (window.animoriaUpdateData) window.animoriaUpdateData($payload);"
- * browser.cefBrowser.executeJavaScript(js, "", 0)
- * ```
- *
- * That is not a message channel. There is no envelope, no type, no validation, and
- * no way for the UI to reject a malformed update. It is also an **injection
- * surface**: `buildJsonObject` guarantees the JSON is well-formed, and guarantees
- * nothing about the JavaScript source line the JSON is being pasted into — an asset
- * path containing a quote or a backslash, legal on every filesystem Animoria
- * supports, terminates the string literal.
- *
- * State now travels as a `MessageEvent`, base64-encoded on the way in so no payload
- * byte is ever interpreted as JavaScript source. `SemanticBoundaryTest.noStateInjection`
- * fails the build if `executeJavaScript` is used to carry state again.
- *
- * ## D-09
- * When `JBCefApp.isSupported()` is false there is no second UI. There is one
- * actionable panel that says so — see [AnimoriaDegradedPanel]. The 1,700-line Swing
- * stack this replaces was the branch that hid every action from every user.
+ * When JCEF is unsupported in the host environment, [AnimoriaDegradedPanel] is rendered instead.
  */
 class AnimoriaSharedUiPanel(
     private val project: Project,
@@ -119,17 +93,14 @@ class AnimoriaSharedUiPanel(
     }
 
     /**
-     * Delivers one `HostInbound` to the UI.
-     *
-     * The payload is base64-encoded and decoded in the page, so it crosses as **data**
-     * rather than as source. Interpolating JSON into a JavaScript string literal —
-     * what this replaces — means every quote, backslash, newline and line separator in
-     * a path or a diagnostic message is a potential syntax error or an injection.
+     * Delivers one `HostInbound` message to the UI.
+     * The payload is base64-encoded to cross the boundary safely as data without eval interpretation.
      */
     private fun postToUi(message: JsonObject) {
         val browser = this.browser ?: return
         val encoded =
-            Base64.getEncoder()
+            Base64
+                .getEncoder()
                 .encodeToString(message.toString().toByteArray(StandardCharsets.UTF_8))
 
         // Only the encoded string is interpolated, and base64's alphabet cannot

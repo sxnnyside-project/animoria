@@ -1,8 +1,8 @@
 [package]
 name = "animoria-core"
-version = "0.1.0"
+version = "2.0.0"
 edition = "2021"
-authors = ["Sxnnyside Project <contact@sxnnyside.com>"]
+authors = ["Sxnnyside Project <houjou.sxnnyside@sxnnysideproject.com>"]
 description = "High-performance Rust core engine for Animoria: visual asset discovery, format parsing, usage tracing, and governance."
 license = "MIT"
 
@@ -25,13 +25,15 @@ clap = { version = "4.5", features = ["derive"] }
 anyhow = "1.0"
 thiserror = "2.0"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
-quick-xml = "0.37"
+quick-xml = "0.41"
 aho-corasick = "1.1"
 regex = "1.11"
+base64 = "0.22"
 ts-rs = { version = "10.1", features = ["serde-compat", "serde-json-impl"], optional = true }
 
 [dev-dependencies]
 tempfile = "3.17"
+proptest = "1.5"
 
 [features]
 default = ["ts-bindings"]

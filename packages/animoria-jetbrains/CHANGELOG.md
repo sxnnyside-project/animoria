@@ -13,6 +13,26 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.0.0] — 2026-08-31
+
+### Added
+
+- Bundled native daemons are now built directly from `animoria-core-rust` via `cargo build --release`, one per supported platform.
+
+### Changed
+
+- Supported platforms are now **macOS (Apple Silicon only)**, Linux (x64/ARM64), and Windows (x64) — Intel Mac (`darwin-x64`) is no longer built or bundled.
+
+### Fixed
+
+- A `MissingFieldException` crash when decoding any real multi-root analysis: `MultiRootAnalysisData.assets`/`.diagnostics` were typed for an attribution-wrapper shape the daemon never actually sends, so a live scan on a real workspace failed to decode and the tool window stayed empty.
+
+### Removed
+
+- The Node.js/`cli.js` daemon fallback (`DaemonBinaryResolver.findNodeExecutable`/`findCliScriptPath`). A platform with no bundled native binary now fails explicitly with a clear error instead of attempting to spawn a system Node install.
+
+---
+
 ## [1.0.0] — 2026-08-12
 
 ### Added
@@ -46,6 +66,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/sxnnyside-project/animoria/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/sxnnyside-project/animoria/releases/tag/v1.0.0
 [0.2.0]: https://github.com/sxnnyside-project/animoria/releases/tag/v0.2.0

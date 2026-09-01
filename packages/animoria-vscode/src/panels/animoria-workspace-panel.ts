@@ -1,6 +1,11 @@
 import type { WorkspaceAnalysis } from '@animoria/contracts';
 import * as vscode from 'vscode';
-import { VsCodeHostBridge, type MultiRootAnalysis } from './vscode-host-bridge.js';
+import type { VsCodeDaemonClient } from '../daemon/daemon-client.js';
+import {
+  type MultiRootAnalysis,
+  VsCodeHostBridge,
+  type WorkspaceSession,
+} from './vscode-host-bridge.js';
 
 /**
  * Where an entry point wants the developer to land, and about what.
@@ -83,7 +88,8 @@ export class AnimoriaWorkspacePanel {
   private constructor(
     panel: vscode.WebviewPanel,
     context: vscode.ExtensionContext,
-    session: () => any,
+    session: () => WorkspaceSession | undefined,
+    daemon: () => VsCodeDaemonClient | undefined,
     private readonly _surface: PanelSurface,
     focus?: PanelFocus
   ) {
@@ -92,6 +98,7 @@ export class AnimoriaWorkspacePanel {
 
     this._bridge = new VsCodeHostBridge({
       session,
+      daemon,
       post: (message) => {
         void this._panel.webview.postMessage(message);
       },
@@ -116,7 +123,8 @@ export class AnimoriaWorkspacePanel {
   /** Opens (or reveals) one surface, focused on what the command was about. */
   static show(
     context: vscode.ExtensionContext,
-    session: () => any,
+    session: () => WorkspaceSession | undefined,
+    daemon: () => VsCodeDaemonClient | undefined,
     surface: PanelSurface,
     focus?: PanelFocus
   ): AnimoriaWorkspacePanel {
@@ -146,7 +154,7 @@ export class AnimoriaWorkspacePanel {
       }
     );
 
-    const created = new AnimoriaWorkspacePanel(panel, context, session, surface, focus);
+    const created = new AnimoriaWorkspacePanel(panel, context, session, daemon, surface, focus);
     AnimoriaWorkspacePanel._open.set(surface, created);
     return created;
   }
@@ -175,10 +183,9 @@ export class AnimoriaWorkspacePanel {
     }
   }
 
-  /** Forwards scan progress while an analysis is under way. */
   static broadcastProgress(analysis: MultiRootAnalysis, message: string): void {
     for (const panel of AnimoriaWorkspacePanel._open.values()) {
-      panel._bridge.publishProgress(analysis.readiness, message);
+      panel._bridge.publishProgress(analysis.readiness ?? {}, message);
     }
   }
 

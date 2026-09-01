@@ -7,7 +7,10 @@ use ts_rs::TS;
 #[cfg_attr(feature = "ts-bindings", derive(TS))]
 #[cfg_attr(
     feature = "ts-bindings",
-    ts(export, export_to = "../../../packages/animoria-contracts/src/generated/")
+    ts(
+        export,
+        export_to = "../../../packages/animoria-contracts/src/generated/"
+    )
 )]
 #[serde(rename_all = "kebab-case")]
 pub enum AssetKind {
@@ -19,7 +22,10 @@ pub enum AssetKind {
 #[cfg_attr(feature = "ts-bindings", derive(TS))]
 #[cfg_attr(
     feature = "ts-bindings",
-    ts(export, export_to = "../../../packages/animoria-contracts/src/generated/")
+    ts(
+        export,
+        export_to = "../../../packages/animoria-contracts/src/generated/"
+    )
 )]
 #[serde(rename_all = "kebab-case")]
 pub enum AssetFormat {
@@ -75,7 +81,10 @@ impl AssetFormat {
 #[cfg_attr(feature = "ts-bindings", derive(TS))]
 #[cfg_attr(
     feature = "ts-bindings",
-    ts(export, export_to = "../../../packages/animoria-contracts/src/generated/")
+    ts(
+        export,
+        export_to = "../../../packages/animoria-contracts/src/generated/"
+    )
 )]
 pub struct Dimensions {
     pub width: u32,
@@ -86,7 +95,10 @@ pub struct Dimensions {
 #[cfg_attr(feature = "ts-bindings", derive(TS))]
 #[cfg_attr(
     feature = "ts-bindings",
-    ts(export, export_to = "../../../packages/animoria-contracts/src/generated/")
+    ts(
+        export,
+        export_to = "../../../packages/animoria-contracts/src/generated/"
+    )
 )]
 pub struct MotionMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -108,7 +120,10 @@ pub struct MotionMetadata {
 #[cfg_attr(feature = "ts-bindings", derive(TS))]
 #[cfg_attr(
     feature = "ts-bindings",
-    ts(export, export_to = "../../../packages/animoria-contracts/src/generated/")
+    ts(
+        export,
+        export_to = "../../../packages/animoria-contracts/src/generated/"
+    )
 )]
 pub struct StaticMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -123,7 +138,10 @@ pub struct StaticMetadata {
 #[cfg_attr(feature = "ts-bindings", derive(TS))]
 #[cfg_attr(
     feature = "ts-bindings",
-    ts(export, export_to = "../../../packages/animoria-contracts/src/generated/")
+    ts(
+        export,
+        export_to = "../../../packages/animoria-contracts/src/generated/"
+    )
 )]
 pub struct Asset {
     pub id: String,
@@ -149,6 +167,15 @@ pub struct Asset {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts-bindings", ts(optional))]
     pub static_meta: Option<StaticMetadata>,
+    /// Absolute path to a file the UI can render directly as a preview.
+    /// For formats a browser/webview can already display natively (raster
+    /// images, SVG, GIF, APNG, Animated SVG) this is the asset's own
+    /// `path`. For formats with no natively-displayable file (Lottie,
+    /// dotLottie, Rive) it points at a generated SVG placeholder under
+    /// `.animoria/thumbnails/`. `None` only when generation itself failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts-bindings", ts(optional))]
+    pub thumbnail_path: Option<String>,
     pub is_valid: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts-bindings", ts(optional))]

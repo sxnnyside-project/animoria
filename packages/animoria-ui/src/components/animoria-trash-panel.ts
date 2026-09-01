@@ -1,29 +1,10 @@
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import type { RestoreResult, SessionManifest } from '../bridge/types.js';
 import { formatBytes } from '../view-model/analysis-view-model.js';
 import './animoria-state-panel.js';
 
-export interface TrashEntry {
-  readonly assetId: string;
-  readonly originalPath: string;
-  readonly sizeBytes: number;
-}
-
-export interface SessionManifest {
-  readonly sessionId: string;
-  readonly movedAt: string | number;
-  readonly entries: readonly TrashEntry[];
-}
-
-export interface RestoreFailure {
-  readonly originalPath: string;
-  readonly reason: string;
-}
-
-export interface RestoreResult {
-  readonly restoredPaths: readonly string[];
-  readonly failures: readonly RestoreFailure[];
-}
+export type { SessionManifest, RestoreResult };
 
 /**
  * Trash and session restore management panel.
@@ -130,19 +111,11 @@ export class AnimoriaTrashPanel extends LitElement {
   }
 
   private _renderOutcome(result: RestoreResult) {
-    const partial = result.failures.length > 0;
+    const partial = Boolean(result.error);
     return html`
       <div class="outcome ${partial ? 'partial' : 'clean'}" role="status">
-        <div>
-          Restored ${result.restoredPaths.length} asset(s)${
-            partial ? `, ${result.failures.length} could not be put back.` : '.'
-          }
-        </div>
-        ${result.failures.map(
-          (failure) => html`<div class="reason">
-            ${failure.originalPath} — ${failure.reason}
-          </div>`
-        )}
+        <div>Restored ${result.restoredPaths.length} asset(s).</div>
+        ${result.error ? html`<div class="reason">${result.error}</div>` : nothing}
       </div>
     `;
   }
@@ -179,23 +152,23 @@ export class AnimoriaTrashPanel extends LitElement {
     return html`
       ${this.result ? this._renderOutcome(this.result) : nothing}
       ${this.sessions.map((session) => {
-        const bytes = session.entries.reduce((sum, entry) => sum + entry.sizeBytes, 0);
+        const bytes = session.items.reduce((sum, item) => sum + item.sizeBytes, 0);
         return html`
           <div class="row">
             <span class="body">
               <span class="headline">
-                ${session.entries.length} asset(s) — ${formatBytes(bytes)}
+                ${session.items.length} asset(s) — ${formatBytes(bytes)}
               </span>
-              <span class="meta">${new Date(session.movedAt).toLocaleString()}</span>
+              <span class="meta">${new Date(session.timestamp).toLocaleString()}</span>
               <span class="meta">
-                ${session.entries.map((entry) => entry.originalPath).join(', ')}
+                ${session.items.map((item) => item.originalPath).join(', ')}
               </span>
             </span>
             <button
               type="button"
               ?disabled=${!this.canRestore || this.restoring}
               title=${this.canRestore ? '' : this.restoreUnavailableReason}
-              @click=${() => this._restore(session.sessionId)}
+              @click=${() => this._restore(session.id)}
             >
               ${this.restoring ? 'Restoring…' : 'Restore'}
             </button>

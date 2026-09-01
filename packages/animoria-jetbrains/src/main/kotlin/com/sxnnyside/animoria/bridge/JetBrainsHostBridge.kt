@@ -14,6 +14,7 @@ import com.sxnnyside.animoria.backend.CoreProcessManager
 import com.sxnnyside.animoria.logging.AnimoriaLogger
 import com.sxnnyside.animoria.settings.AnimoriaSettings
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -25,6 +26,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.double
 import kotlinx.serialization.json.int
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -33,26 +35,11 @@ import java.awt.datatransfer.StringSelection
 import java.io.File
 
 /**
- * JetBrains' implementation of the shared UI's host contract.
+ * JetBrains implementation of the shared `@animoria/ui` HostBridge contract.
  *
- * ## What this is
- * A translator between `HostOutbound` and native IntelliJ APIs plus daemon commands.
- * It computes nothing: every fact it forwards came from `@animoria/core` through the
- * NDJSON daemon, and `SemanticBoundaryTest` fails the build if Kotlin starts
- * classifying assets, scoring health, or matching references again.
- *
- * ## Plans by id, same as VS Code
- * A `ResolutionPlan` or `CleanupPlan` is built by Core, held here against the id the
- * UI was shown, and applied by that id. The UI can neither edit a plan between
- * preview and apply nor construct one — which is what makes "what you saw is what
- * ran" structural rather than a convention. The plans themselves live in the daemon;
- * this holds the id mapping so a forged id cannot reach an executor.
- *
- * ## Native surfaces stay native
- * Navigation is `OpenFileDescriptor`. Confirmation is `Messages.showYesNoDialog`.
- * Notification is the platform's. A webview-rendered confirmation would be a page
- * element the same page could dismiss, and destructive confirmation is a platform
- * concern in every host.
+ * Translates `HostOutbound` messages into native IntelliJ Platform actions and daemon commands.
+ * All domain analysis, rule evaluation, and cleanup planning execute in the native Rust core engine;
+ * the bridge delegates operations and forwards state without local recalculation.
  */
 class JetBrainsHostBridge(
     private val project: Project,
@@ -78,6 +65,17 @@ class JetBrainsHostBridge(
     /** Plan ids this bridge issued. A message naming anything else is refused. */
     private val issuedCleanupPlans = mutableSetOf<String>()
     private val issuedResolutionPlans = mutableSetOf<String>()
+
+    /**
+     * Reference-rewrite proposals for each issued plan, kept from
+     * `requestResolutionPlan` through to `applyResolutionPlan` — the daemon
+     * only returns them once, attached to the plan, not as a separate
+     * queryable resource.
+     */
+    private val proposedRewritesByPlan = mutableMapOf<String, JsonArray>()
+
+    /** The workspace root each issued plan was built against, for `applyReferenceRewrite`'s containment check. */
+    private val workspacePathByPlan = mutableMapOf<String, String>()
 
     private var disposed = false
 
@@ -264,7 +262,8 @@ class JetBrainsHostBridge(
     private fun revealInFileManager(path: String) {
         if (path.isEmpty()) return
         ApplicationManager.getApplication().invokeLater {
-            com.intellij.ide.actions.RevealFileAction.openFile(File(path))
+            com.intellij.ide.actions.RevealFileAction
+                .openFile(File(path))
         }
     }
 
@@ -299,15 +298,7 @@ class JetBrainsHostBridge(
     // ── Daemon ─────────────────────────────────────────────────────────────────
 
     /**
-     * Every daemon method this bridge is allowed to call.
-     *
-     * Named constants rather than string literals at the call sites, because that is
-     * exactly what went wrong: this bridge called `cleanupProposal`, `resolveDuplicates`
-     * and `restoreTrash`, none of which the protocol declares. All three returned
-     * `unsupported-method` at runtime, so cleanup, duplicate resolution and restore
-     * were dead in this client from their first click while every test stayed green —
-     * `ProtocolConformanceTest` checked the *envelope* and never the vocabulary.
-     * `DaemonVocabularyTest` now checks these against `@animoria/core`'s `DAEMON_METHODS`.
+     * Protocol v1 daemon RPC method constants recognized by the native core engine.
      */
     private object Method {
         const val BUILD_CLEANUP_PROPOSAL = "buildCleanupProposal"
@@ -315,6 +306,7 @@ class JetBrainsHostBridge(
         const val APPLY_CLEANUP_PLAN = "applyCleanupPlan"
         const val BUILD_RESOLUTION_PLAN = "buildResolutionPlan"
         const val APPLY_RESOLUTION_PLAN = "applyResolutionPlan"
+        const val APPLY_REFERENCE_REWRITE = "applyReferenceRewrite"
         const val LIST_TRASH_SESSIONS = "listTrashSessions"
         const val RESTORE_TRASH_SESSION = "restoreTrashSession"
         const val GENERATE_THUMBNAIL = "generateThumbnail"
@@ -462,7 +454,10 @@ class JetBrainsHostBridge(
             // Core's ids, recorded as issued. A client-invented id cannot reach an
             // executor, which is what makes "what you saw is what ran" structural.
             plans.forEach { entry ->
-                entry.jsonObject["planId"]?.jsonPrimitive?.contentOrNull?.let { issuedCleanupPlans.add(it) }
+                entry.jsonObject["planId"]
+                    ?.jsonPrimitive
+                    ?.contentOrNull
+                    ?.let { issuedCleanupPlans.add(it) }
             }
             post(
                 buildJsonObject {
@@ -541,6 +536,12 @@ class JetBrainsHostBridge(
                 return@launch
             }
             issuedResolutionPlans.add(planId)
+            val planObj = response.jsonObject["plan"] as? JsonObject
+            val rewrites = planObj?.get("proposed_reference_rewrites") as? JsonArray
+            if (rewrites != null) proposedRewritesByPlan[planId] = rewrites
+            response.jsonObject["rootId"]?.jsonPrimitive?.contentOrNull?.let {
+                workspacePathByPlan[planId] = it
+            }
 
             post(
                 buildJsonObject {
@@ -550,7 +551,7 @@ class JetBrainsHostBridge(
                     // them made every one of these messages fail validation.
                     put("rootId", response.jsonObject["rootId"] ?: json.parseToJsonElement("\"\""))
                     put("rootName", response.jsonObject["rootName"] ?: json.parseToJsonElement("\"\""))
-                    put("plan", response.jsonObject["plan"] ?: buildJsonObject {})
+                    put("plan", planObj ?: buildJsonObject {})
                 },
             )
         }
@@ -589,18 +590,88 @@ class JetBrainsHostBridge(
                     }
 
                 issuedResolutionPlans.remove(planId)
+                val status = response.jsonObject["status"]?.jsonPrimitive?.contentOrNull ?: "failed"
                 post(
                     buildJsonObject {
                         put("type", "resolution-result")
-                        put("status", response.jsonObject["status"]?.jsonPrimitive?.contentOrNull ?: "failed")
+                        put("status", status)
                         put("removedAssetPaths", response.jsonObject["removedAssetPaths"] ?: buildJsonArray {})
-                        put("updatedReferenceCount", response.jsonObject["updatedReferenceCount"] ?: json.parseToJsonElement("0"))
                         put("recoveredBytes", response.jsonObject["recoveredBytes"] ?: json.parseToJsonElement("0"))
                         put("trashSessionId", response.jsonObject["trashSessionId"] ?: json.parseToJsonElement("null"))
                         put("reason", response.jsonObject["error"] ?: json.parseToJsonElement("null"))
                     },
                 )
                 publishAnalysis()
+
+                if (status == "applied") {
+                    reviewReferenceRewrites(
+                        workspacePathByPlan.remove(planId),
+                        proposedRewritesByPlan.remove(planId),
+                    )
+                }
+            }
+        }
+    }
+
+    /** One proposed rewrite, parsed from the daemon's JSON shape. */
+    private data class RewriteProposal(
+        val fileName: String,
+        val lineNumber: Int,
+        val originalLine: String,
+        val proposedLine: String,
+        val raw: JsonElement,
+    )
+
+    private fun parseRewriteProposal(element: JsonElement): RewriteProposal? {
+        val proposal = element as? JsonObject ?: return null
+        val filePath = proposal["file_path"]?.jsonPrimitive?.contentOrNull ?: return null
+        val lineNumber = proposal["line_number"]?.jsonPrimitive?.intOrNull ?: return null
+        val originalLine = proposal["original_line"]?.jsonPrimitive?.contentOrNull ?: return null
+        val proposedLine = proposal["proposed_line"]?.jsonPrimitive?.contentOrNull ?: return null
+        val fileName = filePath.substringAfterLast('/').substringAfterLast('\\')
+        return RewriteProposal(fileName, lineNumber, originalLine, proposedLine, element)
+    }
+
+    private suspend fun confirmRewrite(proposal: RewriteProposal): Boolean =
+        suspendCancellableCoroutine { cont ->
+            confirm(
+                title = "${proposal.fileName}:${proposal.lineNumber}",
+                detail =
+                    "- ${proposal.originalLine.trim()}\n+ ${proposal.proposedLine.trim()}\n\n" +
+                        "Update this reference to point at the kept asset?",
+                onCancelled = { cont.resume(false) { _, _, _ -> } },
+            ) {
+                cont.resume(true) { _, _, _ -> }
+            }
+        }
+
+    /**
+     * Walks the user through each proposed reference rewrite one at a time,
+     * showing the before/after line and applying only the ones confirmed —
+     * mirrors VS Code's `_reviewReferenceRewrites`. Never applied
+     * automatically as part of resolving duplicates; each file needs its own
+     * yes.
+     */
+    private fun reviewReferenceRewrites(
+        workspacePath: String?,
+        proposals: JsonArray?,
+    ) {
+        if (workspacePath == null || proposals.isNullOrEmpty()) return
+
+        scope.launch {
+            for (element in proposals) {
+                val proposal = parseRewriteProposal(element)
+                val accepted = proposal != null && confirmRewrite(proposal)
+                if (!accepted || proposal == null) continue
+
+                call(
+                    Method.APPLY_REFERENCE_REWRITE,
+                    buildJsonObject {
+                        put("workspace_path", workspacePath)
+                        put("proposal", proposal.raw)
+                    },
+                    "Could not rewrite ${proposal.fileName}.",
+                )
             }
         }
     }
@@ -616,7 +687,10 @@ class JetBrainsHostBridge(
                     (response.jsonObject["roots"] as? JsonArray)?.forEach { rootEntry ->
                         val rootId = rootEntry.jsonObject["rootId"]?.jsonPrimitive?.contentOrNull ?: return@forEach
                         (rootEntry.jsonObject["sessions"] as? JsonArray)?.forEach { session ->
-                            session.jsonObject["sessionId"]?.jsonPrimitive?.contentOrNull?.let {
+                            // The contract's `SessionManifest.id`, not `sessionId` — the
+                            // mismatched key meant this map never populated and every
+                            // restore failed with "does not know which root".
+                            session.jsonObject["id"]?.jsonPrimitive?.contentOrNull?.let {
                                 rootIdByTrashSession[it] = rootId
                             }
                             add(session)
@@ -709,7 +783,12 @@ class JetBrainsHostBridge(
                 put("trashLocation", null as String?)
                 put("refusals", buildJsonArray {})
                 put("reason", reason)
-                put("completedAt", java.time.Instant.now().toString())
+                put(
+                    "completedAt",
+                    java.time.Instant
+                        .now()
+                        .toString(),
+                )
             }
         }
 
@@ -718,7 +797,6 @@ class JetBrainsHostBridge(
             put("type", "resolution-result")
             put("status", "rejected")
             put("removedAssetPaths", buildJsonArray {})
-            put("updatedReferenceCount", 0)
             put("recoveredBytes", 0)
             put("trashSessionId", null as String?)
             put("reason", reason)

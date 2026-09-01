@@ -1,8 +1,10 @@
 # ADR-003: JavaScript Runtime & Engine Selection (Node.js vs Bun)
 
-**Status:** Accepted  
+**Status:** Accepted (partially superseded — see note below)  
 **Scope:** Repository-wide (`packages/*`, `apps/*`, CI/CD release matrix, JetBrains daemon)  
-**Related:** `ADR-001`, `ADR-002`, `packages/animoria-core/scripts/build-sea.mjs`, `.github/workflows/release.yml`
+**Related:** `ADR-001`, `ADR-002`, `packages/animoria-core/scripts/build-sea.mjs` (removed), `.github/workflows/release.yml`
+
+> **Historical note (as of the v2.0.0 release, 2026-08-31):** The daemon-distribution rationale below is superseded. `@animoria/core` (the TypeScript engine referenced throughout this ADR, including its `sharp`/`dotlottie-js` native-addon dependency and the `build-sea.mjs` Node SEA compilation pipeline) was retired and removed from the repository; `packages/animoria-core-rust` is now the sole engine, and the JetBrains/VS Code daemon binary is produced by `cargo build --release` (see `package.json`'s `package:native-daemon` script and `.github/workflows/release.yml`), not Node's Single Executable Application feature. The **VS Code extension host** rationale (Option 1's "Hard Blocker" and Option 2's "100% Native VS Code Extension Compatibility") is still fully current: `packages/animoria-vscode` and its build tooling still require Node.js 22 LTS (see root `package.json` `engines.node: ">=22"` and `.github/workflows/release.yml`), so the decision to standardize on Node over Bun remains in force for that surface — only the native-daemon-compilation half of the original justification is now historical. The content below is preserved unedited as the record of the original decision; do not read it as describing the current daemon build.
 
 ---
 

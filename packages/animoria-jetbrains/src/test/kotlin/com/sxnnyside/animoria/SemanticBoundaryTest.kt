@@ -95,7 +95,7 @@ class SemanticBoundaryTest {
         // wrote itself, and pruning superseded copies on upgrade is housekeeping, not
         // a removal a developer could want undone. Scoped by file rather than
         // suppressed, so the rule still covers every path that can reach a workspace.
-        val cacheOwner = "backend/CoreProcessManager.kt"
+        val cacheOwner = "backend/DaemonBinaryResolver.kt"
         val found =
             offenders(Regex("""\.delete\(\)|\.deleteRecursively\(\)|Files\.delete"""))
                 .filterNot { it.endsWith(cacheOwner) }
@@ -109,12 +109,13 @@ class SemanticBoundaryTest {
         // must operate on a path derived from `PathManager`, never on a workspace root.
         val source =
             stripComments(
-                File(mainSourceRoot, "com/sxnnyside/animoria/backend/CoreProcessManager.kt").readText(),
+                File(mainSourceRoot, "com/sxnnyside/animoria/backend/DaemonBinaryResolver.kt").readText(),
             )
         val prune = Regex("""fun pruneStaleExtractions[\s\S]{0,600}""").find(source)?.value ?: ""
         assertTrue(prune.isNotEmpty(), "pruneStaleExtractions must exist to be checked")
         assertTrue(
-            source.contains("PathManager.getSystemPath()"),
+            // Whitespace-insensitive: ktlint may wrap a chained call across lines.
+            Regex("""PathManager\s*\.\s*getSystemPath\s*\(\s*\)""").containsMatchIn(source),
             "the extraction root must come from the platform, not from a workspace path",
         )
         assertFalse(

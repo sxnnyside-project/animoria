@@ -41,6 +41,7 @@ Thumbs.db
 
 # Keep in the .vsix:
 # ✔  dist/extension.js
+# ✔  bin/animoria(.exe)     (the native daemon — staged per-platform before packaging)
 # ✔  media/animoria-ui.js   (the shared UI bundle — the panel is blank without it)
 # ✔  media/tokens.css
 # ✔  assets/icon.svg

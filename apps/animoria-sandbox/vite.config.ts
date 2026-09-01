@@ -1,22 +1,8 @@
-import { promises as fs, existsSync, watch } from 'node:fs';
-import { extname, join, resolve as resolvePath } from 'node:path';
+import { promises as fs, existsSync } from 'node:fs';
+import { extname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
-import { buildCleanupCandidates } from '../../packages/animoria-core/src/analysis/cleanup-candidates.js';
-import { readLottieDocument } from '../../packages/animoria-core/src/parsers/lottie-document.js';
-import { integrationRegistry } from '../../packages/animoria-core/src/integration/index.js';
-import {
-  computeWorkspaceRelativePath,
-  toImportSpecifier,
-} from '../../packages/animoria-core/src/integration/path-resolution.js';
-import {
-  buildCleanupPlan,
-  buildReviewableProposal,
-} from '../../packages/animoria-core/src/cleanup/cleanup-plan.js';
-import { buildResolutionPlan } from '../../packages/animoria-core/src/governance/duplicates/resolution-plan.js';
-import { WorkspaceSession } from '../../packages/animoria-core/src/workspace/workspace-session.js';
-import { StaticAssetScanner } from '../../packages/animoria-core/src/scanner/static-asset-scanner.js';
-import { ThumbnailEngine } from '../../packages/animoria-core/src/thumbnails/thumbnail-engine.js';
+import { RustDaemonClient } from './src/host/rust-daemon-client.js';
 import { resolveWithinRoot } from './src/bridge/path-containment.js';
 
 const MIME_TYPES: Record<string, string> = {
@@ -83,83 +69,70 @@ export default defineConfig({
   plugins: [
     {
       /**
-       * A **read-only** bridge between the browser harness and a real
-       * Animoria native daemon index.
+       * A **read-only** bridge between the browser harness and the real
+       * `animoria` native daemon — the same Protocol v1 process VS Code and
+       * JetBrains spawn. Every response the harness renders is Core's own
+       * answer, not a second computation of it: a previous version of this
+       * bridge imported `@animoria/core` (the legacy TypeScript engine) by
+       * relative path, which meant the harness used to build and review
+       * `@animoria/ui` ran a different engine than the one that ships.
        *
        * ## What this bridge deliberately cannot do
-       * It exposes no endpoint that mutates the filesystem. It previously offered
-       * `POST /api/delete-asset`, `POST /api/execute-cleanup`, and
-       * `POST /api/resolve-duplicates`, which between them called `fs.unlink` on
-       * caller-supplied paths and rewrote source files in place — with no staging,
-       * no undo, and (for `execute-cleanup`) no path validation at all.
-       *
-       * Destructive operations belong to the clients that can stage, preview, and
-       * reverse them. A UI development harness has no reason to own that power, so
-       * it does not have it. If a future harness genuinely needs write behaviour,
-       * it must go through Core's staged-deletion path and be opt-in per run — not
-       * be an unauthenticated endpoint that is always on.
+       * It exposes no endpoint that mutates the filesystem. Destructive
+       * operations belong to clients that can stage, preview, and reverse
+       * them; a UI development harness has no reason to own that power.
        */
-      name: 'animoria-core-bridge',
+      name: 'animoria-daemon-bridge',
       // Dev server only. Vitest also constructs a serve-mode Vite server, and
-      // booting a real workspace indexer plus a recursive filesystem watcher inside
-      // a unit-test run is both wasteful and a source of cross-test interference.
+      // spawning a real daemon subprocess inside a unit-test run is both
+      // wasteful and a source of cross-test interference.
       apply: 'serve',
       configureServer(server) {
         if (process.env.VITEST) return;
 
         const workspacePath = resolveWorkspacePath();
-
         if (!existsSync(workspacePath)) {
           server.config.logger.warn(
             `[Animoria Bridge] Workspace not found: ${workspacePath}\n  Set ANIMORIA_SANDBOX_WORKSPACE to point the harness at an existing directory.`
           );
         }
 
-        const session = new WorkspaceSession([workspacePath]);
-
-        // Awaited before any request is served. `getSnapshot()` used to be called
-        // while this promise was still pending, so the first page load rendered an
-        // empty gallery that was indistinguishable from a genuinely empty
-        // workspace.
-        const ready = session
-          .initialize()
+        const daemon = new RustDaemonClient();
+        const ready = daemon
+          .start()
           .then(() => {
-            server.config.logger.info(`[Animoria Bridge] Indexed ${workspacePath}`);
+            server.config.logger.info(
+              `[Animoria Bridge] Connected to the native daemon for ${workspacePath}`
+            );
           })
           .catch((err) => {
             server.config.logger.error(
-              `[Animoria Bridge] Failed to index workspace: ${
+              `[Animoria Bridge] Failed to start the native daemon: ${
                 err instanceof Error ? err.message : String(err)
               }`
             );
           });
 
-        // Observing the workspace keeps the harness live while a fixture is edited.
-        // Reads only — the indexer is told what changed; nothing here writes.
-        const EXCLUDE_DIRS = new Set([
-          'node_modules',
-          '.git',
-          'dist',
-          'build',
-          '.turbo',
-          '.animoria',
-        ]);
-        if (existsSync(workspacePath)) {
-          watch(workspacePath, { recursive: true }, (eventType, filename) => {
-            if (!filename) return;
-            if (filename.split(/[/\\]/).some((part) => EXCLUDE_DIRS.has(part))) return;
-            const fullPath = join(workspacePath, filename);
-            const kind = !existsSync(fullPath)
-              ? 'deleted'
-              : eventType === 'rename'
-                ? 'created'
-                : 'changed';
-            const rootId = session.roots[0]?.id;
-            if (rootId) {
-              const idx = session.indexerForRoot(rootId);
-              if (idx) idx.notifyFileChanged(fullPath, kind);
-            }
-          });
+        server.httpServer?.once('close', () => {
+          void daemon.stop();
+        });
+
+        interface ScanResult {
+          analysis: {
+            root_id: string;
+            root_path: string;
+            state: string;
+            assets: unknown[];
+            diagnostics: unknown[];
+            health_score: unknown;
+            indexed_at_ms: number;
+          };
+          references: { asset_id: string }[];
+          duplicate_groups: unknown[];
+        }
+
+        async function scan(): Promise<ScanResult> {
+          return daemon.request<ScanResult>('scan', { workspace_path: workspacePath });
         }
 
         server.middlewares.use(async (req, res, next) => {
@@ -171,11 +144,7 @@ export default defineConfig({
             res.statusCode = 405;
             res.setHeader('Allow', 'GET');
             res.setHeader('Content-Type', 'application/json');
-            res.end(
-              JSON.stringify({
-                error: 'The Animoria sandbox bridge is read-only.',
-              })
-            );
+            res.end(JSON.stringify({ error: 'The Animoria sandbox bridge is read-only.' }));
             return;
           }
 
@@ -186,50 +155,27 @@ export default defineConfig({
           }
 
           // ── Canonical analysis ────────────────────────────────────────────
-          // Renamed from `/api/snapshot`: what it serves is a `WorkspaceAnalysis`,
-          // and calling it a snapshot is what let the old harness treat it as one
-          // input among several rather than as the single result.
+          // Rescanned on every request: the daemon's own benchmarks put a scan of
+          // a workspace this size at single-digit milliseconds, so a fresh answer
+          // costs less than the staleness bugs a cache would need to avoid.
           if (url.pathname === '/api/analysis' || url.pathname === '/api/snapshot') {
             try {
               await ready;
-              const snap = session.getAnalysis();
+              const result = await scan();
 
-              const generator = new ThumbnailEngine({ workspacePath, frame: 'middle' });
-              try {
-                const batch = await generator.generateBatch([...snap.assets].map((a) => a.asset));
-                for (const r of batch.results) {
-                  if (r.thumbnailPath) {
-                    const found = snap.assets.find((a) => a.asset.path === r.asset.path);
-                    if (found) found.asset.thumbnailPath = r.thumbnailPath; // Mock the path
-                  }
-                }
-              } catch (e) {
-                server.config.logger.error(`[Animoria Bridge] Thumbnail generation error: ${e}`);
-              } finally {
-                await generator.dispose();
+              const refCounts: Record<string, number> = {};
+              for (const r of result.references) {
+                refCounts[r.asset_id] = (refCounts[r.asset_id] ?? 0) + 1;
               }
-
-              const root = session.roots[0];
-              const scanner = new StaticAssetScanner({
-                workspacePath,
-                exclude: root ? [...session.indexerForRoot(root.id)!.getIgnorePatterns()] : [],
-              });
-              const staticResult = await scanner.scan();
-              const animatedPaths = new Set(snap.assets.map((a) => a.asset.path));
-              const staticOnly = staticResult.assets.filter((a) => !animatedPaths.has(a.path));
 
               res.setHeader('Content-Type', 'application/json');
               res.end(
                 JSON.stringify({
-                  ...snap,
-                  roots: snap.roots.map((r) => ({
-                    ...r,
-                    analysis: {
-                      ...r.analysis,
-                      referenceCounts: Array.from(r.analysis.referenceCounts.entries()),
-                    },
-                  })),
-                  staticAssets: staticOnly,
+                  roots: [result.analysis],
+                  assets: result.analysis.assets,
+                  duplicateGroups: result.duplicate_groups,
+                  referenceCounts: refCounts,
+                  readiness: { referencesResolved: true },
                 })
               );
             } catch (err) {
@@ -240,27 +186,13 @@ export default defineConfig({
             return;
           }
 
-          // ── Cleanup, read-only ────────────────────────────────────────────
-          // The harness can build and preview a plan; it can never apply one. Both
-          // endpoints are GET, and the blanket non-GET refusal above means no apply
-          // endpoint can be added by accident.
-          // ── Usage references ──────────────────────────────────────────────
-          //
-          // Core's own reference index, not a substring search here. The harness must
-          // show the same usages a real host does, or reviewing the inspector against
-          // it proves nothing.
-          // ── Lottie document ───────────────────────────────────────────────
-          //
-          // Core's own reader, so the harness plays exactly the document the IDEs do.
           if (url.pathname === '/api/lottie-document') {
             try {
               await ready;
               const assetPath = url.searchParams.get('assetPath') ?? '';
-              const located = session.indexerForPath(assetPath);
+              const document = await daemon.request('getLottieDocument', { assetPath });
               res.setHeader('Content-Type', 'application/json');
-              res.end(
-                JSON.stringify(located ? ((await readLottieDocument(assetPath)) ?? null) : null)
-              );
+              res.end(JSON.stringify(document));
             } catch (err) {
               res.statusCode = 500;
               res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
@@ -268,34 +200,16 @@ export default defineConfig({
             return;
           }
 
-          // ── Snippets ──────────────────────────────────────────────────────
           if (url.pathname === '/api/snippets') {
             try {
               await ready;
               const assetPath = url.searchParams.get('assetPath') ?? '';
-              const located = session.indexerForPath(assetPath);
-              const asset = located?.indexer
-                .getAnalysis()
-                .assets.find((entry) => entry.path === assetPath);
-
-              const results = asset
-                ? integrationRegistry.generate(
-                    buildIntegrationContext(asset, located?.root.path ?? workspacePath)
-                  )
-                : [];
-
-              res.setHeader('Content-Type', 'application/json');
-              res.end(
-                JSON.stringify(
-                  results.map((result) => ({
-                    label: result.label,
-                    language: result.language,
-                    code: result.code,
-                    imports: result.imports ?? null,
-                    installHint: result.installHint ?? null,
-                  }))
-                )
+              const response = await daemon.request<{ results: unknown[]; error?: string | null }>(
+                'generateSnippet',
+                { assetPath, workspace_path: workspacePath }
               );
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify(response.results ?? []));
             } catch (err) {
               res.statusCode = 500;
               res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
@@ -307,15 +221,12 @@ export default defineConfig({
             try {
               await ready;
               const assetPath = url.searchParams.get('assetPath') ?? '';
-              const located = session.indexerForPath(assetPath);
+              const response = await daemon.request('getUsageReferences', {
+                assetPath,
+                workspace_path: workspacePath,
+              });
               res.setHeader('Content-Type', 'application/json');
-              res.end(
-                JSON.stringify({
-                  assetPath,
-                  references: located?.indexer.usageReferencesFor(assetPath) ?? [],
-                  complete: session.getAnalysis().readiness.referencesResolved,
-                })
-              );
+              res.end(JSON.stringify(response));
             } catch (err) {
               res.statusCode = 500;
               res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
@@ -323,28 +234,23 @@ export default defineConfig({
             return;
           }
 
+          // ── Cleanup / resolution, read-only ─────────────────────────────────
+          // The harness can build and preview a plan; it can never apply one —
+          // there is no `applyCleanupPlan`/`applyResolutionPlan` endpoint here,
+          // and the blanket non-GET refusal above means one cannot be added by
+          // accident either.
           if (url.pathname === '/api/cleanup-proposal') {
             try {
               await ready;
-              const snap = session.getAnalysis();
-              // The harness passes real dismissals through, so the read-only claim
-              // stays about the *workspace* rather than about the review flow.
-              const dismissedPaths = new Set(
-                (url.searchParams.get('dismissed') ?? '').split('\n').filter((p) => p.length > 0)
-              );
-              const proposals = [];
-              for (const root of session.roots) {
-                const idx = session.indexerForRoot(root.id);
-                if (!idx) continue;
-                const analysis = idx.getAnalysis();
-                const proposal = await buildReviewableProposal(
-                  buildCleanupCandidates(analysis, { dismissedPaths }),
-                  analysis
-                );
-                proposals.push({ rootId: root.id, rootName: root.name, proposal });
-              }
+              const dismissed = (url.searchParams.get('dismissed') ?? '')
+                .split('\n')
+                .filter((p) => p.length > 0);
+              const response = await daemon.request<{ roots: unknown[] }>('buildCleanupProposal', {
+                workspace_path: workspacePath,
+                dismissedPaths: dismissed,
+              });
               res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify(proposals));
+              res.end(JSON.stringify(response.roots ?? []));
             } catch (err) {
               res.statusCode = 500;
               res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
@@ -355,25 +261,15 @@ export default defineConfig({
           if (url.pathname === '/api/cleanup-plan') {
             try {
               await ready;
-              const snap = session.getAnalysis();
-              const plans = [];
               const selected = (url.searchParams.get('paths') ?? '')
                 .split('\n')
                 .filter((p) => p.length > 0);
-
-              for (const root of session.roots) {
-                const idx = session.indexerForRoot(root.id);
-                if (!idx) continue;
-                const analysis = idx.getAnalysis();
-                const proposal = await buildReviewableProposal(
-                  buildCleanupCandidates(analysis),
-                  analysis
-                );
-                const plan = buildCleanupPlan(proposal, analysis, selected);
-                plans.push({ rootId: root.id, rootName: root.name, planId: plan.planId, plan });
-              }
+              const response = await daemon.request<{ plans: unknown[] }>('buildCleanupPlan', {
+                workspace_path: workspacePath,
+                assetPaths: selected,
+              });
               res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify(plans));
+              res.end(JSON.stringify(response.plans ?? []));
             } catch (err) {
               res.statusCode = 500;
               res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
@@ -384,37 +280,15 @@ export default defineConfig({
           if (url.pathname === '/api/resolution-plan') {
             try {
               await ready;
-              const snap = session.getAnalysis();
-              const group = snap.duplicateGroups.find(
-                (g) => g.id === url.searchParams.get('groupId')
-              );
+              const groupId = url.searchParams.get('groupId') ?? '';
               const keepPath = url.searchParams.get('keepPath') ?? '';
-              const canonical = group?.candidates.find((c) => c.asset.path === keepPath)?.asset;
-
-              if (!group || !canonical) {
-                res.statusCode = 404;
-                res.end(JSON.stringify({ error: 'No such duplicate group or candidate.' }));
-                return;
-              }
-
-              // Building a plan reads the filesystem and writes nothing — which is
-              // exactly why previewing a resolution is safe in a read-only harness,
-              // and why `executeResolutionPlan` is the only privileged half.
-              const rootPath = session.roots[0]?.path ?? workspacePath;
-              const plan = await buildResolutionPlan({
-                workspacePath: rootPath,
-                group,
-                canonicalAsset: canonical,
+              const response = await daemon.request('buildResolutionPlan', {
+                workspace_path: workspacePath,
+                groupId,
+                keepPath,
               });
               res.setHeader('Content-Type', 'application/json');
-              res.end(
-                JSON.stringify({
-                  planId: `sandbox-${group.id}-${Date.now()}`,
-                  plan,
-                  rootId: session.roots[0]?.id,
-                  rootName: session.roots[0]?.name,
-                })
-              );
+              res.end(JSON.stringify(response));
             } catch (err) {
               res.statusCode = 500;
               res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
@@ -458,18 +332,3 @@ export default defineConfig({
     },
   ],
 });
-
-/** The integration context for one asset, matching what the IDE hosts build. */
-function buildIntegrationContext(
-  asset: import('../../packages/animoria-core/src/types/asset.js').AnimoriaAsset,
-  workspacePath: string
-) {
-  const workspaceRelativePath = computeWorkspaceRelativePath(workspacePath, asset.path);
-  return {
-    asset,
-    importPath: toImportSpecifier(workspaceRelativePath),
-    workspaceRelativePath,
-    pathResolutionBasis: 'workspace-root' as const,
-    workspacePath,
-  };
-}

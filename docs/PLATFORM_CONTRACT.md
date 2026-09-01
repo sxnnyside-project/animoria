@@ -1,219 +1,128 @@
 # Animoria Platform Contract
 
-**Version:** 1.0.0
-**Status:** Draft — WP1 deliverable (investigative only, no code changed)
-**Scope:** `animoria-core`, CLI, Daemon protocol, `animoria-vscode`, `animoria-jetbrains`, `animoria-sandbox`
+**Version:** 2.0.0 (post Rust migration)
+**Status:** Reflects the current Rust engine (`animoria-core-rust`) as the single source of truth.
+**Scope:** `animoria-core-rust` (engine, CLI, daemon), `animoria-contracts`, `animoria-vscode`, `animoria-jetbrains`, `apps/animoria-sandbox`
 
 ## Purpose
 
-This document is the canonical inventory of every public capability Animoria exposes, and which
-client(s) currently implement it. It exists so that future Client Platform Parity work packages
-(WP2+) derive from verified evidence, not assumption.
+This document is the canonical inventory of every capability the Rust engine exposes over the daemon protocol, and how each client (VS Code, JetBrains, sandbox) reaches it. It supersedes the pre-2.0.0 version of this document, which described a TypeScript engine (`@animoria/core`, since fully removed from this repository) and a 10-command daemon surface that no longer exists.
 
-**Product principle for this document:** the reference implementation is **Animoria itself**, not
-VS Code. Every client converges on the same functional contract; clients differ only where a
-platform genuinely requires it (e.g. sandbox has no filesystem, JetBrains has no native webview
-DOM without JCEF). "Not implemented yet" is never an acceptable rationale for intentional absence
-— only a real platform constraint is.
-
-All findings below were verified by reading the actual source in this repository as of this audit
-(`cli.ts`, `extension.ts`, JetBrains Kotlin sources, sandbox components). No capability is marked
-"Fully Supported" without a corresponding call site cited.
+**Product principle for this document:** the reference implementation is **Animoria's Rust engine**, not any one client. Every host converges on the same functional contract exposed by `animoria-core-rust`; clients differ only where a platform genuinely requires it (e.g. the sandbox has no filesystem, JetBrains has no native webview DOM without JCEF).
 
 ---
 
-## 1. Architecture recap (context for the matrix)
+## 1. Architecture recap (context for the inventory)
 
-Three distinct integration strategies exist today, by design:
+Unlike the pre-2.0.0 architecture — where VS Code linked the TypeScript engine in-process and only JetBrains spoke a daemon protocol — **every host now reaches the engine the same way**: by spawning the compiled `animoria` native binary and speaking NDJSON over its stdin/stdout. There is no in-process integration path left.
 
-| Client | How it reaches `@animoria/core` |
+| Client | How it reaches `animoria-core-rust` |
 |---|---|
-| VS Code | **In-process.** `animoria-vscode` imports `@animoria/core` directly as a library inside the extension host (Node.js). No IPC. Example: `AnimoriaPreviewPanel.ts:239` calls `animoria.getAnimationData(asset)` directly. |
-| JetBrains | **Out-of-process daemon.** Kotlin cannot import TypeScript. `CoreProcessManager.kt` spawns `cli.js` (or the SEA-packaged native binary) as a long-lived subprocess and talks NDJSON over stdin/stdout. Every capability must be exposed as a named daemon command to reach JetBrains. |
-| Sandbox (Lit) | **Mocked.** `animoria-app.ts` imports `mocks/mock-extension-host.js`, a fake in-browser stand-in — the sandbox is a UI development harness, not a live workspace scanner (browsers have no filesystem access). This is a legitimate platform constraint, not a gap. |
+| VS Code | **Out-of-process daemon.** `daemon-client.ts` (`packages/animoria-vscode/src/daemon/daemon-client.ts`) spawns the `animoria` binary via `node:child_process` and speaks NDJSON over stdin/stdout, correlating requests by `id`. |
+| JetBrains | **Out-of-process daemon.** Kotlin cannot link Rust directly. `CoreProcessManager.kt` spawns the platform-appropriate `animoria` binary (located by `DaemonBinaryResolver.kt`) as a long-lived subprocess and talks NDJSON over stdin/stdout. |
+| Sandbox (Lit) | **Out-of-process daemon, against fixtures.** `apps/animoria-sandbox/src/host/rust-daemon-client.ts` speaks the same NDJSON protocol as the other two hosts, but against read-only fixture workspaces rather than a live user filesystem (a browser has no filesystem access of its own). |
 
-This means: **the daemon command surface in `cli.ts`'s `handleCommand()` is the true ceiling for
-JetBrains capability.** Anything not exposed as a daemon command cannot exist in JetBrains without
-either (a) adding a new command to `cli.ts`, or (b) reimplementing logic natively in Kotlin — which
-CLAUDE.md explicitly forbids. VS Code has no such ceiling, since it links the library directly.
+This means: **the daemon method surface in `daemon/server.rs`'s `supported_methods()` is the true ceiling for every client's capability.** Anything not exposed as a daemon method cannot exist in any host without a change to the Rust engine — CLAUDE.md's "Single Source of Truth" and "Zero Client-Side Calculation" invariants forbid reimplementing governance/scanning/scoring logic natively in TypeScript or Kotlin.
 
 ---
 
-## 2. Daemon IPC Inventory
+## 2. Daemon Protocol v1 — Method Inventory
 
-Source of truth: `packages/animoria-core/src/cli.ts`, `runWatchDaemon()` / `handleCommand()`.
+Source of truth: `packages/animoria-core-rust/src/daemon/server.rs` (`PROTOCOL_VERSION`, `DaemonRequest`, `DaemonResponse`, `DaemonEvent`, `supported_methods()`).
 
-### Push events (daemon → host, unsolicited)
+### Envelope shapes
 
-| Event | Emitted when | Payload |
-|---|---|---|
-| `scanProgress` | During initial indexer bootstrap | `{ percent, message }` |
-| `scanComplete` | First full workspace scan finishes | `{ assets, ruleReport, healthScore, referenceCounts, staticAssets }` |
-| `watcherEvent` | Any subsequent indexer update (file change) | `{ type: 'indexUpdate', assets, ruleReport, healthScore, referenceCounts, staticAssets }` |
-| `error` | Uncaught scan/indexer error | `{ message }` |
-| `commandError` | A request-scoped command throws or is unrecognized | `{ command, message }`, carries the originating `requestId` if present |
+```
+request  { protocol, id, method, params }
+response { protocol, id, result | error }
+event    { protocol, event, sequence, payload }
+```
 
-### Request/response commands (host → daemon, correlated by `requestId`)
+`protocol` is required on every message in both directions; a client outside the daemon's supported window is told which side is out of date. `hello` establishes the protocol version, engine version, `supported_formats`, `capabilities`, and the full `methods` list the running daemon actually answers — a host can therefore detect a daemon that predates a feature at handshake time instead of failing per-call.
 
-| # | Command | Request payload | Response event | Consumed by (verified) |
-|---|---|---|---|---|
-| 1 | `runGovernance` | `{ overusedThreshold? }` | `governanceResult` (GovernanceReport) | JetBrains: `AnimoriaGalleryPanel.kt:249` |
-| 2 | `generateThumbnail` | `{ assetPath }` | `thumbnailResult` | JetBrains: `AnimoriaGalleryPanel.kt:397` |
-| 3 | `generateSnippet` | `{ assetPath }` | `snippetResult` | JetBrains: `GenerateSnippetAction.kt` |
-| 4 | `buildCleanupProposal` | `{ dismissedPaths? }` | `cleanupProposal` | JetBrains: `CleanupReviewDialog.kt:123,189` |
-| 5 | `executeCleanup` | `{ assetPaths }` | `cleanupSummary` | JetBrains: `AnimoriaGalleryPanel.kt:229`, `CleanupReviewDialog.kt:166,339` |
-| 6 | `resolveDuplicates` | `{ keepPath, removePaths }` | `duplicateResolutionResult` | JetBrains: `DuplicateResolverDialog.kt:184` |
-| 7 | `exportGovernanceReport` | `{ format: 'markdown'\|'json' }` | `governanceReportExport` | JetBrains: `ExportGovernanceReportAction.kt` |
-| 8 | `getUsageReferences` | `{ assetPath }` | `usageReferencesResult` | JetBrains: `AnimoriaPreviewPanel.kt:425,1614` |
-| 9 | `getSnapshot` | `{}` | `snapshotResult` | JetBrains: `AnimoriaGalleryPanel.kt:376` |
-| 10 | `getAnimationData` | `{ assetPath, format?, animationId? }` | `animationDataResult` | JetBrains: `AnimoriaPreviewPanel.kt:185,308` |
+### Request/response methods (host → daemon, correlated by `id`)
+
+The complete, current set of methods, as returned by `supported_methods()`:
+
+| Method | Category |
+|---|---|
+| `hello` | Handshake |
+| `scan` | Indexing |
+| `check` | Governance (CI-style one-shot) |
+| `analyze` | Indexing / analysis |
+| `getAnalysis` | Indexing / analysis |
+| `getUsageReferences` | Usage tracing |
+| `generateThumbnail` | Thumbnails |
+| `getLottieDocument` | Preview / playback |
+| `generateSnippet` | Framework integration snippets |
+| `exportReport` | Reporting |
+| `remediate_plan` | Remediation |
+| `trash_asset` | Remediation |
+| `restore_asset` | Remediation |
+| `buildCleanupProposal` | Cleanup planning |
+| `buildCleanupPlan` | Cleanup planning |
+| `applyCleanupPlan` | Cleanup planning |
+| `buildResolutionPlan` | Duplicate resolution |
+| `applyResolutionPlan` | Duplicate resolution |
+| `listTrashSessions` | Trash recovery |
+| `restoreTrashSession` | Trash recovery |
+| `shutdown` | Lifecycle |
 
 **Findings:**
 
-- **No orphan commands.** Every one of the 10 daemon commands is called by at least one client
-  (JetBrains). VS Code does not need any of them, since it calls the equivalent `@animoria/core`
-  functions in-process instead (`GovernanceAnalyzer`, `ThumbnailEngine`, `integrationRegistry`,
-  `moveAssetsToTrash`, `UsageScanner`, `Animoria.getAnimationData`, etc.) — this is expected given
-  the architecture in §1, not a discrepancy.
-- **No versioning field exists in the envelope.** `emit()` writes `{ event, data, requestId? }`
-  with no protocol/schema version. Today this is harmless (single daemon binary always matches the
-  plugin it ships with), but it is a **latent risk**: a JetBrains plugin update that ships a new
-  Kotlin payload shape against a stale cached native daemon binary (or vice versa) would fail
-  silently or with a generic deserialization error, not a clear "protocol mismatch" message.
-- **No obsolete commands found** — all 10 are live and referenced.
-- **Naming is consistent**: every command is a verb-first camelCase string, every response event
-  name is `<subjectOrVerb>Result` / `<subjectOrVerb>Summary` / `<subjectOrVerb>Proposal`, applied
-  uniformly.
-- **Missing daemon commands** (capabilities that exist in Core/VS Code but have no daemon command,
-  and are therefore structurally unreachable from JetBrains today):
-  - None found for the currently-shipped feature set — every VS Code-facing capability that has a
-    JetBrains equivalent already has a matching daemon command. The gaps that exist (§5) are gaps
-    in the **client UI wiring**, not in the daemon surface.
+- **Protocol versioning exists** (`PROTOCOL_VERSION`, checked against every incoming request's `protocol` field) — this closes the gap the pre-2.0.0 version of this document flagged as a "latent risk" (no version field in the NDJSON envelope). A version mismatch is now reported explicitly rather than failing with an opaque deserialization error.
+- **Trash recovery exists** (`listTrashSessions`, `restoreTrashSession`, `restore_asset`) — this closes the "Missing everywhere: trash recovery" gap the pre-2.0.0 document flagged. Assets removed via a resolution/cleanup plan are staged under `.animoria/trash/` and are restorable, per CLAUDE.md's "Plan-Based Remediation" invariant.
+- **`ping`/health method:** No explicit `ping` or `health` method exists. The daemon's request dispatcher in `packages/animoria-core-rust/src/daemon/server.rs` matches only functional methods (`hello`, `scan`, `check`, `analyze`, `getAnalysis`, `exportReport`, `getUsageReferences`, `generateThumbnail`, `getLottieDocument`, `remediate_plan`, `trash_asset`, `restore_asset`, `generateSnippet`, `buildCleanupProposal`, `buildCleanupPlan`, `applyCleanupPlan`, `buildResolutionPlan`, `applyResolutionPlan`, and the trash-session methods) — there is no liveness-check arm in the match. Instead, each host distinguishes "slow" from "dead" purely via per-request timeouts and process-exit handling: the JetBrains `CoreProcessManager.kt` wraps every `sendCommand` in `withTimeout(timeoutMs) { deferred.await() }` with a default `timeoutMs = 10_000L`, treating a timeout as a liveness failure for that request rather than polling a dedicated health endpoint. The VS Code `VsCodeDaemonClient` has no per-request timeout at all — its `pendingRequests` promises resolve or reject only when a matching response line arrives on stdout, or when the child process's `exit`/`error` event fires and `rejectAllPending()` rejects every outstanding request; a hung-but-still-running daemon that never writes a response has no dedicated detection path on the VS Code side today.
 
 ---
 
 ## 3. CLI Command Inventory
 
-Source of truth: `packages/animoria-core/src/cli.ts` (`main()`), `cli/check-command.ts`.
+Source of truth: `packages/animoria-core-rust/src/cli/commands/` (`main.rs` dispatch).
 
-The `animoria` binary (`dist/cli.js`) has exactly **two** entry modes, dispatched on `argv[2]`:
+The `animoria` binary exposes subcommands directly under `cli/commands/`:
 
-| Subcommand | Purpose | Daemon-compatible? | Core-compatible? |
-|---|---|---|---|
-| `animoria check [...]` | Headless CI/CD governance gate. One-shot `WorkspaceIndexer.initialize()` pass, renders a report (terminal/markdown/json via `renderer-registry.ts`), maps outcome to a documented exit code (`cli/exit-codes.ts`). Pure function (`runCheckCommand`) — no `process.exit`/`console.log` inside the logic itself, only in `main()`'s two-line translation layer. | N/A — one-shot, not a daemon session | Yes — calls `WorkspaceIndexer`/`buildGovernanceCheckReport` directly |
-| *(no subcommand)*, i.e. `node cli.js <workspacePath>` | Long-running NDJSON daemon (see §2) | This *is* the daemon | Yes |
+| Subcommand | File | Purpose |
+|---|---|---|
+| `check` | `check.rs` | Headless CI/CD governance gate — one-shot scan against configured rules. |
+| `clean` | `clean.rs` | Cleanup-plan construction/execution from the CLI. |
+| `init` | `init.rs` | Scaffolds a starting `.animoriarc.json` (and/or `.animoriaignore`) for a workspace. |
+| `report` | `report.rs` | Generates a governance report (see `exportReport` daemon method for the equivalent programmatic path). |
+| `restore` | `restore.rs` | Restores previously trashed assets. |
+| `scan` | `scan.rs` | One-shot asset discovery/indexing without applying governance rules. |
+| *(no subcommand / daemon mode)* | `daemon/server.rs` | Long-running NDJSON daemon (see §2). |
 
 **Findings:**
 
-- The CLI does **not** expose most platform capabilities as discrete subcommands — there is no
-  `animoria thumbnail`, `animoria snippet`, `animoria cleanup`, `animoria duplicates`, `animoria
-  export-report`, etc. Everything except `check` is only reachable by speaking the daemon's NDJSON
-  protocol over stdin/stdout, which is not a realistic surface for a human at a terminal or for a
-  simple CI script that isn't already an NDJSON client.
-- This means **the CLI is not yet a full reflection of the platform contract** — it is a CI-gate
-  tool (`check`) plus a daemon bootstrapper, not a general-purpose command surface. Whether that's
-  correct depends on product intent for who uses the bare CLI (see Gap Analysis, §5).
+- Unlike the pre-2.0.0 CLI (`check` plus an undifferentiated daemon bootstrapper only), the Rust CLI now exposes `clean`, `init`, `report`, and `restore` as first-class human-usable subcommands in addition to `check` and `scan` — this closes the "CLI is not yet a full reflection of the platform contract" gap the previous version of this document flagged, at least for the commands listed above.
+- Confirmed directly from the `clap` `Commands` enum in `packages/animoria-core-rust/src/cli/args.rs`: the CLI exposes exactly six subcommands, invoked with these literal names and flags — `animoria scan [path] [--json]`; `animoria check [path] [--json] [--strict]` (exit 0 = no violations, 1 = error-level violation, 2 = warnings-only with `--strict`); `animoria report [path] [--json]`; `animoria clean [path] [--apply]` (previews by default; `--apply` stages duplicates into `.animoria/trash`); `animoria restore [path] [--list] [--session <id>] [--all]`; `animoria init [path] [--force]`; and `animoria daemon` (no path argument — starts the Protocol v1 NDJSON server over stdio). Global flags available on every subcommand are `--no-color`, `-q`/`--quiet`, and `-v`/`--verbose` (repeatable).
 
 ---
 
 ## 4. Platform Capability Inventory & Contract Matrix
 
-Classification values: **Fully Supported**, **Partially Supported**, **Missing**, **Not Applicable**.
+**Scope note:** The detailed per-client capability matrix that existed in the pre-2.0.0 version of this document cited specific Kotlin/TypeScript file:line call sites (e.g. `AnimoriaGalleryPanel.kt:249`, `AnimoriaPreviewPanel.ts:239`) against the old architecture, where the engine ran TypeScript in-process and the daemon exposed 10 methods. Those call sites no longer apply: the engine is now Rust-only, the daemon method surface grew from 10 to 20 methods, and VS Code no longer imports the engine in-process. Rebuilding an equally precise matrix — citing real, current call sites in `packages/animoria-vscode/src/` and `packages/animoria-jetbrains/src/main/kotlin/` against each of the 20 daemon methods — requires a full line-by-line audit of both host codebases, which is a substantially larger body of work than fits inside this documentation pass. That matrix has been deliberately removed from this document rather than published stale or fabricated; reconstructing it is intentionally scoped out as a separate, dedicated audit task.
 
-| Capability | Canonical Owner | Public API (Core) | CLI | Daemon | VS Code | JetBrains | Sandbox | Classification / Notes |
-|---|---|---|---|---|---|---|---|---|
-| Workspace indexing (initial scan) | Core | `WorkspaceIndexer.initialize()` | ✅ (`check`) | ✅ (`scanComplete`) | ✅ (direct import) | ✅ (via daemon) | N/A (mocked) | Fully Supported |
-| Incremental indexing / file watch | Core | `WorkspaceIndexer.onDidUpdate` + `startWatcher()` | N/A (one-shot only) | ✅ (`watcherEvent`) | ✅ | ✅ | N/A (mocked) | Fully Supported (CLI intentionally excluded — `check` is one-shot by design) |
-| Animated asset discovery | Core | `WorkspaceIndexer` | ✅ | ✅ | ✅ | ✅ | ✅ (mock data) | Fully Supported |
-| Static asset support | Core | `StaticAssetScanner` | ✅ (indirect, via indexer) | ✅ (`staticAssets` field) | ✅ | ✅ (`StaticAssetsSectionNode`) | ✅ | Fully Supported |
-| Thumbnail generation | Core | `ThumbnailEngine` | N/A (no CLI need) | ✅ `generateThumbnail` | ✅ (direct) | ✅ (`AnimoriaGalleryPanel.kt:397`) | ✅ (mocked) | Fully Supported |
-| Preview rendering (live animation playback) | Core (data) + client (render) | `Animoria.getAnimationData` | N/A | ✅ `getAnimationData` | ✅ webview + lottie-web | ✅ JCEF webview, own HTML/JS (play/pause/loop present) | ✅ | Fully Supported |
-| Animation metadata (frames/layers/size) | Core | parsers | N/A | via `getSnapshot`/`scanComplete` | ✅ | ✅ | ✅ | Fully Supported |
-| `getAnimationData` (Lottie + dotLottie) | Core | `Animoria.getAnimationData`, `DotLottieParser` | N/A | ✅ command #10 | ✅ direct call | ✅ `AnimoriaPreviewPanel.kt:185,308` | ✅ (mocked) | Fully Supported |
-| Governance execution (unused/duplicate/overused) | Core | `GovernanceAnalyzer` | ✅ (`check`) | ✅ `runGovernance` | ✅ direct | ✅ `AnimoriaGalleryPanel.kt:249` | ✅ mocked | Fully Supported |
-| Asset Health Score | Core | `HealthScoreEngine` | ✅ (`check` gate: `--min-health-score`) | ✅ (`healthScore` field on scan events) | ✅ | ✅ `HealthScoreNode` | ✅ | Fully Supported |
-| Duplicate analysis | Core | `GovernanceAnalyzer` (MD5-hash based) | ✅ (`check`) | ✅ (part of `runGovernance`) | ✅ | ✅ | ✅ | Fully Supported |
-| Duplicate Resolution (keep-one, trash rest) | Core | `moveAssetsToTrash` | N/A | ✅ `resolveDuplicates` | ✅ | ✅ `DuplicateResolverDialog.kt` | ✅ (`animoria-duplicate-resolver.ts`, UI demo only) | Fully Supported |
-| Cleanup planning (proposal) | Core | `GovernanceAnalyzer` + candidate assembly | N/A | ✅ `buildCleanupProposal` | ✅ own `CleanupPlanner.ts` (VS Code-specific reimplementation, see note below) | ✅ `CleanupReviewDialog.kt` | ✅ `animoria-cleanup-panel.ts` (mock) | Partially Supported — see note |
-| Bulk Cleanup (multi-asset delete-to-trash) | Core | `moveAssetsToTrash` | N/A | ✅ `executeCleanup` | ✅ `CleanupExecutor.ts` | ✅ (`AnimoriaGalleryPanel.kt:229`, `CleanupReviewDialog.kt:166,339`) | ✅ (mock) | Fully Supported |
-| Trash recovery (restore / undo) | — | none | ❌ | ❌ | ❌ | ❌ | ❌ | **Missing everywhere.** All clients report `trashLocation` as a string but none expose a restore/undo action or "reveal trash folder" affordance. |
-| Governance report generation (markdown/json) | Core | `report-formatter.ts` | ✅ (`check` renderers) | ✅ `exportGovernanceReport` | ✅ | ✅ `ExportGovernanceReportAction.kt` | N/A | Fully Supported |
-| Markdown preview of report | Client | — | ✅ (`check --format markdown`) | — | ✅ `viewGovernanceReport` command | ✅ `GovernanceReportEditor.kt` | N/A | Fully Supported |
-| Search / filter assets | Client | — | ❌ | N/A (client-local state) | ✅ `animoria.search` command | ✅ `SearchTextField` → `treeModel.setSearchQuery` | ✅ | Fully Supported across UI clients; CLI has no equivalent (arguably N/A for a CI tool) |
-| Hover preview (in-editor) | Client | — | N/A | N/A | ✅ `AnimoriaHoverProvider.ts` | ✅ `AnimoriaEditorHoverListener.kt` (deliberately lightweight — no PSI/LineMarkerProvider dependency) | N/A | Fully Supported |
-| Snippet generation (framework integration code) | Core | `integrationRegistry` | N/A | ✅ `generateSnippet` | ✅ direct | ✅ `GenerateSnippetAction.kt` | N/A (no code-integration concept in a browser sandbox) | Fully Supported |
-| Usage References (asset → source code) | Core | `UsageScanner` | N/A | ✅ `getUsageReferences` | ✅ | ✅ (`AnimoriaPreviewPanel.kt`) | ✅ (mock) | Fully Supported |
-| Reveal asset in system file manager | Client | — | N/A | N/A (pure host OS call) | ✅ `animoria.revealInExplorer` | ❌ **Missing** | N/A | **Missing in JetBrains.** No `RevealFileAction`-equivalent call found anywhere in the JetBrains sources or context-menu wiring (`AnimoriaGalleryPanel.kt`'s `group.add(...)` list has no reveal action). Trivial to add via the public `com.intellij.ide.actions.RevealFileAction`. |
-| Delete single asset (context action) | Client | (routes to `executeCleanup`) | N/A | ✅ (reuses `executeCleanup`) | ✅ `animoria.deleteAsset` | ✅ `DeleteAssetAction` (`AnimoriaGalleryPanel.kt:515`) | N/A | Fully Supported |
-| View mode toggle (flat / tree) | Client | — | N/A | N/A | ✅ `animoria.toggleViewMode` | ✅ `ToggleViewModeAction` | ✅ (`AnimoriaTreeModel.kt` mirrored logic exists sandbox-side via gallery component — verify if needed) | Fully Supported (VS Code + JetBrains confirmed) |
-| `.animoriarc` config loading | Core | `governance/config-loader.ts`, `animoriarc-schema.ts` | ✅ | ✅ (inherited — all clients go through the indexer) | ✅ | ✅ | ✅ | Fully Supported — single implementation, inherited by every consumer automatically |
-| `.animoriaignore` | Core | `ignore/animoria-ignore.ts` | ✅ | ✅ | ✅ | ✅ | ✅ | Fully Supported — same reasoning as above |
-| Logging | Core + Client | `logging/logger.ts` (core); `AnimoriaLogger.kt` (JetBrains); VS Code output channel | ✅ | ✅ (stderr `logWarn` etc.) | ✅ Output channel | ✅ `AnimoriaLogger.kt` (now also routes to Event Log notifications, added this sprint) | N/A | Fully Supported |
-| Diagnostics (config load warnings, daemon-unavailable state) | Core + Client | `getDiagnostics()` | ✅ (maps to `CONFIGURATION_ERROR` exit code) | partially (`error`/`commandError` events only — no structured "diagnostics" event) | ✅ | ✅ (`DaemonUnavailableNode`, added this sprint) | N/A | Partially Supported — daemon has no dedicated diagnostics/health-check command (see Gap Analysis) |
-| Runtime synchronization (host reflects daemon's live scan state) | Client | — | N/A | ✅ push events | ✅ | ✅ | N/A (mock is static/simulated) | Fully Supported for live clients |
-| Health/liveness indicator for the daemon process itself | Client | — | N/A | ❌ no explicit ping/health command | ⚠️ implicit (extension host owns the process lifecycle in-proc — N/A) | ⚠️ Partially — relies on process exit / timeout only, no active health check | N/A | Partially Supported — see Gap Analysis |
-| Self-contained native daemon packaging (no Node.js required) | Build tooling | `scripts/build-sea.mjs` | N/A | N/A | N/A (VS Code always has Node via extension host) | ✅ (SEA binary + `copy-sea-into-jetbrains.mjs`) | N/A | Fully Supported (JetBrains-only need, correctly scoped) |
+What can be stated with confidence from the source read for this update:
 
-**Note on Cleanup Planning duplication:** VS Code has its **own** `CleanupPlanner.ts` /
-`CleanupExecutor.ts` / `CleanupTrash.ts` / `CleanupTypes.ts` (a parallel implementation to the
-daemon's `buildCleanupProposal`/`executeCleanup`), because VS Code never needed the daemon
-round-trip in the first place — it calls `GovernanceAnalyzer` and `moveAssetsToTrash` directly. This
-is architecturally consistent with §1 but means **the cleanup-candidate logic exists in two places**
-(`cli.ts`'s inline candidate-assembly code, and `CleanupPlanner.ts`). They are not proven identical
-today — this is the single highest-value target for a future consolidation work package (see §5).
+- `CoreProcessManager.kt` (JetBrains) calls at least `analyze` and `getAnalysis` against the daemon (confirmed by direct grep of the Kotlin source), consistent with the method inventory in §2.
+- The unified `Asset` contract (motion + static formats in one model, see `docs/ARCHITECTURE.md` §2.A) means capabilities that previously required two parallel type hierarchies (animated vs. static asset classes) in the TypeScript engine are now uniform across all clients by construction — there is only one `Asset` shape to render, regardless of host.
 
 ---
 
 ## 5. Gap Analysis
 
-| Gap | Classification | Rationale | Explains JetBrains degradation? |
-|---|---|---|---|
-| `extractBundledNativeDaemon()` used `Class.protectionDomain.codeSource.location`, which `PluginClassLoader` does not reliably populate | **Critical** | Root cause of the reported "no native daemon is bundled for this platform" failure — the daemon binary was verifiably present in the packaged jar but never found at runtime. **Already fixed in this session** (switched to `PathManager.getJarPathForClass`), pending live re-verification. | **Yes — primary cause.** |
-| No "Reveal in file manager" action in JetBrains | Low | Purely a missing menu-item wiring; daemon/core need no changes. Trivial fix via public `RevealFileAction` API. | No |
-| No daemon-level health/ping command | Medium | JetBrains currently infers daemon health only from process liveness + command timeouts (recently reduced from 30s→10s). A dedicated `ping`/`health` command would let the UI distinguish "daemon slow" from "daemon dead" instead of waiting out a timeout. | Partially — contributed to the reported "dialogs of cleanup never loading" symptom, since every stuck command silently waited the full timeout with no earlier signal. |
-| No protocol/schema version field in the NDJSON envelope | Medium | Currently harmless since binary and plugin ship together, but any future asymmetric update (native daemon cached from an old install vs. a newer plugin jar) would fail with an opaque deserialization error rather than a clear version-mismatch message. | Possibly a contributing factor if a stale cached SEA binary predates the current Kotlin payload shape — not confirmed, flagged for WP2 investigation. |
-| Cleanup-candidate logic duplicated between `cli.ts` (daemon) and VS Code's own `CleanupPlanner.ts` | Medium | Two independent implementations of "what counts as a cleanup candidate" can silently drift, producing different cleanup proposals in VS Code vs. JetBrains for the same workspace. | No, but is a parity risk |
-| No trash-restore / undo action anywhere in the platform | Medium | Every client reports a `trashLocation` string but nothing lets a user act on it (open the folder, undo the move). This is a safety-relevant UX gap platform-wide, not client-specific. | No |
-| CLI does not expose most daemon capabilities as human-usable subcommands (thumbnail, snippet, cleanup, duplicates, export-report) | Low | Intentional scope today (`check` is a CI gate, not a general CLI) — but if product intent is "CLI as a first-class client," this is a large gap. Needs a product decision, not just an implementation task. | No |
-| No structured "diagnostics" push event (only ad hoc `error`/`commandError`) | Low | Config-load warnings surface through the `check` command's exit code, but the long-running daemon mode has no equivalent structured diagnostics channel for the same class of problem. | No |
-
-### Recommended dependency order for WP2–WP5
-
-1. **WP2 — Daemon reliability contract.** Add a `ping`/`health` command and an explicit protocol
-   version field to the NDJSON envelope. This unblocks trustworthy diagnostics for every other
-   client-facing fix and directly prevents a repeat of the JetBrains daemon-startup incident class.
-2. **WP3 — JetBrains menu/action parity.** Add the missing "Reveal in file manager" action; audit
-   the remaining context-menu wiring against VS Code's command palette 1:1 using this document's
-   matrix as the checklist.
-3. **WP4 — Cleanup logic consolidation.** Decide whether `CleanupPlanner.ts` should be retired in
-   favor of always calling the daemon-equivalent logic in `@animoria/core` (even from VS Code, via
-   the library import it already has), eliminating the duplicate implementation risk.
-4. **WP5 — Trash recovery.** Design and implement a restore/undo affordance in `@animoria/core`
-   (single implementation, surfaced identically through the daemon and the VS Code direct-import
-   path), then wire it into both UI clients.
-
-CLI-as-first-class-client (exposing thumbnail/snippet/cleanup/duplicates/export-report as real
-subcommands) is deliberately **not** in this ordered list — it depends on a product decision about
-CLI scope that this inventory surfaces but does not make.
+| Gap | Classification | Rationale |
+|---|---|---|
+| Daemon `ping`/health method | Confirmed missing | No `ping`/`health` arm exists in the daemon's method dispatch (`packages/animoria-core-rust/src/daemon/server.rs`). Liveness is inferred purely from per-request timeout (JetBrains: `withTimeout(timeoutMs)`, default 10s) and process exit/error events (VS Code: `rejectAllPending()` on the child process's `exit`/`error` handlers) — see §3 above. |
+| Full per-capability client matrix (§4) | Out of scope for this document | The previous matrix's citations (Kotlin/TypeScript file:line) predate the Rust migration and the daemon method surface change (10 → 20 methods); rebuilding it accurately requires a fresh, dedicated source audit of both host codebases against the current method list in §2, and is intentionally not attempted inline in this pass — see the scope note in §4. |
+| CLI subcommand flag surface | Confirmed | Verified directly against the `clap` `Commands` enum in `packages/animoria-core-rust/src/cli/args.rs`: subcommand names, arguments, and flags are as documented in §3 above. |
 
 ---
 
 ## 6. Answering the Success Criteria
 
-- **What is Animoria's canonical platform contract?** The capability set in §4, with
-  `@animoria/core` as the single source of truth for all business logic, exposed to JetBrains via
-  the 10-command daemon protocol in §2, and to VS Code via direct library import.
-- **Which client implements each capability?** See the Contract Matrix, §4 — every cell is backed
-  by a cited file/line.
-- **Which capabilities are missing?** Trash recovery (all clients), JetBrains reveal-in-file-manager,
-  daemon health/ping, protocol versioning — see §5.
-- **Which daemon commands are absent?** None for the current feature set — all 10 existing
-  commands are used; the gaps are in missing *new* commands (health/ping) and missing *client
-  wiring* (reveal action), not orphaned/unused existing commands.
-- **Which CLI commands are incomplete?** The CLI exposes only `check` and the daemon bootstrap —
-  it does not expose thumbnail/snippet/cleanup/duplicates/export-report as human-usable
-  subcommands. Flagged as a scope question, not a bug.
-- **Which implementation gaps explain the current JetBrains degradation?** The `protectionDomain`
-  classloader bug (Critical, already fixed pending re-verification) was the primary cause. The
-  10s-reduced-from-30s timeout and the previously-silent daemon-start failure (now surfaced via
-  `DaemonUnavailableNode` + Event Log) were contributing visibility gaps, not root causes.
+- **What is Animoria's canonical platform contract?** The daemon method set in §2, sourced from `animoria-core-rust`'s `supported_methods()`, plus the CLI subcommands in §3. `animoria-core-rust` is the single source of truth for all business logic (scanning, parsing, tracing, deduplication, governance, remediation) per CLAUDE.md.
+- **Which client implements each capability?** Every host (VS Code, JetBrains, sandbox) reaches the engine identically, by spawning the `animoria` binary and speaking Protocol v1 NDJSON — see §1. A full per-capability, per-call-site matrix could not be rebuilt with verified citations in this pass (see §4 TODO) and needs a dedicated follow-up audit.
+- **Which daemon methods exist today?** The 20 methods enumerated in §2 — a superset of the pre-2.0.0 10-command surface, notably adding trash recovery (`listTrashSessions`, `restoreTrashSession`) and protocol versioning.
+- **Which CLI commands exist today?** `check`, `clean`, `init`, `report`, `restore`, `scan`, plus the daemon-mode bootstrap — a superset of the pre-2.0.0 CLI, which exposed only `check` as a human-usable subcommand.

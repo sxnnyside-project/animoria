@@ -2,7 +2,7 @@
 
 ![Animoria Banner](https://raw.githubusercontent.com/sxnnyside-project/animoria/main/docs/banner.png)
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Version](https://img.shields.io/badge/version-2.0.0-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 [![CI](https://github.com/sxnnyside-project/animoria/workflows/CI/badge.svg)](https://github.com/sxnnyside-project/animoria/actions)
 
@@ -38,7 +38,7 @@ Animoria is a Sxnnyside Project tool, part of the developer tooling initiative.
 
 ## Features
 
-- **Asset Governance**: Enforces configurable rules (`no-unreferenced-assets`, `no-duplicate-content`, `no-duplicate-names`, `max-file-size-kb`, `allowed-formats`, `no-gif`) with structured evidence, confidence ratings, and remediation steps.
+- **Asset Governance**: Enforces configurable rules (`no-unreferenced-assets`, `no-duplicate-content`, `max-file-size-kb`, `allowed-formats`, `no-gif`) with structured evidence, confidence ratings, and remediation steps.
 - **Single-Pass Auto-Scanning**: Traverses the workspace in linear time, extracting metadata (dimensions, FPS, duration, layer count, markers) without background freezing.
 - **Reference Tracing**: Scans across 20+ file extensions (`.ts`, `.tsx`, `.vue`, `.svelte`, `.astro`, `.dart`, `.swift`, `.kt`, etc.) with attribute, style, and Markdown awareness.
 - **Multi-Root Workspace Support**: Indexes multi-root projects independently while providing aggregate workspace health reporting.
@@ -52,6 +52,7 @@ Animoria is a Sxnnyside Project tool, part of the developer tooling initiative.
 
 - Node.js (>= 22.0.0)
 - pnpm (>= 11.0.0)
+- Rust (stable toolchain, via [rustup](https://rustup.rs)) — required to build the native engine
 
 ### From Source
 
@@ -83,8 +84,7 @@ just test
 just dev
 
 # Run CLI governance audit directly on a path
-pnpm --filter @animoria/core build
-node packages/animoria-core/dist/cli.js check .
+cargo run --release --manifest-path packages/animoria-core-rust/Cargo.toml -- check .
 ```
 
 ## Architecture
@@ -94,8 +94,9 @@ animoria/
 ├── apps/               # Standalone applications (animoria-sandbox)
 ├── docs/               # System architecture, configuration, and ADR records
 ├── fixtures/           # Golden workspace fixtures for parity testing
-├── packages/           # Core engine, UI components, and IDE extensions
-│   ├── animoria-core/       # Pure TypeScript scanning, parsing, and rules engine
+├── packages/           # Core engine, contracts, UI components, and IDE extensions
+│   ├── animoria-core-rust/  # Rust scanning, parsing, and rules engine (single source of truth)
+│   ├── animoria-contracts/  # Canonical TypeScript types, generated from Rust via ts-rs
 │   ├── animoria-jetbrains/  # Kotlin IntelliJ Platform SDK plugin
 │   ├── animoria-ui/         # Shared Lit web components
 │   └── animoria-vscode/     # VS Code extension package

@@ -49,8 +49,8 @@ fn test_deep_parser_metadata_enrichment() {
     png_data.extend_from_slice(&[0x00, 0x00, 0x00, 0x0D]); // IHDR length = 13
     png_data.extend_from_slice(b"IHDR");
     png_data.extend_from_slice(&100u32.to_be_bytes()); // Width = 100
-    png_data.extend_from_slice(&50u32.to_be_bytes());  // Height = 50
-    png_data.extend_from_slice(&[8, 6, 0, 0, 0]);      // 8-bit RGBA
+    png_data.extend_from_slice(&50u32.to_be_bytes()); // Height = 50
+    png_data.extend_from_slice(&[8, 6, 0, 0, 0]); // 8-bit RGBA
     png_data.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]); // CRC
     ws.write_file("assets/logo.png", &png_data);
 
@@ -66,9 +66,19 @@ fn test_deep_parser_metadata_enrichment() {
     assert_eq!(analysis.assets.len(), 4);
 
     // Verify Lottie enrichment
-    let lottie = analysis.assets.iter().find(|a| a.name == "spinner.json").unwrap();
+    let lottie = analysis
+        .assets
+        .iter()
+        .find(|a| a.name == "spinner.json")
+        .unwrap();
     assert!(lottie.is_valid);
-    assert_eq!(lottie.dimensions, Some(Dimensions { width: 400, height: 300 }));
+    assert_eq!(
+        lottie.dimensions,
+        Some(Dimensions {
+            width: 400,
+            height: 300
+        })
+    );
     let motion = lottie.motion.as_ref().unwrap();
     assert_eq!(motion.fps, Some(60.0));
     assert_eq!(motion.total_frames, Some(120));
@@ -77,22 +87,52 @@ fn test_deep_parser_metadata_enrichment() {
     assert!(motion.is_animated);
 
     // Verify GIF enrichment
-    let gif = analysis.assets.iter().find(|a| a.name == "icon.gif").unwrap();
+    let gif = analysis
+        .assets
+        .iter()
+        .find(|a| a.name == "icon.gif")
+        .unwrap();
     assert!(gif.is_valid);
-    assert_eq!(gif.dimensions, Some(Dimensions { width: 32, height: 32 }));
+    assert_eq!(
+        gif.dimensions,
+        Some(Dimensions {
+            width: 32,
+            height: 32
+        })
+    );
 
     // Verify PNG enrichment
-    let png = analysis.assets.iter().find(|a| a.name == "logo.png").unwrap();
+    let png = analysis
+        .assets
+        .iter()
+        .find(|a| a.name == "logo.png")
+        .unwrap();
     assert!(png.is_valid);
-    assert_eq!(png.dimensions, Some(Dimensions { width: 100, height: 50 }));
+    assert_eq!(
+        png.dimensions,
+        Some(Dimensions {
+            width: 100,
+            height: 50
+        })
+    );
     let static_meta = png.static_meta.as_ref().unwrap();
     assert_eq!(static_meta.color_depth, Some(8));
     assert_eq!(static_meta.has_alpha, Some(true));
 
     // Verify SVG enrichment
-    let svg = analysis.assets.iter().find(|a| a.name == "vector.svg").unwrap();
+    let svg = analysis
+        .assets
+        .iter()
+        .find(|a| a.name == "vector.svg")
+        .unwrap();
     assert!(svg.is_valid);
-    assert_eq!(svg.dimensions, Some(Dimensions { width: 800, height: 600 }));
+    assert_eq!(
+        svg.dimensions,
+        Some(Dimensions {
+            width: 800,
+            height: 600
+        })
+    );
     assert_eq!(svg.kind, AssetKind::Static);
     assert_eq!(svg.format, AssetFormat::Svg);
 }
@@ -114,22 +154,13 @@ fn test_invariant_malformed_assets_are_never_dropped() {
     );
 
     // 3. Corrupt PNG (PNG magic present, but truncated IHDR)
-    ws.write_file(
-        "assets/corrupt.png",
-        b"\x89PNG\r\n\x1a\n\x00\x00",
-    );
+    ws.write_file("assets/corrupt.png", b"\x89PNG\r\n\x1a\n\x00\x00");
 
     // 4. Corrupt SVG (no closing tags / malformed XML)
-    ws.write_file(
-        "assets/corrupt.svg",
-        b"<svg><circle cx=unquoted",
-    );
+    ws.write_file("assets/corrupt.svg", b"<svg><circle cx=unquoted");
 
     // 5. Corrupt Rive (RIVE magic present, but 0 further bytes)
-    ws.write_file(
-        "assets/corrupt.riv",
-        b"RIVE",
-    );
+    ws.write_file("assets/corrupt.riv", b"RIVE");
 
     let mut index = AssetIndex::new("root-invariant".to_string(), ws.path().to_path_buf());
     let analysis = index.scan_workspace(&[]).expect("Scan should succeed");
@@ -141,20 +172,40 @@ fn test_invariant_malformed_assets_are_never_dropped() {
         "Invariant violated: Corrupted assets were dropped from the index!"
     );
 
-    let valid_asset = analysis.assets.iter().find(|a| a.name == "valid.json").unwrap();
+    let valid_asset = analysis
+        .assets
+        .iter()
+        .find(|a| a.name == "valid.json")
+        .unwrap();
     assert!(valid_asset.is_valid);
     assert!(valid_asset.error.is_none());
 
-    let corrupt_lottie = analysis.assets.iter().find(|a| a.name == "corrupt-lottie.json").unwrap();
+    let corrupt_lottie = analysis
+        .assets
+        .iter()
+        .find(|a| a.name == "corrupt-lottie.json")
+        .unwrap();
     assert!(!corrupt_lottie.is_valid);
     assert!(corrupt_lottie.error.is_some());
-    assert!(corrupt_lottie.error.as_ref().unwrap().contains("Malformed Lottie JSON"));
+    assert!(corrupt_lottie
+        .error
+        .as_ref()
+        .unwrap()
+        .contains("Malformed Lottie JSON"));
 
-    let corrupt_png = analysis.assets.iter().find(|a| a.name == "corrupt.png").unwrap();
+    let corrupt_png = analysis
+        .assets
+        .iter()
+        .find(|a| a.name == "corrupt.png")
+        .unwrap();
     assert!(!corrupt_png.is_valid);
     assert!(corrupt_png.error.is_some());
 
-    let corrupt_svg = analysis.assets.iter().find(|a| a.name == "corrupt.svg").unwrap();
+    let corrupt_svg = analysis
+        .assets
+        .iter()
+        .find(|a| a.name == "corrupt.svg")
+        .unwrap();
     assert!(!corrupt_svg.is_valid);
     assert!(corrupt_svg.error.is_some());
 

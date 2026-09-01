@@ -7,475 +7,12 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ModuleRootManager
 import com.sxnnyside.animoria.logging.AnimoriaLogger
 import kotlinx.coroutines.*
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import java.io.BufferedReader
-import java.io.File
 import java.io.InputStreamReader
 import java.io.PrintWriter
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-
-// ── Inbound push-event data classes ───────────────────────────────────────────
-
-@Serializable
-data class CoreEvent(
-    val event: String,
-    val data: JsonElement,
-    val requestId: String? = null,
-)
-
-@Serializable
-data class ScanProgressData(
-    val percent: Int,
-    val message: String,
-)
-
-@Serializable
-data class WatcherEventData(
-    val type: String,
-    val path: String,
-    val asset: JetBrainsAsset? = null,
-)
-
-@Serializable
-data class JetBrainsAsset(
-    val path: String,
-    val name: String,
-    val stem: String,
-    val format: String,
-    val sizeBytes: Long,
-    val mtime: Double,
-    val status: String,
-    val metadata: JsonElement? = null,
-    val error: String? = null,
-    val thumbnailPath: String? = null,
-)
-
-@Serializable
-data class HealthScoreData(
-    val score: Int,
-    val label: String,
-    val details: String? = null,
-)
-
-/**
- * Canonical analysis data classes matching Protocol v1 payload schemas.
- *
- * Deserialized with lenient JSON configuration to ignore unknown fields during core upgrades.
- */
-
-@Serializable
-data class EvidenceLocationData(
-    val file: String,
-    val line: Int? = null,
-    val excerpt: String? = null,
-)
-
-@Serializable
-data class DiagnosticEvidenceData(
-    /** `reference` | `absence` | `content-hash` | `file-metadata` | `config`. */
-    val kind: String,
-    val summary: String,
-    val locations: List<EvidenceLocationData> = emptyList(),
-)
-
-@Serializable
-data class RemediationData(
-    val summary: String,
-)
-
-@Serializable
-data class ScanCoverageData(
-    /** `complete` | `partial` | `none` | `unknown`. */
-    val status: String,
-    val scannedExtensions: List<String> = emptyList(),
-    val unscannedExtensions: List<String> = emptyList(),
-    val filesScanned: Int = 0,
-    val referencesDetected: Int = 0,
-)
-
-@Serializable
-data class RuleDiagnosticData(
-    val ruleId: String,
-    /** `error` | `warning`. Maps directly onto an IntelliJ inspection severity. */
-    val severity: String,
-    val asset: JetBrainsAsset,
-    val message: String,
-    val evidence: DiagnosticEvidenceData,
-    /** `certain` | `high` | `moderate` | `low`. */
-    val confidence: String,
-    val remediation: RemediationData,
-    val helpUri: String,
-    val coverage: ScanCoverageData? = null,
-)
-
-@Serializable
-data class SkippedRuleData(
-    val ruleId: String,
-    val severity: String,
-    val reason: RuleSkipReasonData,
-)
-
-@Serializable
-data class RuleSkipReasonData(
-    val code: String,
-    val message: String,
-)
-
-@Serializable
-data class AnalysisReadinessData(
-    val assetsIndexed: Boolean = false,
-    val referencesResolved: Boolean = false,
-    val duplicatesResolved: Boolean = false,
-    val complete: Boolean = false,
-)
-
-@Serializable
-data class HealthScoreReportData(
-    val score: Double = 0.0,
-    val totalAssetCount: Int = 0,
-    val totalDiagnosticCount: Int = 0,
-    val qualifications: List<HealthQualificationData> = emptyList(),
-)
-
-@Serializable
-data class HealthQualificationData(
-    val code: String,
-    val message: String,
-)
-
-/**
- * The Health Score, or the reason there is none.
- *
- * `status` is `computed` or `unavailable`. A workspace Core could not score is
- * rendered as "not available" with its reason — never as a number, and never as the
- * locally-invented `100 - unused*5 - …` this plugin used to compute.
- */
-@Serializable
-data class HealthOutcomeData(
-    val status: String = "unavailable",
-    val report: HealthScoreReportData? = null,
-    val reason: String? = null,
-    val message: String? = null,
-)
-
-@Serializable
-data class DuplicateCandidateData(
-    val asset: JetBrainsAsset,
-    val referenceCount: Int = 0,
-)
-
-@Serializable
-data class DuplicateGroupData(
-    val id: String,
-    /** `content-hash` | `filename` — the basis on which membership was established. */
-    val matchKind: String = "content-hash",
-    val contentHash: String = "",
-    val candidates: List<DuplicateCandidateData> = emptyList(),
-    val sizeBytes: Long = 0,
-    val potentialSavingsBytes: Long = 0,
-)
-
-/**
- * One asset, with the root Core attributed it to.
- *
- * The daemon sends `MultiRootAnalysis`, whose `assets` are `{rootId, rootName, asset}`
- * — not bare assets. Decoding them straight into [JetBrainsAsset] threw
- * `MissingFieldException` on every analysis, and both call sites swallowed it: one
- * with an empty `catch`, the other with a `runCatching { }.onSuccess { }` that has no
- * failure branch. The plugin therefore held no analysis at all, and every surface —
- * the tree, the inspections, the shared UI — showed "waiting for the engine" forever.
- */
-@Serializable
-data class AttributedAssetData(
-    val rootId: String = "",
-    val rootName: String = "",
-    val asset: JetBrainsAsset,
-)
-
-/** One finding, with the root Core attributed it to. */
-@Serializable
-data class AttributedDiagnosticData(
-    val rootId: String = "",
-    val rootName: String = "",
-    val diagnostic: RuleDiagnosticData,
-)
-
-/**
- * The canonical multi-root analysis, as the daemon actually sends it.
- *
- * Kept separate from [WorkspaceAnalysisData], which is the *flattened* projection the
- * plugin's native surfaces consume. The distinction matters in one direction in
- * particular: the JCEF bridge must forward the canonical payload verbatim, because
- * the shared UI renders `MultiRootAnalysis` and a re-encoded flat view would be
- * missing `roots`, `lifecycle`, `freshness` and every root's `referenceCounts`.
- */
-@Serializable
-data class MultiRootAnalysisData(
-    val generatedAt: String = "",
-    val generation: Int = 0,
-    val readiness: AnalysisReadinessData = AnalysisReadinessData(),
-    val assets: List<AttributedAssetData> = emptyList(),
-    val diagnostics: List<AttributedDiagnosticData> = emptyList(),
-    val duplicateGroups: List<DuplicateGroupData> = emptyList(),
-) {
-    /** The flattened view the tree, the inspections and the report editor read. */
-    fun flatten(): WorkspaceAnalysisData =
-        WorkspaceAnalysisData(
-            generatedAt = generatedAt,
-            generation = generation,
-            readiness = readiness,
-            assets = assets.map { it.asset },
-            diagnostics = diagnostics.map { it.diagnostic },
-            duplicateGroups = duplicateGroups,
-        )
-}
-
-/** The flattened workspace analysis the plugin's native surfaces consume. */
-@Serializable
-data class WorkspaceAnalysisData(
-    val workspacePath: String = "",
-    val generatedAt: String = "",
-    val generation: Int = 0,
-    val readiness: AnalysisReadinessData = AnalysisReadinessData(),
-    val assets: List<JetBrainsAsset> = emptyList(),
-    val coverage: ScanCoverageData? = null,
-    val diagnostics: List<RuleDiagnosticData> = emptyList(),
-    val evaluatedRuleIds: List<String> = emptyList(),
-    val skippedRules: List<SkippedRuleData> = emptyList(),
-    val duplicateGroups: List<DuplicateGroupData> = emptyList(),
-    val health: HealthOutcomeData = HealthOutcomeData(),
-)
-
-@Serializable
-data class ThumbnailResultData(
-    val assetPath: String,
-    val thumbnailPath: String? = null,
-    val error: String? = null,
-)
-
-@Serializable
-data class SnippetData(
-    val label: String,
-    val code: String,
-    val imports: String? = null,
-    val installHint: String? = null,
-)
-
-@Serializable
-data class SnippetResultData(
-    val results: List<SnippetData> = emptyList(),
-    val error: String? = null,
-)
-
-@Serializable
-data class CleanupCandidateData(
-    val assetPath: String,
-    val assetName: String,
-    val sizeBytes: Long,
-    val reasons: List<String> = emptyList(),
-    /** Derived from the evidence behind the candidate — see @animoria/core. Never asserted. */
-    val confidence: String,
-    val referenceCount: Int,
-)
-
-@Serializable
-data class CleanupProposalData(
-    val candidates: List<CleanupCandidateData> = emptyList(),
-    val totalSizeBytes: Long = 0,
-    val affectedReferencesCount: Int = 0,
-    val affectedFolders: List<String> = emptyList(),
-    val generatedAt: String = "",
-)
-
-@Serializable
-data class StaticAssetData(
-    val path: String,
-    val name: String,
-    val stem: String,
-    val format: String,
-    val sizeBytes: Long,
-)
-
-@Serializable
-data class CleanupSummaryData(
-    val removedAssetPaths: List<String> = emptyList(),
-    val bytesReclaimed: Long = 0,
-    val healthScoreBefore: Int = 0,
-    val remainingCandidates: Int = 0,
-    val completedAt: String = "",
-    val trashLocation: String? = null,
-)
-
-@Serializable
-data class DuplicateResolutionResultData(
-    val removedAssetPaths: List<String> = emptyList(),
-    val trashLocation: String? = null,
-    /** Session id for `restoreTrash` — how a resolution is undone. */
-    val trashSessionId: String? = null,
-    /** How many source lines Core repointed at the canonical asset. */
-    val updatedReferenceCount: Int = 0,
-    /** `applied` | `rejected` | `failed`. */
-    val status: String = "applied",
-    val error: String? = null,
-)
-
-// ── Duplicate resolution plan (S4) ────────────────────────────────────────────
-//
-// The plan a client previews *and* the plan execution consumes. Preview and
-// execution reading from one shape is what makes "what you saw is what ran" a
-// structural property rather than a convention two code paths have to honour.
-
-@Serializable
-data class PlannedAssetRemovalData(
-    val path: String,
-    val name: String = "",
-    val sizeBytes: Long = 0,
-)
-
-@Serializable
-data class ReferenceUpdateData(
-    val file: String,
-    val line: Int,
-    /** The line as it stands today. */
-    val oldText: String = "",
-    /** The line after repointing. */
-    val newText: String = "",
-    /** The reference target being replaced. */
-    val oldTarget: String = "",
-    /** The target replacing it — a full path recomputed from the referencing file. */
-    val newTarget: String = "",
-)
-
-@Serializable
-data class UnrewritableReferenceData(
-    val file: String,
-    val line: Int,
-    val text: String = "",
-    /** Why Animoria will not rewrite this line. Never a guess — see Core's `RewriteRefusalReason`. */
-    val reason: String = "",
-    /** Plain-language explanation, safe to show a developer verbatim. */
-    val explanation: String = "",
-)
-
-@Serializable
-data class ResolutionPlanData(
-    val canonicalAssetPath: String = "",
-    val assetsToDelete: List<PlannedAssetRemovalData> = emptyList(),
-    val referenceUpdates: List<ReferenceUpdateData> = emptyList(),
-    val unrewritableReferences: List<UnrewritableReferenceData> = emptyList(),
-    /**
-     * `complete` — every reference will be repointed.
-     * `partial` — some cannot be, and executing anyway leaves them pointing at
-     * assets that have moved to trash. A client must show this before confirming.
-     */
-    val safety: String = "complete",
-    val estimatedSavingsBytes: Long = 0,
-)
-
-@Serializable
-data class ResolutionPlanResponseData(
-    val plan: ResolutionPlanData? = null,
-    val error: String? = null,
-)
-
-// ── Trash sessions (S2) ───────────────────────────────────────────────────────
-
-@Serializable
-data class TrashEntryData(
-    val originalPath: String,
-    val trashPath: String = "",
-    val sizeBytes: Long = 0,
-)
-
-@Serializable
-data class TrashSessionData(
-    val sessionId: String,
-    val movedAt: String = "",
-    val entries: List<TrashEntryData> = emptyList(),
-)
-
-/**
- * One root's trash, as the daemon reports it.
- *
- * The daemon answers `listTrashSessions` with `{ roots: [{ rootId, sessions }] }`,
- * because a trash session lives under a root and restoring it needs that root's id.
- * This client used to decode the response as `{ sessions: [...] }` — a key the daemon
- * has never sent — so `sessions` was always empty and "Restore from Trash" reported
- * "Nothing in trash to restore" no matter how much was in it.
- */
-@Serializable
-data class TrashRootSessionsData(
-    val rootId: String,
-    val sessions: List<TrashSessionData> = emptyList(),
-)
-
-@Serializable
-data class TrashSessionsData(
-    val roots: List<TrashRootSessionsData> = emptyList(),
-)
-
-@Serializable
-data class RestoreFailureData(
-    val originalPath: String,
-    /** `destination-occupied` | `trash-file-missing` | `move-failed`. */
-    val reason: String = "",
-)
-
-@Serializable
-data class RestoreResultData(
-    val sessionId: String = "",
-    val restoredPaths: List<String> = emptyList(),
-    val failures: List<RestoreFailureData> = emptyList(),
-    val error: String? = null,
-)
-
-@Serializable
-data class GovernanceReportExportData(
-    val content: String = "",
-    val format: String = "markdown",
-    val error: String? = null,
-)
-
-@Serializable
-data class UsageReferenceData(
-    val file: String,
-    val line: Int,
-    val content: String,
-    /**
-     * How the reference was established — `resolved-path`, `filename` or `code`.
-     *
-     * Carried because it is the strength of the evidence, and a surface that shows a
-     * reference without it invites the reader to treat a filename guess and a resolved
-     * path as the same claim.
-     */
-    val kind: String = "code",
-)
-
-/** One entry of the workspace-wide reference fetch. */
-@Serializable
-data class WorkspaceReferenceData(
-    val rootId: String = "",
-    val assetPath: String = "",
-    val reference: UsageReferenceData,
-)
-
-/** The daemon's answer to `getUsageReferences` with no parameters. */
-@Serializable
-data class WorkspaceReferencesResultData(
-    val complete: Boolean = false,
-    val generation: Int = 0,
-    val references: List<WorkspaceReferenceData> = emptyList(),
-)
-
-@Serializable
-data class UsageReferencesResultData(
-    val assetPath: String = "",
-    val references: List<UsageReferenceData> = emptyList(),
-    val durationMs: Double = 0.0,
-    val error: String? = null,
-)
 
 // ── Project-level service ──────────────────────────────────────────────────────
 
@@ -497,8 +34,11 @@ data class UsageReferencesResultData(
  * `stop()` to drain all pending deferred results cleanly.
  */
 @Service(Service.Level.PROJECT)
-class CoreProcessManager(private val project: Project) {
+class CoreProcessManager(
+    private val project: Project,
+) {
     private val logger = Logger.getInstance(CoreProcessManager::class.java)
+    private val binaryResolver = DaemonBinaryResolver(project, logger)
 
     /**
      * Decoder for daemon payloads.
@@ -523,6 +63,9 @@ class CoreProcessManager(private val project: Project) {
      */
     private var scope: CoroutineScope = newScope()
     private var process: Process? = null
+
+    /** The roots resolved by the last [start], used to trigger the automatic first scan once `ready` arrives. */
+    private var lastRoots: List<String> = emptyList()
     private var stdinWriter: PrintWriter? = null
 
     private fun newScope(): CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -562,9 +105,6 @@ class CoreProcessManager(private val project: Project) {
     /** Triggered when a workspace scan or incremental update finishes. */
     var onScanComplete: ((String) -> Unit)? = null
 
-    /** Triggered on filesystem watcher actions. */
-    var onWatcherEvent: ((String) -> Unit)? = null
-
     /** Triggered when the daemon emits a governance analysis result. */
     var onGovernanceResult: ((WorkspaceAnalysisData) -> Unit)? = null
 
@@ -602,16 +142,11 @@ class CoreProcessManager(private val project: Project) {
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     /**
-     * Spawns the background Node.js CLI daemon process for the current project.
+     * Spawns the background CLI daemon process for the current project.
      * Starts reading stdout lines and parsing them as NDJSON events.
      *
-     * Prefers a self-contained native executable bundled with the plugin
-     * (built by `@animoria/core`'s `build:sea` script — see
-     * `scripts/build-sea.mjs`) over spawning a separately-installed `node`
-     * binary, so end users are never required to have Node.js on their
-     * machine. Falls back to `node cli.js` when no bundled binary matches
-     * the current OS/architecture (e.g. running from source in
-     * development, or an unsupported platform).
+     * Prefers the self-contained native `animoria` executable bundled with the plugin or built
+     * in `packages/animoria-core-rust/target/` over fallback runtimes.
      */
     fun start() {
         // V2: every content root the project declares, not `project.basePath`.
@@ -625,6 +160,7 @@ class CoreProcessManager(private val project: Project) {
             AnimoriaLogger.warn("Animoria: this project declares no content roots; nothing to index.")
             return
         }
+        lastRoots = roots
 
         // Idempotent: a second start while a daemon is already running would leak
         // the first process, and the tool window factory can legitimately run more
@@ -634,34 +170,25 @@ class CoreProcessManager(private val project: Project) {
 
         scope.launch {
             try {
-                val bundledExecutable = findBundledExecutable()
+                val bundledExecutable = binaryResolver.findBundledExecutable()
+                if (bundledExecutable == null) {
+                    val message =
+                        "Animoria could not start: no native daemon binary was found. " +
+                            "Please compile animoria-core-rust ('cargo build --release')."
+                    AnimoriaLogger.error(message)
+                    onDaemonUnavailable?.invoke(message)
+                    return@launch
+                }
 
-                val pb =
-                    if (bundledExecutable != null) {
-                        logger.info(
-                            "Animoria: Spawning bundled native daemon over ${roots.size} root(s)",
-                        )
-                        ProcessBuilder(listOf(bundledExecutable.absolutePath, "daemon") + roots)
-                    } else {
-                        val nodeExecutable = findNodeExecutable()
-                        val cliScript = findCliScriptPath()
-
-                        if (cliScript == null) {
-                            val message =
-                                "Animoria could not start: no native daemon is bundled for this platform, " +
-                                    "and no @animoria/core 'cli.js' was found. If you're running from source, " +
-                                    "run 'pnpm build' in the repo first."
-                            AnimoriaLogger.error(message)
-                            onDaemonUnavailable?.invoke(message)
-                            return@launch
-                        }
-
-                        logger.info(
-                            "Animoria: No bundled native daemon for this platform — " +
-                                "spawning via Node: $nodeExecutable $cliScript",
-                        )
-                        ProcessBuilder(listOf(nodeExecutable, cliScript, "daemon") + roots)
-                    }
+                logger.info("Animoria: Spawning bundled native daemon over ${roots.size} root(s)")
+                // The native daemon takes no CLI arguments — every request,
+                // including which workspace to scan, travels as NDJSON over
+                // stdin. Passing `roots` here made clap reject the process
+                // outright (`unexpected argument`), so it died before ever
+                // printing a byte: no `ready` event, no error surfaced, just
+                // a tool window stuck on "Waiting for the Animoria engine…"
+                // for its whole lifetime.
+                val pb = ProcessBuilder(listOf(bundledExecutable.absolutePath, "daemon"))
                 // Keep stdout separate from stderr so we can parse JSON cleanly.
                 pb.redirectErrorStream(false)
 
@@ -700,11 +227,7 @@ class CoreProcessManager(private val project: Project) {
     suspend fun sendCommand(
         command: String,
         data: JsonObject = buildJsonObject {},
-        // Local subprocess IPC, not a network call — a real response arrives
-        // in milliseconds even for large workspaces (see @animoria/core's own
-        // scan benchmarks). 30s previously meant a silently-dead daemon left
-        // the caller staring at "Loading…" for half a minute before any
-        // feedback; 10s still gives a legitimately slow scan headroom.
+        // Local subprocess IPC over standard I/O (typically < 10ms for warm scans)
         timeoutMs: Long = 10_000L,
     ): JsonElement {
         val requestId = UUID.randomUUID().toString()
@@ -729,6 +252,36 @@ class CoreProcessManager(private val project: Project) {
             withTimeout(timeoutMs) { deferred.await() }
         } finally {
             pendingRequests.remove(requestId)
+        }
+    }
+
+    /**
+     * Liveness check with a short timeout of its own. Requests are answered
+     * in arrival order over one stdio pipe, so a `ping` queued behind a
+     * long-running scan waits for it like anything else — this confirms the
+     * daemon is alive between operations, not concurrently during one.
+     */
+    suspend fun ping(timeoutMs: Long = 2_000L): Boolean =
+        runCatching {
+            sendCommand("ping", timeoutMs = timeoutMs)
+        }.isSuccess
+
+    /**
+     * Fire-and-forget: tells the daemon its cached analysis for [workspacePath]
+     * is stale, called from [AnimoriaVFSListener] on every in-scope VFS event.
+     * The daemon has no filesystem watcher of its own — this is IntelliJ's VFS
+     * forwarding what it already knows, not a request for an immediate re-scan.
+     * Any UI reading `LifecycleState.Stale` decides for itself whether/when to
+     * trigger the next `analyze`.
+     */
+    fun notifyFileChanged(workspacePath: String) {
+        if (!scope.isActive) return
+        scope.launch {
+            runCatching {
+                sendCommand("markStale", buildJsonObject { put("workspace_path", workspacePath) })
+            }.onFailure { error ->
+                AnimoriaLogger.warn("Animoria: markStale failed for $workspacePath (${error.message})")
+            }
         }
     }
 
@@ -769,7 +322,8 @@ class CoreProcessManager(private val project: Project) {
     private fun resolveContentRoots(): List<String> {
         val fromModules =
             runCatching {
-                ModuleManager.getInstance(project)
+                ModuleManager
+                    .getInstance(project)
                     .modules
                     .flatMap { module -> ModuleRootManager.getInstance(module).contentRoots.toList() }
                     .mapNotNull { it.canonicalPath }
@@ -927,18 +481,15 @@ class CoreProcessManager(private val project: Project) {
     /** Startup and progress. Returns true when handled. */
     private fun routeLifecycleEvent(
         event: String,
-        data: JsonElement,
+        @Suppress("UNUSED_PARAMETER") data: JsonElement,
     ): Boolean {
         when (event) {
-            "indexing-started", "analysis-started" -> {
+            // Only "analysis-started" is ever actually emitted (right before the
+            // daemon runs `scan`/`check`/`analyze`) — there's no granular
+            // percent-complete producer for a synchronous, single-pass scan, so
+            // no "*-progress" case is registered here to invent one.
+            "analysis-started" -> {
                 onScanProgress?.invoke(0, "Analyzing workspace…")
-            }
-
-            "indexing-progress", "analysis-progress" -> {
-                val message =
-                    data.jsonObject["message"]?.jsonPrimitive?.contentOrNull ?: "Analyzing…"
-                val percent = data.jsonObject["percent"]?.jsonPrimitive?.intOrNull ?: 0
-                onScanProgress?.invoke(percent, message)
             }
 
             "ready" -> {
@@ -946,6 +497,41 @@ class CoreProcessManager(private val project: Project) {
                 // so a request's behaviour never depends on how fast the scan ran.
                 isReady = true
                 onReady?.invoke()
+
+                // Nothing else triggers the first scan — VS Code's extension scans on
+                // activation, but nothing here did, so the tool window opened onto a
+                // holder that stayed empty until the developer clicked "Run
+                // Governance" by hand. The daemon itself no longer scans CLI-supplied
+                // roots (it takes no arguments at all), so this is the one place a
+                // first analysis gets requested.
+                //
+                // `hello` is requested (not pushed as an event — the daemon never
+                // emits one) so `verifyDaemonCapabilities` runs against a real
+                // `methods` list before the first `analyze`, catching a daemon
+                // binary that predates a method this plugin calls.
+                scope.launch {
+                    runCatching { sendCommand("hello") }
+                        .onSuccess { result ->
+                            val methods =
+                                (result.jsonObject["methods"] as? JsonArray)
+                                    ?.mapNotNull { it.jsonPrimitive.contentOrNull }
+                                    ?.toSet()
+                                    .orEmpty()
+                            verifyDaemonCapabilities(methods)
+                        }.onFailure { error ->
+                            AnimoriaLogger.error("Animoria: hello handshake failed", error)
+                        }
+                }
+
+                val root = lastRoots.firstOrNull()
+                if (root != null) {
+                    scope.launch {
+                        runCatching { sendCommand("analyze", buildJsonObject { put("workspace_path", root) }) }
+                            .onFailure { error ->
+                                AnimoriaLogger.error("Animoria: initial scan failed", error)
+                            }
+                    }
+                }
             }
 
             else -> return false
@@ -959,22 +545,21 @@ class CoreProcessManager(private val project: Project) {
         data: JsonElement,
     ): Boolean {
         when (event) {
+            // `analysis-stale` carries no analysis payload — it's the daemon telling
+            // JetBrains' own VFS-forwarded `markStale` call landed, so the cached
+            // analysis should be treated as out of date. Nothing here re-triggers a
+            // scan automatically; that stays a user/UI decision.
+            "analysis-stale" -> {
+                onScanProgress?.invoke(0, "Workspace changed — analysis is stale")
+            }
+
             // ── Analysis ──
             //
             // One event carries the whole canonical analysis, and it is cached before
             // any callback runs — the inspection cannot wait on a daemon round-trip
             // inside a highlighting pass, so it must find the same analysis the tool
             // window is about to render.
-            "hello" -> {
-                val methods =
-                    (data.jsonObject["methods"] as? JsonArray)
-                        ?.mapNotNull { it.jsonPrimitive.contentOrNull }
-                        ?.toSet()
-                        .orEmpty()
-                verifyDaemonCapabilities(methods)
-            }
-
-            "analysis-completed", "analysis-stale" -> {
+            "analysis-completed" -> {
                 // Decoded once, and loudly.
                 //
                 // The previous code decoded twice, each time discarding the failure —
@@ -983,22 +568,22 @@ class CoreProcessManager(private val project: Project) {
                 // analysis and the plugin silently held nothing. A decode failure here
                 // means the client and the daemon disagree about the contract, which
                 // is precisely the condition that must never be quiet.
-                payloadJson.runCatching { decodeFromJsonElement<MultiRootAnalysisData>(data) }
-                    .onSuccess { canonical ->
-                        cachedAssets = canonical.assets.map { it.asset }
-                        AnimoriaAnalysisHolder.of(project).update(canonical.flatten(), data)
-                        onGovernanceResult?.invoke(canonical.flatten())
-                        // Usage references are not carried on the analysis event — they
-                        // would multiply its size — so they are fetched once per
-                        // generation. The editor hover then answers synchronously
-                        // instead of matching asset names against document text, which
-                        // is what its deleted predecessor did.
-                        prefetchReferences(canonical.generation)
-                    }
-                    .onFailure { error ->
+                payloadJson
+                    .runCatching {
+                        if (data is JsonObject && data.containsKey("roots")) {
+                            decodeFromJsonElement<MultiRootAnalysisData>(data).flatten()
+                        } else {
+                            decodeFromJsonElement<WorkspaceAnalysisData>(data)
+                        }
+                    }.onSuccess { flattened ->
+                        cachedAssets = flattened.assets
+                        AnimoriaAnalysisHolder.of(project).update(flattened, data)
+                        onGovernanceResult?.invoke(flattened)
+                        prefetchReferences(flattened.generation)
+                    }.onFailure { error ->
                         AnimoriaLogger.error(
                             "Animoria: the analysis from the engine could not be read — " +
-                                "the plugin and @animoria/core disagree about the analysis contract",
+                                "contract mismatch with native daemon",
                             error,
                         )
                         onError?.invoke(
@@ -1009,8 +594,6 @@ class CoreProcessManager(private val project: Project) {
                 onScanComplete?.invoke(data.toString())
             }
 
-            "workspace-changed" -> onWatcherEvent?.invoke(data.toString())
-
             else -> return false
         }
         return true
@@ -1018,10 +601,7 @@ class CoreProcessManager(private val project: Project) {
 
     /**
      * Loads the whole workspace's usage references for one analysis generation.
-     *
-     * Best-effort by design: a hover that cannot say anything is a hover that says
-     * nothing, which is an acceptable outcome. It is still logged, because a hover
-     * that silently stops working is exactly the kind of regression this audit found.
+     * Best-effort background prefetch for editor hover providers.
      */
     private fun prefetchReferences(generation: Int) {
         scope.launch {
@@ -1042,8 +622,7 @@ class CoreProcessManager(private val project: Project) {
                             AnimoriaAnalysisHolder.AssetReference(it.assetPath, it.reference)
                         },
                     )
-                }
-                .onFailure { error ->
+                }.onFailure { error ->
                     AnimoriaLogger.warn("Animoria: the usage-reference payload could not be read (${error.message})")
                 }
         }
@@ -1085,265 +664,9 @@ class CoreProcessManager(private val project: Project) {
         }
     }
 
-    // ── Private: process discovery ────────────────────────────────────────────
-
-    private fun findNodeExecutable(): String {
-        val isWindows = System.getProperty("os.name").lowercase().contains("win")
-        val nodeName = if (isWindows) "node.exe" else "node"
-
-        val pathEnv = System.getenv("PATH") ?: System.getenv("Path")
-        if (!pathEnv.isNullOrEmpty()) {
-            for (dir in pathEnv.split(File.pathSeparator)) {
-                if (dir.trim().isEmpty()) continue
-                val file = File(dir, nodeName)
-                if (file.exists() && file.canExecute()) return file.absolutePath
-            }
-        }
-
-        val fallbacks =
-            if (isWindows) {
-                listOf("C:\\Program Files\\nodejs\\node.exe", "C:\\Program Files (x86)\\nodejs\\node.exe")
-            } else {
-                listOf("/opt/homebrew/bin/node", "/usr/local/bin/node", "/usr/bin/node")
-            }
-
-        for (path in fallbacks) {
-            val file = File(path)
-            if (file.exists() && file.canExecute()) return path
-        }
-
-        return nodeName
-    }
-
-    private fun findCliScriptPath(): String? {
-        val base = project.basePath ?: return null
-
-        val devPath = File(base, "packages/animoria-core/dist/cli.js")
-        if (devPath.exists()) return devPath.absolutePath
-
-        try {
-            val jarPath =
-                com.intellij.openapi.application.PathManager.getJarPathForClass(CoreProcessManager::class.java)
-            if (jarPath != null) {
-                val jarFile = File(jarPath)
-                val pluginDir =
-                    if (jarFile.isFile) {
-                        jarFile.parentFile?.parentFile
-                    } else {
-                        jarFile.parentFile?.parentFile?.parentFile?.parentFile
-                    }
-                if (pluginDir != null) {
-                    val path = File(pluginDir, "classes/cli.js")
-                    if (path.exists()) return path.absolutePath
-                }
-            }
-        } catch (error: Exception) {
-            // Reported, then fall through to the next discovery strategy.
-            //
-            // This is a legitimate "try the next location" failure rather than a
-            // contract mismatch — but a plugin that cannot find its own daemon and
-            // says nothing leaves the developer with a tool window that never loads
-            // and a log with no clue in it.
-            AnimoriaLogger.warn("Animoria: could not resolve the daemon from the plugin jar — ${error.message}")
-        }
-
-        return null
-    }
-
-    /**
-     * Locates a self-contained native `animoria-core` executable for the
-     * current OS/architecture, built by `@animoria/core`'s `build:sea`
-     * script (see `scripts/build-sea.mjs`). Returns `null` when none is
-     * bundled for this platform, in which case [start] falls back to
-     * spawning via a separately-installed Node.
-     */
-    private fun findBundledExecutable(): File? {
-        val platformArchDir = platformArchDirName() ?: return null
-        val isWindows = System.getProperty("os.name").lowercase().contains("win")
-        val nativeExecutableName = if (isWindows) "animoria.exe" else "animoria"
-        val legacyExecutableName = if (isWindows) "animoria-core.exe" else "animoria-core"
-
-        val base = project.basePath
-        if (base != null) {
-            val rustRelease = File(base, "packages/animoria-core-rust/target/release/$nativeExecutableName")
-            if (rustRelease.exists()) return rustRelease
-
-            val rustDebug = File(base, "packages/animoria-core-rust/target/debug/$nativeExecutableName")
-            if (rustDebug.exists()) return rustDebug
-
-            val legacySeaPath = File(base, "packages/animoria-core/sea/$platformArchDir/$legacyExecutableName")
-            if (legacySeaPath.exists()) return legacySeaPath
-        }
-
-        return extractBundledNativeDaemon(platformArchDir, nativeExecutableName)
-            ?: extractBundledNativeDaemon(platformArchDir, legacyExecutableName)
-    }
-
-    /**
-     * Extracts the `native/<platform-arch>/` resources (the executable and
-     * its sibling `native_modules/`) from the plugin's own jar to a stable
-     * location on disk, since a native binary cannot be spawned as a
-     * process while it's still zipped inside a jar entry — unlike
-     * `classes/cli.js` in a `runIde` dev sandbox, a real installed plugin
-     * has no unpacked `classes/` directory at all, only jar files under `lib`.
-     *
-     * Skips the copy on subsequent calls once the executable already
-     * exists at the destination — extraction is a one-time cost per
-     * plugin install, not per project-open.
-     */
-    private fun extractBundledNativeDaemon(
-        platformArchDir: String,
-        executableName: String,
-    ): File? {
-        val resourcePrefix = "native/$platformArchDir/"
-
-        // NOTE: `Class.protectionDomain.codeSource.location` is unreliable here —
-        // IntelliJ's `PluginClassLoader` does not always populate `codeSource`
-        // the way a standard `URLClassLoader` would, so it can silently return
-        // null even though the plugin's jar is right there on disk. `PathManager`
-        // is the platform-blessed way to resolve a plugin class back to its jar.
-        val jarPath =
-            com.intellij.openapi.application.PathManager.getJarPathForClass(CoreProcessManager::class.java)
-                ?: return null
-        val jarFile = File(jarPath)
-        if (!jarFile.isFile) return null
-
-        /*
-         * The extraction directory is keyed by the *bytes being extracted*.
-         *
-         * ## The bug this replaces
-         * The destination was `animoria/native/<platform-arch>/`, and the first line
-         * of this function was:
-         *
-         *     if (destinationExecutable.exists()) return destinationExecutable
-         *
-         * — so the daemon was extracted **once, ever**. Upgrading the plugin left the
-         * previous binary in place indefinitely: the JAR shipped a current daemon and
-         * the IDE kept running the one it had cached on first launch.
-         *
-         * That is where the old daemon entered, and it explains why rebuilding the
-         * plugin never fixed the reported
-         * `"getUsageReferences" is declared but not implemented in this build` — the
-         * artifact was correct and nothing was reading it. The failure is invisible to
-         * every build-time gate, because at build time the artifact *is* right.
-         *
-         * Keying on the entry's CRC makes the identity of the directory the identity
-         * of the binary: the same bytes reuse the extraction, different bytes get
-         * their own, and a stale copy can never be mistaken for the current one.
-         */
-        val fingerprint = daemonFingerprint(jarFile, resourcePrefix + executableName) ?: return null
-        val destinationRoot =
-            File(
-                com.intellij.openapi.application.PathManager.getSystemPath(),
-                "animoria/native/$platformArchDir/$fingerprint",
-            )
-        val destinationExecutable = File(destinationRoot, executableName)
-
-        if (destinationExecutable.exists()) return destinationExecutable
-
-        // Earlier extractions of *other* builds are dead weight — ~100 MB each. Removed
-        // before writing the new one so an upgrade cannot accumulate them.
-        pruneStaleExtractions(destinationRoot.parentFile, fingerprint)
-
-        val extractedAny =
-            try {
-                extractJarEntriesUnderPrefix(jarFile, resourcePrefix, destinationRoot)
-            } catch (e: Exception) {
-                logger.warn("Animoria: Failed to extract bundled native daemon from plugin jar", e)
-                false
-            }
-        if (!extractedAny) return null
-
-        if (!System.getProperty("os.name").lowercase().contains("win")) {
-            destinationExecutable.setExecutable(true)
-        }
-
-        return if (destinationExecutable.exists()) destinationExecutable else null
-    }
-
-    /**
-     * A stable identity for the daemon bytes inside [jarFile].
-     *
-     * The JAR entry's CRC and size, which the zip central directory already holds — no
-     * need to read 100 MB to decide whether it has changed.
-     */
-    private fun daemonFingerprint(
-        jarFile: File,
-        entryPath: String,
-    ): String? =
-        runCatching {
-            java.util.jar.JarFile(jarFile).use { jar ->
-                val entry = jar.getJarEntry(entryPath) ?: return@use null
-                if (entry.crc == -1L) null else "%08x-%d".format(entry.crc, entry.size)
-            }
-        }.getOrNull()
-
-    /** Removes extractions of previous builds, which are ~100 MB each. */
-    private fun pruneStaleExtractions(
-        root: File,
-        keep: String,
-    ) {
-        val entries = root.listFiles() ?: return
-        for (entry in entries) {
-            if (entry.isDirectory && entry.name != keep) {
-                runCatching { entry.deleteRecursively() }
-                    .onFailure { logger.warn("Animoria: could not remove a stale daemon extraction at ${entry.absolutePath}", it) }
-            }
-        }
-    }
-
-    /** Copies every entry under [resourcePrefix] in [jarFile] to [destinationRoot], preserving relative paths. */
-    private fun extractJarEntriesUnderPrefix(
-        jarFile: File,
-        resourcePrefix: String,
-        destinationRoot: File,
-    ): Boolean {
-        var extractedAny = false
-        java.util.jar.JarFile(jarFile).use { jar ->
-            for (entry in jar.entries()) {
-                if (entry.isDirectory || !entry.name.startsWith(resourcePrefix)) continue
-
-                val target = File(destinationRoot, entry.name.removePrefix(resourcePrefix))
-                target.parentFile.mkdirs()
-                jar.getInputStream(entry).use { input ->
-                    target.outputStream().use { output -> input.copyTo(output) }
-                }
-                extractedAny = true
-            }
-        }
-        return extractedAny
-    }
-
-    /** Maps JVM `os.name`/`os.arch` to the Node-style `<platform>-<arch>` directory naming `build-sea.mjs` produces. */
-    private fun platformArchDirName(): String? {
-        val osName = System.getProperty("os.name").lowercase()
-        val platform =
-            when {
-                osName.contains("win") -> "win32"
-                osName.contains("mac") || osName.contains("darwin") -> "darwin"
-                osName.contains("linux") -> "linux"
-                else -> return null
-            }
-
-        val osArch = System.getProperty("os.arch").lowercase()
-        val arch =
-            when {
-                osArch.contains("aarch64") || osArch.contains("arm64") -> "arm64"
-                osArch.contains("amd64") || osArch.contains("x86_64") || osArch == "x64" -> "x64"
-                else -> return null
-            }
-
-        return "$platform-$arch"
-    }
-
     companion object {
         /**
-         * The protocol version this plugin speaks.
-         *
-         * Must match `PROTOCOL_VERSION` in `@animoria/core`'s `daemon/protocol.ts`.
-         * `ReleaseConsistencyTest` asserts they agree, because a plugin and a daemon
-         * that disagree here produce a mismatch message at every startup — visible,
-         * but only after shipping.
+         * The protocol version this plugin speaks (Protocol v1).
          */
         const val PROTOCOL_VERSION: Int = 1
 

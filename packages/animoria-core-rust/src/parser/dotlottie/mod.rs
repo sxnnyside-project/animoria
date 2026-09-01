@@ -1,9 +1,9 @@
+use crate::contracts::asset::{Asset, Dimensions, MotionMetadata};
+use serde::Deserialize;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
-use serde::Deserialize;
 use zip::ZipArchive;
-use crate::contracts::asset::{Asset, Dimensions, MotionMetadata};
 
 #[derive(Deserialize, Debug)]
 #[allow(dead_code)]
@@ -32,7 +32,8 @@ struct DotLottieManifest {
 
 pub fn parse_dotlottie(path: &Path, asset: &mut Asset) -> Result<(), String> {
     let file = File::open(path).map_err(|e| format!("Cannot open dotLottie file: {e}"))?;
-    let mut archive = ZipArchive::new(file).map_err(|e| format!("Malformed dotLottie ZIP archive: {e}"))?;
+    let mut archive =
+        ZipArchive::new(file).map_err(|e| format!("Malformed dotLottie ZIP archive: {e}"))?;
 
     // 1. Read manifest.json in an isolated scope so archive borrow is released
     let manifest_str = {
@@ -76,7 +77,10 @@ pub fn parse_dotlottie(path: &Path, asset: &mut Asset) -> Result<(), String> {
             let w = val.get("w").and_then(|v| v.as_f64()).unwrap_or(0.0).round() as u32;
             let h = val.get("h").and_then(|v| v.as_f64()).unwrap_or(0.0).round() as u32;
             if w > 0 && h > 0 {
-                asset.dimensions = Some(Dimensions { width: w, height: h });
+                asset.dimensions = Some(Dimensions {
+                    width: w,
+                    height: h,
+                });
             }
 
             let fr = val.get("fr").and_then(|v| v.as_f64()).unwrap_or(0.0);
@@ -98,7 +102,11 @@ pub fn parse_dotlottie(path: &Path, asset: &mut Asset) -> Result<(), String> {
             asset.motion = Some(MotionMetadata {
                 fps: if fr > 0.0 { Some(fr) } else { None },
                 duration_secs,
-                total_frames: if total_frames > 0 { Some(total_frames) } else { None },
+                total_frames: if total_frames > 0 {
+                    Some(total_frames)
+                } else {
+                    None
+                },
                 layer_count: Some(layers_count),
                 is_animated: true,
             });

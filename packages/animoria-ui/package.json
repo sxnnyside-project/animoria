@@ -1,6 +1,6 @@
 {
   "name": "@animoria/ui",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "private": true,
   "description": "Animoria's shared product UI: Lit components that render a WorkspaceAnalysis and emit host intent. No host APIs, no governance decisions.",
   "type": "module",
@@ -31,6 +31,7 @@
     "lottie-web": "5.13.0"
   },
   "devDependencies": {
+    "@types/node": "^26.2.0",
     "typescript": "^5.9.3",
     "vite": "^8.2.1",
     "vitest": "^4.1.10"

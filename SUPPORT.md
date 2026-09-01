@@ -3,10 +3,7 @@
 ## Getting Help
 
 **GitHub Issues**  
-For bugs or unexpected behavior, open an [issue](https://github.com/sxnnyside-project/animoria/issues). Use the bug report template and include enough context to reproduce the problem.
-
-**Discord**  
-For questions, general discussion, or anything that isn't a bug — join the Sxnnyside Project community on Discord.
+For bugs, unexpected behavior, or general questions, open an [issue](https://github.com/sxnnyside-project/animoria/issues). Use the bug report template for bugs and include enough context to reproduce the problem.
 
 ---
 

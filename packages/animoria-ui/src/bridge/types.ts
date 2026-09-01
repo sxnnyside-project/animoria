@@ -4,6 +4,8 @@ import type {
   DuplicateGroup,
   ResolutionPlan,
   RuleDiagnostic,
+  SessionManifest as GeneratedSessionManifest,
+  SnippetOption,
   UsageReference,
   WorkspaceAnalysis,
 } from '@animoria/contracts';
@@ -15,12 +17,80 @@ export interface AnalysisReadiness {
   readonly duplicatesResolved: boolean;
   readonly complete: boolean;
 }
-export type CleanupPlan = any;
-export type CleanupExecutionResult = any;
-export type MultiRootAnalysis = any;
-export type ReviewableCleanupProposal = any;
-export type RestoreResult = any;
-export type SessionManifest = any;
+export interface CleanupReason {
+  readonly code: string;
+  readonly message?: string;
+}
+
+export interface CleanupEntry {
+  readonly asset: Asset;
+  readonly reasons: readonly (string | CleanupReason)[];
+  readonly confidence: string;
+  readonly sizeBytes: number;
+}
+
+export interface CleanupRefusal {
+  readonly assetPath: string;
+  readonly explanation: string;
+}
+
+export interface CleanupPlan {
+  readonly planId: string;
+  readonly entries: readonly CleanupEntry[];
+  readonly refusals: readonly CleanupRefusal[];
+  readonly safety: 'safe' | 'partial' | 'unavailable';
+  readonly bytesReclaimed: number;
+  readonly unavailableReason?: string | null | undefined;
+}
+
+export interface CleanupExecutionResult {
+  readonly status: 'applied' | 'failed' | 'partial';
+  readonly removedAssetPaths: readonly string[];
+  readonly recoveredBytes: number;
+  readonly trashSessionId: string;
+  readonly error?: string | null | undefined;
+  readonly reason?: string | null | undefined;
+}
+
+export interface MultiRootAnalysis {
+  readonly roots: readonly WorkspaceAnalysis[];
+  readonly duplicateGroups: readonly DuplicateGroup[];
+  readonly assets: readonly Asset[];
+  readonly referenceCounts?: ReadonlyMap<string, number> | Record<string, number>;
+  readonly readiness?: { readonly referencesResolved: boolean };
+}
+
+export interface ReviewableCleanupProposal {
+  readonly candidates: readonly {
+    readonly asset: Asset;
+    readonly reasons: readonly (string | CleanupReason)[];
+    readonly sizeBytes?: number;
+    readonly referenceCount?: number;
+    readonly eligibility?: {
+      readonly eligible: boolean;
+      readonly reason?: string;
+      readonly explanation?: string;
+    };
+    /**
+     * The severity of the diagnostic that made this asset a candidate, in
+     * Core's own vocabulary — carried from the moment the candidate is built
+     * so a later confidence mapping reads the diagnostic that actually
+     * produced this candidate, not a second lookup by asset path that could
+     * match an unrelated diagnostic on the same asset.
+     */
+    readonly severity?: string;
+  }[];
+  readonly totalSizeBytes?: number;
+}
+
+export interface RestoreResult {
+  readonly restoredPaths: readonly string[];
+  readonly error?: string | null;
+}
+
+/** Re-exported from `@animoria/contracts` — generated from Rust, not hand-typed. */
+export type SessionManifest = GeneratedSessionManifest;
+
 export interface WorkspaceRoot {
   readonly id: string;
   readonly name: string;
@@ -56,68 +126,43 @@ export interface RootCleanupPlan {
 }
 
 /**
- * The one message vocabulary between Animoria's shared UI and any host.
+ * Canonical bidirectional message protocol between `@animoria/ui` and host environments
+ * (VS Code Extension Webview, JetBrains JCEF Tool Window, Standalone Sandbox).
  *
- * ## What this replaces
- * Four incompatible dialects. VS Code's preview panel spoke `{type, payload}` with
- * nine message names and a hand-written validator; its cleanup panel spoke a
- * different eleven; JetBrains spoke a third six *and* pushed state by
- * string-interpolating JSON into `executeJavaScript`, bypassing messages entirely;
- * the sandbox spoke `{command, …}` with eight more. The same product action —
- * "open this asset" — had four names and four payload shapes.
- *
- * ## The two rules that keep this a boundary rather than a pipe
- *
- * **1. The UI never computes a verdict from these payloads.** It renders `analysis`
- * and emits intent. If the UI needs a number, Core sends the number. There is no
- * message here that hands the UI raw material to classify: no rule ids to map to
- * severities, no reference counts to threshold, no scores to derive.
- *
- * **2. The bridge exposes capabilities, never host implementations.** Nothing here
- * names `vscode`, `JBCef`, a `WorkspaceIndexer`, a daemon command, or a filesystem
- * path operation. `host.openFile(path)` is a capability; `host.core.indexer` would
- * be a leak, and a UI that could reach it would stop being portable the same day.
- *
- * ## Why plans travel by id
- * `apply-cleanup-plan` and `apply-resolution-plan` carry a `planId`, not a plan.
- * Preview and execution therefore consume *the same object* the host is holding —
- * the UI cannot edit a plan between seeing it and applying it, and cannot construct
- * one at all. This is the invariant D-20 established for duplicate resolution,
- * extended to cleanup for the same reason: "what you saw is what ran" has to be
- * structural, not a convention two code paths honour.
+ * ## Core Invariants
+ * 1. **Pure Presentation:** The UI renders domain state (`WorkspaceAnalysis`, `Asset`, `HealthScoreReport`)
+ *    and emits user intent. All governance scoring, duplicate hashing, and reference tracing occur in Core.
+ * 2. **Capability-Driven:** Host environments declare capabilities (`HostCapabilities`) so UI features
+ *    gracefully enable/disable according to host platform support.
+ * 3. **Transactional Plans by ID:** `apply-cleanup-plan` and `apply-resolution-plan` reference plans
+ *    by `planId` generated by the host daemon, ensuring atomic preview-to-execution parity.
  */
 
 // ── Capabilities ──────────────────────────────────────────────────────────────
 
 /**
- * What this host can actually do.
- *
- * Declared once on connect, so a component asks "may I?" rather than "which host am
- * I in?". The sandbox sets `canMutate: false` and every destructive control renders
- * **disabled with a reason** rather than vanishing — a harness whose destructive
- * paths are absent cannot review the states a real host shows.
+ * Declares the capabilities supported by the active host environment.
  */
 export interface HostCapabilities {
-  /** Whether destructive operations may be offered at all. */
+  /** Whether destructive operations (trash staging / file deletes) are supported. */
   readonly canMutate: boolean;
   /** Whether trash sessions can be listed and restored. */
   readonly canRestore: boolean;
-  /** Whether the host can reveal a file in a native file manager. */
+  /** Whether the host can reveal a file in the system file manager. */
   readonly canRevealInFileManager: boolean;
-  /** Whether the host can open a source file at a line. */
+  /** Whether the host can open a source file at a specific line. */
   readonly canOpenReference: boolean;
-  /** Whether the host can produce framework integration snippets. */
+  /** Whether the host can generate framework integration snippets. */
   readonly canGenerateSnippet: boolean;
-  /** Whether the host has a native clipboard. */
+  /** Whether the host provides native clipboard access. */
   readonly canCopyToClipboard: boolean;
   /**
-   * Why mutation is unavailable, when it is. Rendered verbatim beside the disabled
-   * control — a disabled button with no reason is a bug report waiting to happen.
+   * Explanation provided when mutation is disabled.
    */
   readonly mutationUnavailableReason: string | null;
 }
 
-/** Every capability off. The safe default a host must explicitly widen. */
+/** Default state with all capabilities disabled until widened by the host. */
 export const NO_CAPABILITIES: HostCapabilities = {
   canMutate: false,
   canRestore: false,
@@ -131,23 +176,12 @@ export const NO_CAPABILITIES: HostCapabilities = {
 // ── Preferences ───────────────────────────────────────────────────────────────
 
 /**
- * View preferences the host persists on the UI's behalf. Presentation only.
- *
- * Every field drives something a developer can see and change: playback speed and
- * background belong to the inspector's preview, and `assetViewMode` is the flat/tree
- * choice VS Code also exposes as `animoria.toggleViewMode`. They persist per
- * workspace because that is the scope they describe — a preview background chosen for
- * one project is not a claim about the next one.
- *
- * These were briefly deleted during remediation on the grounds that nothing consumed
- * them. That was the wrong test: they had no consumer because the surface that would
- * consume them — the inspector — had itself been deleted. An unimplemented capability
- * and dead code look identical from the call graph and are opposites in intent.
+ * Presentational view preferences persisted across sessions by the host.
  */
 export interface UiPreferences {
-  /** Multiplier for animated previews. 1 is real time. */
+  /** Playback speed multiplier for animation players (1.0 = normal). */
   readonly playbackSpeed: number;
-  /** CSS colour behind a preview, so a white asset is visible on a light theme. */
+  /** Background canvas color for asset preview inspection. */
   readonly previewBackground: string;
   readonly locale: string;
   readonly assetViewMode: 'flat' | 'tree';
@@ -162,29 +196,8 @@ export const DEFAULT_PREFERENCES: UiPreferences = {
 
 // ── Snippets ──────────────────────────────────────────────────────────────────
 
-/**
- * One generated integration snippet, as Core produced it.
- *
- * ## Why the code comes back to the UI after all
- * An earlier pass removed the inbound `snippet` message on the grounds that both hosts
- * present snippets natively. They do — and the result was a status-bar message reading
- * "Done, copied", which tells a developer nothing about which framework they picked,
- * what the import line is, or whether it names the right asset. They had to paste into
- * a file to find out.
- *
- * A native picker is the right way to *choose*; it is not a way to *read*. The host
- * still owns the chooser and the clipboard; the panel shows the source.
- */
-export interface GeneratedSnippet {
-  /** The framework, in Core's own words — "React (lottie-react)". */
-  readonly label: string;
-  /** The language id, for syntax highlighting: `tsx`, `vue`, `swift`, `kotlin`, `dart`. */
-  readonly language: string;
-  readonly code: string;
-  readonly imports: string | null;
-  /** The package a developer must add, when there is one. */
-  readonly installHint: string | null;
-}
+/** Re-exported from `@animoria/contracts` — generated from Rust's `SnippetOption`, not hand-typed. */
+export type GeneratedSnippet = SnippetOption;
 
 // ── Preview ───────────────────────────────────────────────────────────────────
 
@@ -239,6 +252,7 @@ export type AnimationPreview =
  * to mean something different in each of them.
  */
 export const BROWSER_ANIMATED_FORMATS: readonly AnimatedFormat[] = ['gif', 'apng', 'animated-svg'];
+export const STATIC_IMAGE_FORMATS = ['png', 'jpg', 'jpeg', 'webp', 'avif', 'svg'] as const;
 
 /** Formats whose document the inspector's Lottie player can drive. */
 export const LOTTIE_FORMATS: readonly AnimatedFormat[] = ['lottie', 'dot-lottie'];
@@ -251,9 +265,9 @@ export const LOTTIE_FORMATS: readonly AnimatedFormat[] = ['lottie', 'dot-lottie'
  * is the whole reason this is one shared function instead of three host opinions.
  */
 export function buildAnimationPreview(input: {
-  readonly format: AnimatedFormat;
+  readonly format: string;
   readonly sourceUrl: string | null;
-  readonly stillUrl: string | null;
+  readonly stillUrl?: string | null;
   /** The Lottie document, when the host could read one. */
   readonly animation?: unknown;
   readonly totalFrames?: number;
@@ -261,7 +275,7 @@ export function buildAnimationPreview(input: {
 }): AnimationPreview {
   // Playable first. A Lottie or dotLottie whose document the host could read is
   // played, not shown as a frame — the still is the fallback for when it could not.
-  if (LOTTIE_FORMATS.includes(input.format) && input.animation) {
+  if (LOTTIE_FORMATS.includes(input.format as AnimatedFormat) && input.animation) {
     return {
       kind: 'lottie',
       animation: input.animation,
@@ -269,7 +283,14 @@ export function buildAnimationPreview(input: {
       frameRate: input.frameRate ?? 0,
     };
   }
-  if (BROWSER_ANIMATED_FORMATS.includes(input.format) && input.sourceUrl) {
+  const formatLower = input.format.toLowerCase();
+  if (
+    STATIC_IMAGE_FORMATS.includes(formatLower as (typeof STATIC_IMAGE_FORMATS)[number]) &&
+    (input.sourceUrl || input.stillUrl)
+  ) {
+    return { kind: 'image', source: (input.sourceUrl || input.stillUrl)!, animates: false };
+  }
+  if (BROWSER_ANIMATED_FORMATS.includes(input.format as AnimatedFormat) && input.sourceUrl) {
     return { kind: 'image', source: input.sourceUrl, animates: true };
   }
   if (input.stillUrl) {
@@ -350,7 +371,7 @@ export type HostOutbound =
       /** Explicit opt-in for a `partial` plan. The UI may only set this having shown the refusals. */
       readonly allowPartial: boolean;
     }
-  // ── Duplicate resolution: plan → apply (D-20) ──
+  // ── Duplicate resolution: plan → apply ──
   | {
       readonly type: 'request-resolution-plan';
       readonly groupId: string;
@@ -462,7 +483,6 @@ export type HostInbound =
       readonly type: 'resolution-result';
       readonly status: 'applied' | 'rejected' | 'failed';
       readonly removedAssetPaths: readonly string[];
-      readonly updatedReferenceCount: number;
       readonly recoveredBytes: number;
       readonly trashSessionId: string | null;
       readonly reason: string | null;

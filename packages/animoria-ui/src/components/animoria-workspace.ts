@@ -1,4 +1,10 @@
-import type { Asset, DuplicateGroup, ResolutionPlan, UsageReference } from '@animoria/contracts';
+import type {
+  Asset,
+  DuplicateGroup,
+  ResolutionPlan,
+  UsageReference,
+  WorkspaceAnalysis,
+} from '@animoria/contracts';
 import type { MultiRootAnalysis, RestoreResult, SessionManifest } from '../bridge/types.js';
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
@@ -30,6 +36,10 @@ import './animoria-root-badge.js';
 import './animoria-root-selector.js';
 import './animoria-state-panel.js';
 import './animoria-trash-panel.js';
+import type { CleanupTabDeps } from './workspace/render-cleanup.js';
+import { renderCleanupTab } from './workspace/render-cleanup.js';
+import type { DuplicatesDeps, FindingsDeps } from './workspace/render-findings-duplicates.js';
+import { renderDuplicates, renderFindings } from './workspace/render-findings-duplicates.js';
 
 /**
  * The root shared surface: everything a host mounts, driven entirely by the bridge.
@@ -49,6 +59,14 @@ import './animoria-trash-panel.js';
  * so they render as a banner *above* it with destructive controls disabled, rather
  * than replacing it. Hiding the workspace because the analysis is a few seconds out
  * of date would be its own kind of dishonesty.
+ *
+ * ## `./workspace/render-*.ts`
+ * The Cleanup, Findings, and Duplicates tabs' templates live there as plain
+ * functions rather than methods here — each takes the view model plus a
+ * small `*Deps` object of exactly the state and callbacks it reads, built by
+ * this class's `_cleanupDeps`/`_findingsDeps`/`_duplicatesDeps`. The `@state`
+ * fields themselves stay here; those functions only describe what to render
+ * for one snapshot of them.
  */
 @customElement('animoria-workspace')
 export class AnimoriaWorkspace extends LitElement {
@@ -56,24 +74,13 @@ export class AnimoriaWorkspace extends LitElement {
   @property({ attribute: false }) bridge: HostBridge | null = null;
 
   /**
-   * Which single product surface this mount renders.
-   *
-   * ## Why this exists
-   * The migration put assets, findings, duplicates, cleanup and trash behind one tab
-   * bar in one panel, and the result did none of them well: a preview competing for
-   * width with a findings list, a cleanup review one click from an asset grid, and a
-   * developer who opened "Resolve Duplicates" landing in a workspace browser.
-   *
-   * Before Wave 1 each capability had its own focused surface, and that was better.
-   * The *implementation* is shared — same components, same bridge, same view model —
-   * but a host mounts the surface the developer asked for, in the place that surface
-   * belongs. `all` keeps the combined view for the sandbox, where reviewing every
-   * screen in one page is the entire point of the harness.
+   * Which single product surface this mount renders (`all`, `inspector`, `findings`, `duplicates`, `cleanup`).
+   * Hosts can mount dedicated individual surfaces or render the complete suite in `all` mode.
    */
   @property({ type: String }) surface: 'all' | 'inspector' | 'findings' | 'duplicates' | 'cleanup' =
     'all';
 
-  @state() private _analysis: MultiRootAnalysis | null = null;
+  @state() private _analysis: MultiRootAnalysis | WorkspaceAnalysis | null = null;
   /**
    * Which roots are shown. `all` by default — a picker the developer must answer
    * before seeing anything turns "open the panel" into a decision.
@@ -488,8 +495,8 @@ export class AnimoriaWorkspace extends LitElement {
           // already made — the native confirmation they dismissed. Announcing that
           // back to them as an error is noise; the important part is that the
           // operation is *settled*, which is what releases the controls above.
-          if (message.result.status !== 'applied' && message.result.reason) {
-            this._error = { message: message.result.reason, recoverable: true };
+          if (message.result.status !== 'applied' && message.result.error) {
+            this._error = { message: message.result.error, recoverable: true };
           }
           break;
         case 'resolution-plan':
@@ -724,315 +731,70 @@ export class AnimoriaWorkspace extends LitElement {
     `;
   }
 
-  /**
-   * The cleanup tab: what can be removed, and what already was.
-   *
-   * One switch rather than two tabs, because they are two views of one decision.
-   */
-  private _renderCleanupTab(model: AnalysisViewModel) {
-    return html`
-      <div class="subnav" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          aria-selected=${this._cleanupView === 'proposal'}
-          @click=${() => {
-            this._cleanupView = 'proposal';
-          }}
-        >
-          Removable
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected=${this._cleanupView === 'trash'}
-          @click=${() => {
-            this._cleanupView = 'trash';
-            if (this._trashSessions === null) this._send({ type: 'request-trash-sessions' });
-          }}
-        >
-          Trash
-        </button>
-      </div>
-      ${this._cleanupView === 'proposal' ? this._renderCleanup(model) : this._renderTrash()}
-    `;
+  private _cleanupDeps(): CleanupTabDeps {
+    return {
+      send: (message) => this._send(message),
+      cleanupView: this._cleanupView,
+      setCleanupView: (view) => {
+        this._cleanupView = view;
+      },
+      trashSessions: this._trashSessions,
+      restoreResult: this._restoreResult,
+      restoring: this._restoring,
+      onRequestRestore: () => {
+        this._restoring = true;
+        this._restoreResult = null;
+      },
+      capabilities: this._capabilities,
+      cleanupPlans: this._cleanupPlans,
+      setCleanupPlans: (plans) => {
+        this._cleanupPlans = [...plans];
+      },
+      applying: this._applying,
+      onApplyPlan: (detail) => {
+        this._applying = true;
+        this._send({ type: 'apply-cleanup-plan', ...detail });
+      },
+      proposals: this._proposals,
+      onRequestProposal: () => this._send({ type: 'request-cleanup-proposal' }),
+      selectedForCleanup: this._selectedForCleanup,
+      onToggleSelection: (assetPath) => this._toggleCleanupSelection(assetPath),
+      onRequestPlan: () => this._requestPlan(),
+      dismissed: this._dismissed,
+      onDismissCandidate: (assetPath, dismissed) => this._dismissCandidate(assetPath, dismissed),
+    };
   }
 
-  private _renderTrash() {
-    return html`
-      <animoria-trash-panel
-        .sessions=${this._trashSessions}
-        .result=${this._restoreResult}
-        .canRestore=${this._capabilities.canRestore}
-        .restoreUnavailableReason=${this._capabilities.mutationUnavailableReason ?? ''}
-        .restoring=${this._restoring}
-        @request-trash-sessions=${() => this._send({ type: 'request-trash-sessions' })}
-        @restore-session=${(e: CustomEvent<{ sessionId: string }>) => {
-          this._restoring = true;
-          this._restoreResult = null;
-          this._send({ type: 'restore-session', ...e.detail });
-        }}
-      ></animoria-trash-panel>
-    `;
+  private _findingsDeps(): FindingsDeps {
+    return {
+      selectedAssetPath: this._selectedAssetPath,
+      onSelectAsset: (assetPath, rootId) => this._selectAsset(assetPath, rootId),
+      onOpenReference: (detail) => this._send({ type: 'open-reference', ...detail }),
+    };
   }
 
-  private _renderFindings(model: AnalysisViewModel) {
-    if (model.findingCount === 0) {
-      return html`<animoria-state-panel
-        state="empty"
-        summary="No governance findings. Every rule that ran found nothing to report."
-      ></animoria-state-panel>`;
-    }
-
-    return html`
-      ${model.sections.map(
-        (section) => html`
-          <div class="section-title">${section.label} — ${section.diagnostics.length}</div>
-          <div class="list">
-            ${section.diagnostics.map(
-              (entry) => html`
-                <animoria-finding
-                  compact
-                  .diagnostic=${entry.diagnostic}
-                  .rootId=${entry.rootId}
-                  .rootName=${entry.rootName}
-                  .hideRoot=${model.isSingleRoot}
-                  .selected=${entry.diagnostic.target_asset_path === this._selectedAssetPath}
-                  @open-asset=${(e: CustomEvent<{ assetPath: string; rootId: string }>) =>
-                    this._selectAsset(e.detail.assetPath, e.detail.rootId)}
-                  @open-reference=${(
-                    e: CustomEvent<{ file: string; line: number; rootId: string }>
-                  ) => this._send({ type: 'open-reference', ...e.detail })}
-                ></animoria-finding>
-              `
-            )}
-          </div>
-        `
-      )}
-    `;
-  }
-
-  private _renderDuplicates(model: AnalysisViewModel) {
-    if (model.duplicateGroups.length === 0) {
-      return html`<animoria-state-panel
-        state="ready"
-        summary="No duplicate asset clusters detected."
-      ></animoria-state-panel>`;
-    }
-
-    return html`
-      <div class="list">
-        ${model.duplicateGroups.map(
-          (group) => html`
-            <animoria-duplicate-group
-              .group=${group}
-              .plan=${this._openGroupId === group.id ? this._resolutionPlan : null}
-              .canMutate=${this._capabilities.canMutate}
-              @request-resolution-plan=${(
-                e: CustomEvent<{ groupId: string; keepPath: string }>
-              ) => {
-                this._openGroupId = e.detail.groupId;
-                this._resolutionPlan = null;
-                this._send({ type: 'request-resolution-plan', ...e.detail });
-              }}
-              @apply-resolution-plan=${(
-                e: CustomEvent<{ planId: string; allowPartial: boolean }>
-              ) => {
-                this._applying = true;
-                this._send({ type: 'apply-resolution-plan', ...e.detail });
-              }}
-            ></animoria-duplicate-group>
-          `
-        )}
-      </div>
-    `;
-  }
-
-  private _destructiveReason(_model: AnalysisViewModel): string {
-    if (!this._capabilities.canMutate) {
-      return this._capabilities.mutationUnavailableReason ?? 'This host cannot modify files.';
-    }
-    return '';
-  }
-
-  /**
-   * Root names for a duplicate group's candidates, from Core's attribution.
-   *
-   * Built here rather than in the group component so the component never needs the
-   * workspace — it receives a map and renders it. Attribution is read from the
-   * analysis, never derived by matching a path against a root list.
-   */
-  private _rootNamesFor(
-    model: AnalysisViewModel,
-    group: DuplicateGroup
-  ): ReadonlyMap<string, string> {
-    const names = new Map<string, string>();
-    const nameById = new Map(model.roots.map((summary) => [summary.rootId, summary.rootName]));
-
-    for (const assetId of group.asset_ids) {
-      const rootId = model.rootIdByAssetPath.get(assetId);
-      if (rootId) names.set(assetId, nameById.get(rootId) ?? '');
-    }
-    return names;
-  }
-
-  private _renderCleanup(model: AnalysisViewModel) {
-    // ── Preview ──
-    //
-    // One preview per root the selection touched. They are never merged: each is
-    // stale-checked against its own root's generation and staged into its own root's
-    // trash, and one combined operation would collapse their refusals into a summary
-    // that hides which root refused what.
-    if (this._cleanupPlans.length > 0) {
-      return html`
-        ${
-          this._cleanupPlans.length > 1
-            ? html`<div class="banner" style="--banner-color: var(--animoria-info)" role="status">
-                <span
-                  >This selection spans ${this._cleanupPlans.length} roots. Each root is
-                  confirmed and applied separately, so one root failing cannot half-apply
-                  another.</span
-                >
-              </div>`
-            : nothing
-        }
-        <div class="list">
-          ${this._cleanupPlans.map(
-            (entry) => html`
-              <div class="plan-block">
-                ${
-                  model.isSingleRoot
-                    ? nothing
-                    : html`<div class="section-title">
-                        <animoria-root-badge .rootName=${entry.rootName}></animoria-root-badge>
-                      </div>`
-                }
-                <animoria-cleanup-preview
-                  .plan=${entry.plan}
-                  .canMutate=${this._capabilities.canMutate}
-                  .mutationUnavailableReason=${this._destructiveReason(model)}
-                  .applying=${this._applying}
-                  @apply-cleanup-plan=${(
-                    e: CustomEvent<{ planId: string; allowPartial: boolean }>
-                  ) => {
-                    this._applying = true;
-                    this._send({ type: 'apply-cleanup-plan', ...e.detail });
-                  }}
-                  @cancel-cleanup=${() => {
-                    this._cleanupPlans = [];
-                  }}
-                ></animoria-cleanup-preview>
-              </div>
-            `
-          )}
-        </div>
-      `;
-    }
-
-    // ── Proposal ──
-    const visible = this._proposals.filter(
-      (entry) => model.filter.kind === 'all' || model.filter.rootId === entry.rootId
-    );
-
-    if (this._proposals.length === 0) {
-      return html`
-        <div class="toolbar">
-          <button type="button" @click=${() => this._send({ type: 'request-cleanup-proposal' })}>
-            Find removable assets
-          </button>
-        </div>
-      `;
-    }
-
-    const totalCandidates = visible.reduce(
-      (sum, entry) => sum + entry.proposal.candidates.length,
-      0
-    );
-    const totalBytes = visible.reduce((sum, entry) => sum + entry.proposal.totalSizeBytes, 0);
-
-    if (totalCandidates === 0) {
-      return html`<animoria-state-panel
-        state="empty"
-        summary="Nothing is eligible for removal. Every asset is either referenced or passes every rule."
-      ></animoria-state-panel>`;
-    }
-
-    const selectedCount = this._selectedForCleanup.size;
-
-    return html`
-      <div class="toolbar">
-        <button type="button" ?disabled=${selectedCount === 0} @click=${() => this._requestPlan()}>
-          Preview removal of ${selectedCount}
-        </button>
-        <span class="cleanup-meta"
-          >${totalCandidates} candidate(s) · ${formatBytes(totalBytes)} total</span
-        >
-      </div>
-
-      ${visible.map(
-        (entry) => html`
-          ${
-            model.isSingleRoot
-              ? nothing
-              : html`<div class="section-title">
-                  ${entry.rootName} — ${entry.proposal.candidates.length}
-                </div>`
-          }
-          <div class="list">
-            ${entry.proposal.candidates.map((candidate: any) => {
-              const isDismissed = this._dismissed.has(candidate.asset.path);
-              return html`
-                <div
-                  class="cleanup-row ${candidate.eligibility.eligible ? '' : 'blocked'} ${
-                    isDismissed ? 'dismissed' : ''
-                  }"
-                >
-                  <input
-                    type="checkbox"
-                    .checked=${this._selectedForCleanup.has(candidate.asset.path)}
-                    ?disabled=${!candidate.eligibility.eligible || isDismissed}
-                    @change=${() => this._toggleCleanupSelection(candidate.asset.path)}
-                  />
-                  <span class="cleanup-body">
-                    <span class="cleanup-name">
-                      ${candidate.asset.name}
-                      <animoria-root-badge
-                        quiet
-                        .rootName=${entry.rootName}
-                        ?hidden=${model.isSingleRoot}
-                      ></animoria-root-badge>
-                    </span>
-                    <span class="cleanup-meta"
-                      >${candidate.asset.path} · ${formatBytes(candidate.sizeBytes)} ·
-                      ${candidate.referenceCount} reference(s)</span
-                    >
-                    ${
-                      candidate.eligibility.eligible
-                        ? nothing
-                        : html`<span class="blocked-why"
-                            >${candidate.eligibility.explanation}</span
-                          >`
-                    }
-                  </span>
-                  <button
-                    type="button"
-                    class="dismiss"
-                    title=${
-                      isDismissed
-                        ? 'Propose this asset again.'
-                        : 'Keep this asset and stop proposing it for removal.'
-                    }
-                    @click=${() => this._dismissCandidate(candidate.asset.path, !isDismissed)}
-                  >
-                    ${isDismissed ? 'Undismiss' : 'Keep'}
-                  </button>
-                </div>
-              `;
-            })}
-          </div>
-        `
-      )}
-    `;
+  private _duplicatesDeps(): DuplicatesDeps {
+    return {
+      capabilities: this._capabilities,
+      openGroupId: this._openGroupId,
+      resolutionPlan: this._resolutionPlan,
+      resolutionPlanId: this._resolutionPlanId,
+      applying: this._applying,
+      onRequestResolutionPlan: (detail) => {
+        this._openGroupId = detail.groupId;
+        this._resolutionPlan = null;
+        this._send({ type: 'request-resolution-plan', ...detail });
+      },
+      onApplyResolutionPlan: (detail) => {
+        this._applying = true;
+        this._send({ type: 'apply-resolution-plan', ...detail });
+      },
+      onCancelResolutionPlan: () => {
+        this._openGroupId = '';
+        this._resolutionPlan = null;
+        this._resolutionPlanId = '';
+      },
+    };
   }
 
   /**
@@ -1102,9 +864,9 @@ export class AnimoriaWorkspace extends LitElement {
       </header>
       <main>
         ${this._error ? html`<div class="error" role="alert">${this._error.message}</div>` : nothing}
-        ${this.surface === 'findings' ? this._renderFindings(model) : nothing}
-        ${this.surface === 'duplicates' ? this._renderDuplicates(model) : nothing}
-        ${this.surface === 'cleanup' ? this._renderCleanupTab(model) : nothing}
+        ${this.surface === 'findings' ? renderFindings(model, this._findingsDeps()) : nothing}
+        ${this.surface === 'duplicates' ? renderDuplicates(model, this._duplicatesDeps()) : nothing}
+        ${this.surface === 'cleanup' ? renderCleanupTab(model, this._cleanupDeps()) : nothing}
       </main>
     `;
   }
@@ -1126,7 +888,7 @@ export class AnimoriaWorkspace extends LitElement {
 
     const tabs = [
       ['assets', `Assets (${model.assetCount})`],
-      ['findings', `Findings (${model.analysis.diagnostics.length})`],
+      ['findings', `Findings (${model.findingCount})`],
       ['duplicates', `Duplicates (${model.duplicateGroups.length})`],
       ['cleanup', 'Cleanup'],
     ] as const;
@@ -1183,9 +945,9 @@ export class AnimoriaWorkspace extends LitElement {
       <main>
         ${this._error ? html`<div class="error" role="alert">${this._error.message}</div>` : nothing}
         ${this._tab === 'assets' ? this._renderAssets(model) : nothing}
-        ${this._tab === 'findings' ? this._renderFindings(model) : nothing}
-        ${this._tab === 'duplicates' ? this._renderDuplicates(model) : nothing}
-        ${this._tab === 'cleanup' ? this._renderCleanupTab(model) : nothing}
+        ${this._tab === 'findings' ? renderFindings(model, this._findingsDeps()) : nothing}
+        ${this._tab === 'duplicates' ? renderDuplicates(model, this._duplicatesDeps()) : nothing}
+        ${this._tab === 'cleanup' ? renderCleanupTab(model, this._cleanupDeps()) : nothing}
       </main>
     `;
   }

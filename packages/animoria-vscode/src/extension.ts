@@ -1,23 +1,23 @@
-import { basename, join } from 'node:path';
-import type {
-  Asset,
-  DuplicateGroup,
-  RuleDiagnostic,
-  UsageReference,
-  WorkspaceAnalysis,
-} from '@animoria/contracts';
+import { basename } from 'node:path';
+import type { Asset, DuplicateGroup, UsageReference, WorkspaceAnalysis } from '@animoria/contracts';
 import * as vscode from 'vscode';
+import { VsCodeDaemonClient } from './daemon/daemon-client.js';
 import { DiagnosticPublisher } from './diagnostics/diagnostic-publisher.js';
 import { OutputChannelLogger } from './logging/output-channel-logger.js';
+import { AnimoriaWorkspacePanel } from './panels/animoria-workspace-panel.js';
+import {
+  type MultiRootAnalysis,
+  type WorkspaceSession,
+  generateSnippetsForAsset,
+} from './panels/vscode-host-bridge.js';
 import { AnimoriaHoverProvider, HOVER_LANGUAGES } from './providers/animoria-hover-provider.js';
 import {
+  AnimoriaGovernanceIssueItem,
   AnimoriaTreeProvider,
-  type AnimoriaGovernanceIssueItem,
 } from './providers/animoria-tree-provider.js';
-import { ActiveEditorTracker } from './utils/active-editor-tracker.js';
-import { buildIntegrationContext } from './utils/build-integration-context.js';
 import { AnimoriaFileWatcher } from './watchers/animoria-file-watcher.js';
-import { VsCodeDaemonClient } from './daemon/daemon-client.js';
+import { ActiveEditorTracker } from './workspace-context/active-editor-tracker.js';
+import { buildIntegrationContext } from './workspace-context/build-integration-context.js';
 
 export class GovernanceReportContentProvider implements vscode.TextDocumentContentProvider {
   private _content = '';
@@ -42,10 +42,65 @@ let treeProvider: AnimoriaTreeProvider;
 let daemonClient: VsCodeDaemonClient | undefined;
 let fileWatcher: AnimoriaFileWatcher | undefined;
 let lastAnalysis: WorkspaceAnalysis | undefined;
+let lastReferences: UsageReference[] = [];
+let lastDuplicateGroups: DuplicateGroup[] = [];
 let hoverRegistration: vscode.Disposable | undefined;
 let diagnosticPublisher: DiagnosticPublisher | undefined;
 let activeEditorTracker: ActiveEditorTracker | undefined;
 
+/**
+ * Adapts this extension's module-level scan state (`lastAnalysis`,
+ * `lastReferences`, `lastDuplicateGroups`) into the `WorkspaceSession`
+ * interface `VsCodeHostBridge` expects. Built fresh on every panel open
+ * rather than cached, so a panel always reads whatever the last scan left
+ * behind — there is exactly one workspace root today (`folders[0]`), so
+ * `indexerForRoot`/`indexerForPath` ignore the id/path they're given.
+ */
+function createSessionAdapter(): WorkspaceSession {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  const rootPath = folders[0]?.uri.fsPath ?? process.cwd();
+  const refCounts: Record<string, number> = {};
+  for (const r of lastReferences) {
+    const p = r.asset_id;
+    if (p) refCounts[p] = (refCounts[p] ?? 0) + 1;
+  }
+
+  return {
+    identity: 'root',
+    roots: folders.map((f, i) => ({ id: `root-${i}`, name: f.name, path: f.uri.fsPath })),
+    getAnalysis: (): MultiRootAnalysis => ({
+      roots: lastAnalysis ? [lastAnalysis] : [],
+      assets: lastAnalysis?.assets ?? [],
+      duplicateGroups: lastDuplicateGroups,
+      referenceCounts: refCounts,
+      readiness: { referencesResolved: true },
+    }),
+    indexerForRoot: (_id: string) =>
+      lastAnalysis
+        ? {
+            getAnalysis: () => lastAnalysis as WorkspaceAnalysis,
+            usageReferencesFor: (assetPath: string) =>
+              lastReferences.filter((r) => r.asset_id === assetPath),
+          }
+        : null,
+    indexerForPath: (_path: string) => ({
+      root: { path: rootPath },
+      indexer: {
+        usageReferencesFor: (assetPath: string) =>
+          lastReferences.filter((r) => r.asset_id === assetPath),
+      },
+    }),
+  };
+}
+
+/**
+ * Extension entry point: wires the tree view, hover provider, diagnostics,
+ * file watcher, and every `animoria.*` command to a single daemon client and
+ * the module-level scan state those commands and `scanWorkspace` share.
+ * Runs one scan immediately so the tree/hover/diagnostics are populated
+ * before the developer does anything, then re-scans on file changes and on
+ * workspace-folder changes.
+ */
 export async function activate(context: vscode.ExtensionContext) {
   const outputChannel = vscode.window.createOutputChannel('Animoria');
   context.subscriptions.push(outputChannel);
@@ -72,7 +127,7 @@ export async function activate(context: vscode.ExtensionContext) {
     showCollapseAll: false,
   });
 
-  daemonClient = new VsCodeDaemonClient();
+  daemonClient = new VsCodeDaemonClient(undefined, context.extensionPath);
 
   const refreshCommand = vscode.commands.registerCommand('animoria.refresh', () => scanWorkspace());
 
@@ -82,17 +137,25 @@ export async function activate(context: vscode.ExtensionContext) {
       const asset = arg && 'asset' in arg ? arg.asset : arg;
       if (!asset || typeof asset !== 'object' || !('path' in asset)) return;
 
-      void vscode.commands.executeCommand('vscode.open', vscode.Uri.file(asset.path), {
-        preview: true,
+      AnimoriaWorkspacePanel.show(context, createSessionAdapter, () => daemonClient, 'inspector', {
+        tab: 'assets',
+        assetPath: asset.path,
       });
     }
   );
 
+  const openWorkspaceCommand = vscode.commands.registerCommand('animoria.openWorkspace', () => {
+    AnimoriaWorkspacePanel.show(context, createSessionAdapter, () => daemonClient, 'inspector', {
+      tab: 'assets',
+    });
+  });
+
   const revealCommand = vscode.commands.registerCommand(
     'animoria.revealInExplorer',
-    async (item) => {
-      if (!item?.asset?.path) return;
-      const uri = vscode.Uri.file(item.asset.path);
+    async (item: { asset?: Asset; path?: string } | Asset) => {
+      const path = 'path' in item ? item.path : item.asset?.path;
+      if (!path) return;
+      const uri = vscode.Uri.file(path);
       await vscode.commands.executeCommand('revealInExplorer', uri);
     }
   );
@@ -125,9 +188,14 @@ export async function activate(context: vscode.ExtensionContext) {
     quickPick.show();
   });
 
-  const governanceCommand = vscode.commands.registerCommand('animoria.runGovernance', () =>
-    scanWorkspace()
-  );
+  const governanceCommand = vscode.commands.registerCommand('animoria.runGovernance', async () => {
+    // "Run Governance" must leave something to look at — a rescan alone updates
+    // the tree silently, which is indistinguishable from nothing having
+    // happened. Opening the report is what makes this an audit rather than a
+    // background refresh, and matches JetBrains' `runGovernance()`.
+    await scanWorkspace();
+    if (lastAnalysis) await viewGovernanceReport();
+  });
 
   const viewReportCommand = vscode.commands.registerCommand('animoria.viewGovernanceReport', () =>
     viewGovernanceReport()
@@ -150,18 +218,15 @@ export async function activate(context: vscode.ExtensionContext) {
   });
 
   const viewFindingsCommand = vscode.commands.registerCommand('animoria.viewFindings', () => {
-    if (!lastAnalysis || lastAnalysis.diagnostics.length === 0) {
-      vscode.window.showInformationMessage('Animoria: No governance findings in workspace.');
-      return;
-    }
-    viewGovernanceReport();
+    AnimoriaWorkspacePanel.show(context, createSessionAdapter, () => daemonClient, 'findings', {
+      tab: 'findings',
+    });
   });
 
   const viewDuplicatesCommand = vscode.commands.registerCommand('animoria.viewDuplicates', () => {
-    const dups = treeProvider.getAssets().filter((a) => a.kind === 'motion' || a.kind === 'static');
-    vscode.window.showInformationMessage(
-      `Animoria: Tracking ${dups.length} assets across workspace.`
-    );
+    AnimoriaWorkspacePanel.show(context, createSessionAdapter, () => daemonClient, 'duplicates', {
+      tab: 'duplicates',
+    });
   });
 
   const exportReportCommand = vscode.commands.registerCommand(
@@ -179,7 +244,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const content = [
           '# Animoria Visual Governance Report',
           '',
-          `**Health Score:** ${Math.round(lastAnalysis.health_score.score)}/100 (Grade: ${lastAnalysis.health_score.grade})`,
+          `**Health Score:** ${lastAnalysis.health_score?.score ?? 100}/100`,
           `**Total Assets Analyzed:** ${lastAnalysis.assets.length}`,
           `**Total Findings:** ${lastAnalysis.diagnostics.length}`,
           '',
@@ -195,22 +260,44 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const deleteAssetCommand = vscode.commands.registerCommand(
     'animoria.deleteAsset',
-    async (item: any) => {
-      const path = item?.asset?.path || item?.path;
-      if (!path) return;
+    async (item: { asset?: Asset; path?: string } | Asset | AnimoriaGovernanceIssueItem) => {
+      let assetId: string | undefined;
+      let path: string | undefined;
+
+      if (item instanceof AnimoriaGovernanceIssueItem) {
+        assetId = item.diagnostic.target_asset_id;
+        path = item.diagnostic.target_asset_path;
+      } else {
+        path = 'path' in item ? item.path : item.asset?.path;
+        assetId = 'asset' in item ? item.asset?.id : (item as Asset).id;
+      }
+      if (!path || !assetId) return;
+
       const confirm = await vscode.window.showWarningMessage(
         `Move asset "${path.split(/[/\\]/).pop()}" to trash?`,
         { modal: true },
         'Move to Trash'
       );
-      if (confirm === 'Move to Trash') {
-        try {
-          await vscode.workspace.fs.delete(vscode.Uri.file(path), { useTrash: true });
-          void scanWorkspace();
-          vscode.window.showInformationMessage(`Animoria: Asset moved to trash.`);
-        } catch (err: any) {
-          vscode.window.showErrorMessage(`Failed to delete asset: ${err.message}`);
-        }
+      if (confirm !== 'Move to Trash') return;
+
+      if (!daemonClient) {
+        vscode.window.showErrorMessage('Animoria: daemon is not running.');
+        return;
+      }
+
+      const folders = vscode.workspace.workspaceFolders ?? [];
+      const workspacePath = folders[0]?.uri.fsPath ?? process.cwd();
+
+      try {
+        // Routes through the daemon's plan-based remediation (`.animoria/trash/`
+        // staging, restorable) instead of vscode.workspace.fs.delete, which
+        // bypasses Animoria's trash system entirely.
+        await daemonClient.trashAsset(workspacePath, assetId, path);
+        void scanWorkspace();
+        vscode.window.showInformationMessage('Animoria: Asset moved to trash.');
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        vscode.window.showErrorMessage(`Failed to delete asset: ${msg}`);
       }
     }
   );
@@ -218,20 +305,24 @@ export async function activate(context: vscode.ExtensionContext) {
   const startCleanupReviewCommand = vscode.commands.registerCommand(
     'animoria.startCleanupReview',
     () => {
-      vscode.window.showInformationMessage('Animoria: Cleanup review scan triggered.');
-      void scanWorkspace();
+      AnimoriaWorkspacePanel.show(context, createSessionAdapter, () => daemonClient, 'cleanup', {
+        tab: 'cleanup',
+      });
     }
   );
 
   const restoreCleanupCommand = vscode.commands.registerCommand('animoria.restoreCleanup', () => {
-    vscode.window.showInformationMessage('Animoria: Opening trash & restoration review.');
+    AnimoriaWorkspacePanel.show(context, createSessionAdapter, () => daemonClient, 'cleanup', {
+      tab: 'cleanup',
+    });
   });
 
   const resolveDuplicatesCommand = vscode.commands.registerCommand(
     'animoria.resolveDuplicates',
     () => {
-      vscode.window.showInformationMessage('Animoria: Duplicate resolution wizard.');
-      void scanWorkspace();
+      AnimoriaWorkspacePanel.show(context, createSessionAdapter, () => daemonClient, 'duplicates', {
+        tab: 'duplicates',
+      });
     }
   );
 
@@ -239,6 +330,7 @@ export async function activate(context: vscode.ExtensionContext) {
     treeView,
     refreshCommand,
     openPreviewCommand,
+    openWorkspaceCommand,
     revealCommand,
     searchCommand,
     governanceCommand,
@@ -276,6 +368,7 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(workspaceFoldersWatcher);
 }
 
+/** Shuts down the daemon subprocess so it doesn't outlive the extension host. */
 export async function deactivate() {
   if (daemonClient) {
     await daemonClient.shutdown();
@@ -283,6 +376,14 @@ export async function deactivate() {
   }
 }
 
+/**
+ * Runs a fresh daemon scan of the first workspace folder and fans the result
+ * out to every surface that renders it: the tree view, diagnostics, hover
+ * provider (all three read the module-level `lastAnalysis` this sets), and
+ * every open `AnimoriaWorkspacePanel`. Only the first folder is scanned —
+ * true multi-root support is a `WorkspaceSession`-level concern this
+ * extension doesn't yet implement, matching `createSessionAdapter`.
+ */
 async function scanWorkspace(): Promise<void> {
   const folders = vscode.workspace.workspaceFolders;
   if (!folders || folders.length === 0 || !daemonClient) return;
@@ -294,6 +395,8 @@ async function scanWorkspace(): Promise<void> {
   try {
     const result = await daemonClient.scan(rootPath);
     lastAnalysis = result.analysis;
+    lastReferences = result.references;
+    lastDuplicateGroups = result.duplicate_groups;
 
     treeProvider.updateAnalysis(result.analysis, result.references, result.duplicate_groups);
 
@@ -301,25 +404,49 @@ async function scanWorkspace(): Promise<void> {
       diagnosticPublisher.publish(result.analysis);
     }
 
+    const refCounts: Record<string, number> = {};
+    for (const r of result.references) {
+      const p = r.asset_id;
+      if (p) refCounts[p] = (refCounts[p] ?? 0) + 1;
+    }
+
+    AnimoriaWorkspacePanel.broadcast({
+      roots: [result.analysis],
+      assets: result.analysis.assets,
+      duplicateGroups: result.duplicate_groups,
+      referenceCounts: refCounts,
+      readiness: { referencesResolved: true },
+    });
+
     vscode.window.setStatusBarMessage(
-      `Animoria: ${result.analysis.assets.length} assets indexed (Health: ${Math.round(result.analysis.health_score.score)}%)`,
+      `Animoria: ${result.analysis.assets.length} assets indexed (Health: ${result.analysis.health_score?.score ?? 100}%)`,
       4000
     );
-  } catch (err: any) {
-    vscode.window.showErrorMessage(`Animoria Scan Failed: ${err.message}`);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    vscode.window.showErrorMessage(`Animoria Scan Failed: ${msg}`);
   }
 }
 
-function viewGovernanceReport(): void {
+/**
+ * Renders `lastAnalysis` as Markdown into the read-only
+ * `animoria-governance` virtual document. Falls back to an ordinary
+ * untitled Markdown document if the virtual-document scheme fails to open
+ * (`vscode.workspace.openTextDocument` on a registered scheme can throw if
+ * the provider hasn't been registered yet, e.g. very early in activation).
+ */
+async function viewGovernanceReport(): Promise<void> {
   if (!lastAnalysis) {
-    vscode.window.showWarningMessage('Animoria: No governance report available yet.');
+    vscode.window.showWarningMessage(
+      'Animoria: No governance report available yet. Run a scan first.'
+    );
     return;
   }
 
   const lines = [
     '# Animoria Visual Governance Report',
     '',
-    `**Health Score:** ${Math.round(lastAnalysis.health_score.score)}/100 (Grade: ${lastAnalysis.health_score.grade})`,
+    `**Health Score:** ${lastAnalysis.health_score?.score ?? 100}/100`,
     '',
     `**Total Assets Analyzed:** ${lastAnalysis.assets.length}`,
     `**Total Findings:** ${lastAnalysis.diagnostics.length}`,
@@ -328,8 +455,10 @@ function viewGovernanceReport(): void {
     '',
   ];
 
-  for (const cat of lastAnalysis.health_score.categories) {
-    lines.push(`- **${cat.category}:** ${cat.score}% (${cat.violations_count} issues)`);
+  if (lastAnalysis.health_score?.categories) {
+    for (const cat of lastAnalysis.health_score.categories) {
+      lines.push(`- **${cat.category}:** ${cat.score}% (${cat.violations_count} issues)`);
+    }
   }
 
   if (lastAnalysis.diagnostics.length > 0) {
@@ -339,15 +468,70 @@ function viewGovernanceReport(): void {
     }
   }
 
-  governanceReportContentProvider.update(lines.join('\n'));
-  void vscode.commands.executeCommand('markdown.showPreview', GOVERNANCE_REPORT_URI);
+  const markdownContent = lines.join('\n');
+  governanceReportContentProvider.update(markdownContent);
+
+  try {
+    const doc = await vscode.workspace.openTextDocument(GOVERNANCE_REPORT_URI);
+    await vscode.window.showTextDocument(doc, {
+      preview: true,
+      viewColumn: vscode.ViewColumn.Beside,
+    });
+  } catch {
+    const doc = await vscode.workspace.openTextDocument({
+      language: 'markdown',
+      content: markdownContent,
+    });
+    await vscode.window.showTextDocument(doc, {
+      preview: true,
+      viewColumn: vscode.ViewColumn.Beside,
+    });
+  }
 }
 
-function generateSnippet(asset: Asset): void {
+/**
+ * Copies an integration snippet for `asset` to the clipboard — straight to
+ * the clipboard when only one framework's generator matched, or via a quick
+ * pick when several did (e.g. an SVG has both a React and a plain-HTML
+ * snippet). Snippet generation itself is Core's (`generateSnippetsForAsset`);
+ * this only decides how to present the choice and deliver the result.
+ */
+async function generateSnippet(asset: Asset): Promise<void> {
   const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
   const ctx = buildIntegrationContext(asset, folder, activeEditorTracker);
+  const snippets = generateSnippetsForAsset(asset, ctx.importPath, folder);
 
-  const snippet = `import ${asset.stem} from '${ctx.importPath}';`;
-  void vscode.env.clipboard.writeText(snippet);
-  vscode.window.setStatusBarMessage(`Animoria: Snippet copied to clipboard: ${snippet}`, 3000);
+  if (snippets.length === 0) {
+    vscode.window.showWarningMessage(
+      `Animoria: No snippet generator supports ${asset.format} assets.`
+    );
+    return;
+  }
+
+  if (snippets.length === 1) {
+    const s = snippets[0]!;
+    const fullSnippet = s.imports ? `${s.imports}\n\n${s.code}` : s.code;
+    await vscode.env.clipboard.writeText(fullSnippet);
+    vscode.window.setStatusBarMessage(`Animoria: ${s.label} snippet copied to clipboard`, 3000);
+    return;
+  }
+
+  const items = snippets.map((s) => ({
+    label: s.label,
+    description: s.installHint ?? '',
+    detail: s.imports ? `${s.imports}\n${s.code}` : s.code,
+    snippet: s,
+  }));
+
+  const picked = await vscode.window.showQuickPick(items, {
+    placeHolder: `Select framework snippet to copy for ${asset.name}`,
+    title: 'Copy Integration Snippet',
+  });
+
+  if (picked) {
+    const s = picked.snippet;
+    const fullSnippet = s.imports ? `${s.imports}\n\n${s.code}` : s.code;
+    await vscode.env.clipboard.writeText(fullSnippet);
+    vscode.window.setStatusBarMessage(`Animoria: ${s.label} snippet copied to clipboard`, 3000);
+  }
 }

@@ -43,7 +43,9 @@ import kotlinx.serialization.json.put
  * Kotlin at all; the host forwards to the daemon and presents what comes back.
  */
 @Service(Service.Level.PROJECT)
-class AnimoriaActionHost(private val project: Project) {
+class AnimoriaActionHost(
+    private val project: Project,
+) {
     companion object {
         fun of(project: Project): AnimoriaActionHost = project.service()
 
@@ -101,13 +103,7 @@ class AnimoriaActionHost(private val project: Project) {
     }
 
     /**
-     * Opens cleanup review.
-     *
-     * This used to open a Swing dialog that reimplemented the review screen a fourth
-     * time. Cleanup review is one of the shared UI's tabs now, so the action brings
-     * the tool window forward rather than owning a surface of its own — which is also
-     * why a JCEF-disabled IDE reaches the D-09 panel here instead of a dialog whose
-     * whole purpose was to work around a browser it did not need.
+     * Activates the tool window and focuses the Cleanup review tab.
      */
     fun reviewCleanup() {
         focusToolWindow()
@@ -124,7 +120,8 @@ class AnimoriaActionHost(private val project: Project) {
 
     /** Opens Animoria's settings page in the IDE's own Settings dialog. */
     fun openSettings() {
-        com.intellij.openapi.options.ShowSettingsUtil.getInstance()
+        com.intellij.openapi.options.ShowSettingsUtil
+            .getInstance()
             .showSettingsDialog(project, "Animoria")
     }
 
@@ -174,7 +171,8 @@ class AnimoriaActionHost(private val project: Project) {
      * shown here is one that can genuinely be restored.
      */
     private fun chooseSession(sessions: List<Pair<String, TrashSessionData>>) {
-        JBPopupFactory.getInstance()
+        JBPopupFactory
+            .getInstance()
             .createPopupChooserBuilder(sessions)
             .setTitle("Restore From Trash")
             .setRenderer(
@@ -197,8 +195,7 @@ class AnimoriaActionHost(private val project: Project) {
                         return super.getListCellRendererComponent(list, label, index, selected, focused)
                     }
                 },
-            )
-            .setItemChosenCallback { chosen -> performRestore(chosen.first, chosen.second) }
+            ).setItemChosenCallback { chosen -> performRestore(chosen.first, chosen.second) }
             .createPopup()
             .showCenteredInCurrentWindow(project)
     }
@@ -211,9 +208,6 @@ class AnimoriaActionHost(private val project: Project) {
             try {
                 val response =
                     processManager.sendCommand(
-                        // `restoreTrash` is not a protocol method. The daemon answered
-                        // every one of these with `unsupported-method`, so restoring
-                        // from this action could never have worked.
                         "restoreTrashSession",
                         buildJsonObject {
                             put("sessionId", session.sessionId)
@@ -268,7 +262,8 @@ class AnimoriaActionHost(private val project: Project) {
         title: String,
         block: suspend () -> Unit,
     ) {
-        ProgressManager.getInstance()
+        ProgressManager
+            .getInstance()
             .run(
                 object : Task.Backgroundable(project, title, true) {
                     override fun run(indicator: ProgressIndicator) {

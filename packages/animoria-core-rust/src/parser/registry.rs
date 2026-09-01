@@ -1,10 +1,10 @@
-use std::path::Path;
-use crate::contracts::asset::{Asset, AssetFormat};
 use super::dotlottie::parse_dotlottie;
 use super::lottie::parse_lottie;
 use super::raster::parse_raster;
 use super::rive::parse_rive;
 use super::vector::parse_svg;
+use crate::contracts::asset::{Asset, AssetFormat};
+use std::path::Path;
 
 #[derive(Default, Debug, Clone)]
 pub struct ParserRegistry;

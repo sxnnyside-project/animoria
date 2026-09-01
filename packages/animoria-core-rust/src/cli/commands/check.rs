@@ -1,11 +1,11 @@
-use std::fs;
-use std::path::Path;
-use crate::cli::ui::{brand, dim, error, grade_badge, success, title, warning, BOLD, RESET};
+use crate::cli::ui::{self, brand, dim, error, grade_badge, success, title, warning};
+use crate::cli::workspace::resolve_workspace_path;
 use crate::contracts::analysis::DiagnosticSeverity;
 use crate::indexer::AssetIndex;
+use std::path::Path;
 
 pub fn execute_check(target_path: &Path, json: bool, strict: bool) -> anyhow::Result<i32> {
-    let canonical = fs::canonicalize(target_path).unwrap_or_else(|_| target_path.to_path_buf());
+    let canonical = resolve_workspace_path(target_path)?;
     let mut index = AssetIndex::new(canonical.to_string_lossy().to_string(), canonical);
     let analysis = index.scan_workspace(&[])?;
 
@@ -27,52 +27,88 @@ pub fn execute_check(target_path: &Path, json: bool, strict: bool) -> anyhow::Re
         .iter()
         .filter(|d| d.severity == DiagnosticSeverity::Warning)
         .collect();
+    let quiet = ui::is_quiet();
 
-    println!(
-        "\n{} {} {}\n",
-        brand("animoria"),
-        title("Governance Check"),
-        dim(&format!("({} assets evaluated)", analysis.assets.len()))
-    );
+    if !quiet {
+        println!(
+            "\n{} {} {}\n",
+            brand("animoria"),
+            title("Governance Check"),
+            dim(&format!("({} assets evaluated)", analysis.assets.len()))
+        );
+    }
 
     if diagnostics.is_empty() {
-        println!("  {} {}", success("✔"), success("All visual asset governance checks passed!"));
-        println!(
-            "  {}\n",
-            dim(&format!(
-                "Overall Health: {}% ({})",
+        if quiet {
+            println!(
+                "OK: {}% ({})",
                 analysis.health_score.score, analysis.health_score.grade
-            ))
-        );
+            );
+        } else {
+            println!(
+                "  {} {}",
+                success("✔"),
+                success("All visual asset governance checks passed!")
+            );
+            println!(
+                "  {}\n",
+                dim(&format!(
+                    "Overall Health: {}% ({})",
+                    analysis.health_score.score, analysis.health_score.grade
+                ))
+            );
+        }
         return Ok(0);
     }
 
-    for err in &errors {
-        println!("  {} {}", error("✖"), error(&err.rule_id));
-        println!("    {}", err.message);
-        println!("    {}\n", dim(&format!("at {}", err.target_asset_path)));
-    }
+    if !quiet {
+        for err in &errors {
+            println!("  {} {}", error("✖"), error(&err.rule_id));
+            println!("    {}", err.message);
+            println!("    {}\n", dim(&format!("at {}", err.target_asset_path)));
+        }
 
-    for warn in &warnings {
-        println!("  {} {}", warning("▲"), warning(&warn.rule_id));
-        println!("    {}", warn.message);
-        println!("    {}\n", dim(&format!("at {}", warn.target_asset_path)));
+        for warn in &warnings {
+            println!("  {} {}", warning("▲"), warning(&warn.rule_id));
+            println!("    {}", warn.message);
+            println!("    {}\n", dim(&format!("at {}", warn.target_asset_path)));
+        }
     }
 
     let mut summary = Vec::new();
     if !errors.is_empty() {
-        summary.push(error(&format!("{} error(s)", errors.len())));
+        summary.push(format!("{} error(s)", errors.len()));
     }
     if !warnings.is_empty() {
-        summary.push(warning(&format!("{} warning(s)", warnings.len())));
+        summary.push(format!("{} warning(s)", warnings.len()));
     }
 
-    println!(
-        "  {BOLD}Result:{RESET} {} | {BOLD}Health Score:{RESET} {}% ({})\n",
-        summary.join(", "),
-        analysis.health_score.score,
-        grade_badge(&analysis.health_score.grade)
-    );
+    if quiet {
+        println!(
+            "{}: {}% ({})",
+            summary.join(", "),
+            analysis.health_score.score,
+            analysis.health_score.grade
+        );
+    } else {
+        let colored_summary: Vec<String> = {
+            let mut v = Vec::new();
+            if !errors.is_empty() {
+                v.push(error(&format!("{} error(s)", errors.len())));
+            }
+            if !warnings.is_empty() {
+                v.push(warning(&format!("{} warning(s)", warnings.len())));
+            }
+            v
+        };
+        let (bold, reset) = (ui::bold_start(), ui::reset());
+        println!(
+            "  {bold}Result:{reset} {} | {bold}Health Score:{reset} {}% ({})\n",
+            colored_summary.join(", "),
+            analysis.health_score.score,
+            grade_badge(&analysis.health_score.grade)
+        );
+    }
 
     if !errors.is_empty() {
         return Ok(1);

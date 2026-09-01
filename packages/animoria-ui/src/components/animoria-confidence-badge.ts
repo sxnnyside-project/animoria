@@ -4,21 +4,8 @@ import { customElement, property } from 'lit/decorators.js';
 import { confidenceLabel } from '../view-model/analysis-view-model.js';
 
 /**
- * How strongly Core stands behind a finding.
- *
- * ## Why this exists at all
- * `RuleDiagnostic.confidence` has been on the contract since Wave 2 and **no client
- * has ever rendered it**. Every finding therefore looked equally certain: a
- * `certain` byte-equality duplicate and a `low`-confidence absence finding derived
- * from a scan that read no source files were the same row in the same list. D-04
- * says a finding that cannot state what it observed may not claim absence; showing
- * the claim's strength is the other half of that, and this is where it lands.
- *
- * ## Why the colours are not a red-green ramp
- * `low` is not "bad" — it is "less established". Colouring it as a failure trains
- * developers to triage by colour rather than by evidence, which produces exactly the
- * behaviour the confidence scale exists to prevent: acting on a weak claim because
- * it was rendered in an urgent colour, or ignoring a certain one because it was not.
+ * Visual badge displaying the diagnostic confidence level (`certain`, `high`, `moderate`, `low`)
+ * associated with a governance rule finding.
  */
 @customElement('animoria-confidence-badge')
 export class AnimoriaConfidenceBadge extends LitElement {

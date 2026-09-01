@@ -81,7 +81,7 @@ Modern multi-module applications, mobile apps, and full-stack codebases constant
 ## Zero Setup & Self-Contained
 
 * **No Node.js install required on your machine:** The plugin bundles a self-contained, pre-compiled native background daemon executable for:
-  * **macOS:** Apple Silicon (`darwin-arm64`) & Intel (`darwin-x64`)
+  * **macOS:** Apple Silicon (`darwin-arm64`)
   * **Linux:** x64 & ARM64 (`linux-x64`, `linux-arm64`)
   * **Windows:** x64 (`win32-x64`)
 * Works the moment you open any project — no background servers to start and no cloud credentials needed.
@@ -91,7 +91,7 @@ Modern multi-module applications, mobile apps, and full-stack codebases constant
 ## System Requirements
 
 * **IDE Compatibility:** Any JetBrains IDE based on platform **2024.1 or later** (IntelliJ IDEA Ultimate/Community, Android Studio, WebStorm, PyCharm, GoLand, Rider, PhpStorm, CLion, DataGrip, RustRover).
-* **Architecture:** macOS (ARM/Intel), Linux (x64/ARM64), Windows (x64).
+* **Architecture:** macOS (Apple Silicon), Linux (x64/ARM64), Windows (x64).
 
 ---
 

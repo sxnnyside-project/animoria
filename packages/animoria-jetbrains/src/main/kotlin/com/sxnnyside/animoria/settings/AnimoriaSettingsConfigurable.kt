@@ -16,7 +16,9 @@ import javax.swing.JPanel
  * Uses `FormBuilder` (stable public IntelliJ Platform API) for the layout —
  * identical to how other JetBrains first-party settings panels are built.
  */
-class AnimoriaSettingsConfigurable(private val project: Project) : Configurable {
+class AnimoriaSettingsConfigurable(
+    private val project: Project,
+) : Configurable {
     private var panel: JPanel? = null
     private var thumbnailsCheckBox: JBCheckBox? = null
 
@@ -27,7 +29,8 @@ class AnimoriaSettingsConfigurable(private val project: Project) : Configurable 
         thumbnailsCheckBox = checkBox
 
         val form =
-            FormBuilder.createFormBuilder()
+            FormBuilder
+                .createFormBuilder()
                 .addComponent(checkBox)
                 .addComponentFillVertically(JPanel(), 0)
                 .panel

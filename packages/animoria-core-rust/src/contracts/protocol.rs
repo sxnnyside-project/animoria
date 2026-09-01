@@ -9,7 +9,10 @@ pub const PROTOCOL_VERSION: &str = "1.0.0";
 #[cfg_attr(feature = "ts-bindings", derive(TS))]
 #[cfg_attr(
     feature = "ts-bindings",
-    ts(export, export_to = "../../../packages/animoria-contracts/src/generated/")
+    ts(
+        export,
+        export_to = "../../../packages/animoria-contracts/src/generated/"
+    )
 )]
 #[serde(rename_all = "lowercase")]
 pub enum MessageType {
@@ -22,7 +25,10 @@ pub enum MessageType {
 #[cfg_attr(feature = "ts-bindings", derive(TS))]
 #[cfg_attr(
     feature = "ts-bindings",
-    ts(export, export_to = "../../../packages/animoria-contracts/src/generated/")
+    ts(
+        export,
+        export_to = "../../../packages/animoria-contracts/src/generated/"
+    )
 )]
 pub struct ProtocolEnvelope {
     pub protocol: String,

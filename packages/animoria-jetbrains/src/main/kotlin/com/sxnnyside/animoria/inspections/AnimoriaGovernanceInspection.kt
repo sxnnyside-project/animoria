@@ -66,8 +66,7 @@ class AnimoriaGovernanceInspection : LocalInspectionTool() {
                     emptyArray(),
                     highlightFor(diagnostic),
                 )
-            }
-            .toTypedArray()
+            }.toTypedArray()
     }
 
     /**

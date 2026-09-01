@@ -34,7 +34,8 @@ export class AnimoriaHoverProvider implements vscode.HoverProvider {
     const asset = AssetResolver.resolveFromPosition(document, position, snapshot);
     if (!asset) return null;
 
-    const thumbnailPath = this._treeProvider.getThumbnail(asset.path) ?? null;
+    const thumbnailPath =
+      asset.thumbnail_path ?? this._treeProvider.getThumbnail(asset.path) ?? null;
     const hasGovernanceIssue = snapshot.diagnostics.some((d) => d.target_asset_path === asset.path);
 
     const card = buildAssetCardModel(asset, {

@@ -7,42 +7,24 @@ import org.junit.jupiter.api.Test
 import java.io.File
 
 /**
- * Every daemon method this plugin sends is one the protocol declares.
- *
- * ## The defect this exists for
- * The plugin shipped calling six method names that do not exist: `cleanupProposal`,
- * `resolveDuplicates`, `restoreTrash`, `getSnapshot`, `runGovernance` and
- * `exportGovernanceReport`. The daemon answered every one with `unsupported-method`,
- * so cleanup, duplicate resolution, restore, refresh and the governance report were
- * dead in this client from their first click.
- *
- * ## Why `ProtocolConformanceTest` did not catch it
- * That suite checks the *envelope*: that a request carries `protocol`, `id`, `method`
- * and `params`, that responses are told apart from events, that the version matches.
- * All of that was true. Nothing looked at the string in the `method` field, so the
- * client was perfectly conformant and completely wrong — a shape check standing in
- * for a vocabulary check.
- *
- * ## Why the source of truth is the TypeScript file
- * `DAEMON_METHODS` in `@animoria/core`'s `protocol.ts` is the declaration. Restating
- * it in Kotlin would create a second list to keep in step, which is the same class of
- * problem one level down.
+ * Verifies that every daemon method invoked by the JetBrains plugin is declared in the canonical
+ * Protocol v1 daemon method vocabulary.
  */
 @DisplayName("JetBrains speaks only the declared daemon vocabulary")
 class DaemonVocabularyTest {
     private val kotlinRoot = File("src/main/kotlin")
-    private val protocol = File("../animoria-core/src/daemon/protocol.ts")
+    private val protocol = File("../animoria-core-rust/src/daemon/server.rs")
 
-    /** The declared methods, read from the protocol itself. */
+    /** The declared methods, read from the daemon itself. */
     private fun declaredMethods(): Set<String> {
         assertTrue(protocol.exists(), "expected ${protocol.absolutePath}")
         val block =
-            Regex("""DAEMON_METHODS: readonly DaemonMethod\[\] = \[([\s\S]*?)\]""")
+            Regex("""fn supported_methods\(\) -> Vec<String> \{\s*\[([\s\S]*?)\]""")
                 .find(protocol.readText())
                 ?.groupValues
                 ?.get(1)
-        assertTrue(block != null, "DAEMON_METHODS must be a literal array in protocol.ts")
-        return Regex("'([A-Za-z]+)'").findAll(block!!).map { it.groupValues[1] }.toSet()
+        assertTrue(block != null, "supported_methods() must be a literal array in server.rs")
+        return Regex(""""([A-Za-z_]+)"""").findAll(block!!).map { it.groupValues[1] }.toSet()
     }
 
     /** Every Kotlin source, with comments blanked so prose cannot satisfy a gate. */
@@ -51,7 +33,8 @@ class DaemonVocabularyTest {
             .walkTopDown()
             .filter { it.isFile && it.extension == "kt" }
             .joinToString("\n") { file ->
-                file.readText()
+                file
+                    .readText()
                     .replace(Regex("""/\*[\s\S]*?\*/""")) { it.value.replace(Regex("[^\n]"), " ") }
                     .lines()
                     .joinToString("\n") { line -> line.substringBefore("//") }
@@ -136,7 +119,8 @@ class DaemonVocabularyTest {
 
         val source =
             hover.walkTopDown().filter { it.extension == "kt" }.joinToString("\n") { file ->
-                file.readText()
+                file
+                    .readText()
                     .replace(Regex("""/\*[\s\S]*?\*/""")) { it.value.replace(Regex("[^\n]"), " ") }
                     .lines()
                     .joinToString("\n") { line -> line.substringBefore("//") }

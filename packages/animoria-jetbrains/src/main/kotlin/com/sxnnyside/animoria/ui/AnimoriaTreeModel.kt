@@ -22,16 +22,26 @@ data object EmptyStateNode
  * user "nothing works" actually means something specific and diagnosable,
  * rather than looking like a silently broken plugin.
  */
-data class DaemonUnavailableNode(val message: String)
+data class DaemonUnavailableNode(
+    val message: String,
+)
 
 /** Section header: Health Score. */
-data class HealthScoreNode(val score: Int, val label: String, val details: String?)
+data class HealthScoreNode(
+    val score: Int,
+    val label: String,
+    val details: String?,
+)
 
 /** Section header: Animated Assets. */
-data class AnimatedAssetsSectionNode(val count: Int)
+data class AnimatedAssetsSectionNode(
+    val count: Int,
+)
 
 /** Section header: Static Assets. */
-data class StaticAssetsSectionNode(val count: Int)
+data class StaticAssetsSectionNode(
+    val count: Int,
+)
 
 /** A single animated asset leaf. */
 data class AnimatedAssetNode(
@@ -44,13 +54,22 @@ data class AnimatedAssetNode(
 )
 
 /** A single static asset leaf. */
-data class StaticAssetNode(val asset: StaticAssetData)
+data class StaticAssetNode(
+    val asset: StaticAssetData,
+)
 
 /** A directory folder node (Tree view mode only). */
-data class FolderNode(val name: String, val relativePath: String)
+data class FolderNode(
+    val name: String,
+    val relativePath: String,
+)
 
 /** Section header: Governance category. */
-data class GovernanceSectionNode(val label: String, val count: Int, val category: String)
+data class GovernanceSectionNode(
+    val label: String,
+    val count: Int,
+    val category: String,
+)
 
 /**
  * A single governance finding leaf.
@@ -85,18 +104,14 @@ private val SECTION_LABELS =
  * `DefaultTreeModel`-backed model for the Animoria gallery `JTree`.
  *
  * Mirrors `AnimoriaTreeProvider` (VS Code): holds asset and governance state,
- * builds the tree structure on demand from push-event data delivered by the
- * daemon. Business logic (badge evaluation, governance computation) lives in
- * `@animoria/core`; this model is a presentation adapter over the daemon's
- * serialized results.
+ * builds the tree structure on demand from push-event data delivered by the native daemon.
  *
  * ## View modes
  * `flat` — all assets sorted alphabetically, no folders.
  * `tree` — assets grouped by directory hierarchy.
  *
  * ## Thread safety
- * All mutations must be dispatched on the EDT by the caller (typically
- * `invokeLater` in `AnimoriaGalleryPanel`).
+ * All mutations must be dispatched on the EDT by the caller (typically `invokeLater`).
  */
 class AnimoriaTreeModel : DefaultTreeModel(DefaultMutableTreeNode(GalleryRoot)) {
     enum class ViewMode { FLAT, TREE }

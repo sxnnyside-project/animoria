@@ -2,21 +2,8 @@ import type { HostInbound, HostOutbound } from './types.js';
 import { INBOUND_TYPES, OUTBOUND_TYPES } from './types.js';
 
 /**
- * Runtime validation for both directions of the bridge.
- *
- * ## Why this is not `as HostInbound`
- * Both ends of this boundary are first-party code, which is exactly the argument
- * that used to justify a cast — and exactly why the cast was wrong. A serialization
- * boundary is crossed at runtime; TypeScript says nothing about what actually
- * arrives. A renamed field on one side only, or a JetBrains payload built by hand,
- * becomes `undefined` reaching business logic with no diagnostic trail. Validating
- * turns the same drift into a logged, safely-ignored message.
- *
- * ## Why one validator and not one per host
- * VS Code had `preview-panel-messages.ts` (174 lines) validating its own dialect;
- * the cleanup panel validated nothing; JetBrains and the sandbox validated nothing.
- * One vocabulary means one validator, and a host that does not call it is visibly
- * not conforming rather than quietly lenient.
+ * Runtime validation for bidirectional bridge messages across host boundaries.
+ * Enforces schema conformance for `HostInbound` and `HostOutbound` payloads at runtime.
  */
 
 export type ValidationResult<T> =

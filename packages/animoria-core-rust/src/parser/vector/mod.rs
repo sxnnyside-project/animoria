@@ -1,9 +1,11 @@
+use crate::contracts::asset::{
+    Asset, AssetFormat, AssetKind, Dimensions, MotionMetadata, StaticMetadata,
+};
+use quick_xml::events::Event;
+use quick_xml::reader::Reader;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
-use quick_xml::events::Event;
-use quick_xml::reader::Reader;
-use crate::contracts::asset::{Asset, AssetFormat, AssetKind, Dimensions, MotionMetadata, StaticMetadata};
 
 pub fn parse_svg(path: &Path, asset: &mut Asset) -> Result<(), String> {
     let file = File::open(path).map_err(|e| format!("Cannot open SVG file: {e}"))?;
@@ -42,8 +44,12 @@ pub fn parse_svg(path: &Path, asset: &mut Asset) -> Result<(), String> {
 
                     if width.is_none() || height.is_none() {
                         if let Some((vw, vh)) = viewbox_dims {
-                            if width.is_none() { width = Some(vw); }
-                            if height.is_none() { height = Some(vh); }
+                            if width.is_none() {
+                                width = Some(vw);
+                            }
+                            if height.is_none() {
+                                height = Some(vh);
+                            }
                         }
                     }
                 }
@@ -75,7 +81,10 @@ pub fn parse_svg(path: &Path, asset: &mut Asset) -> Result<(), String> {
     }
 
     if let (Some(w), Some(h)) = (width, height) {
-        asset.dimensions = Some(Dimensions { width: w, height: h });
+        asset.dimensions = Some(Dimensions {
+            width: w,
+            height: h,
+        });
     }
 
     if is_animated {
@@ -105,7 +114,10 @@ pub fn parse_svg(path: &Path, asset: &mut Asset) -> Result<(), String> {
 }
 
 fn parse_dimension(val: &str) -> Option<u32> {
-    let clean: String = val.chars().filter(|c| c.is_ascii_digit() || *c == '.').collect();
+    let clean: String = val
+        .chars()
+        .filter(|c| c.is_ascii_digit() || *c == '.')
+        .collect();
     clean.parse::<f64>().ok().map(|n| n.round() as u32)
 }
 

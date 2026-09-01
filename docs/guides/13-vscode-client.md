@@ -1,173 +1,205 @@
 # VS Code Extension Client
 
 > **Audience:** VS Code extension maintainers, IDE integration engineers
-> **Scope:** `animoria-vscode` extension architecture, in-process Core integration, native tree views, diagnostics, hover providers, WebviewPanel mounting `@animoria/ui`
+> **Scope:** `animoria-vscode` extension architecture, spawning and speaking Protocol v1 to the native `animoria` daemon, native tree views, diagnostics, hover providers, the `AnimoriaWorkspacePanel` webview mounting `@animoria/ui`
 > **Status:** Authoritative
-> **Primary packages:** [`animoria-vscode`](../../packages/animoria-vscode), [`@animoria/core`](../../packages/animoria-core), [`@animoria/ui`](../../packages/animoria-ui)
+> **Primary packages:** [`animoria-vscode`](../../packages/animoria-vscode), [`animoria-core-rust`](../../packages/animoria-core-rust), [`@animoria/ui`](../../packages/animoria-ui)
 
 ## 1. Purpose
 
-This guide explains the architecture and implementation of `animoria-vscode`, the VS Code extension for Animoria. `animoria-vscode` bridges VS Code's extension host API with `@animoria/core` and `@animoria/ui`, providing gallery tree views, code lenses, hovers, problem diagnostics, and an embedded preview WebviewPanel.
+This guide explains the architecture and implementation of `animoria-vscode`, the VS Code extension for Animoria. Unlike the pre-v2.0.0 design, `animoria-vscode` does **not** import any engine logic as a TypeScript library — the Rust core (`animoria-core-rust`) is the single source of truth, and the extension reaches it exclusively by spawning the native `animoria` binary and speaking NDJSON Protocol v1 to it (see [12-daemon-protocol.md](12-daemon-protocol.md)). The extension host wires that daemon into VS Code's native tree view, hover provider, Problems diagnostics, and a `WebviewPanel` that mounts `@animoria/ui`.
 
 ## 2. Architecture
-
-`animoria-vscode` runs **in-process** inside the Node.js extension host runtime:
 
 ```mermaid
 graph TD
     subgraph VSCodeHost["VS Code Extension Host (Node.js)"]
-        ExtensionTS["Extension Entry Point (extension.ts)"]
-        CoreLib["@animoria/core (Direct Library Import)"]
-        
+        ExtensionTS["extension.ts (activate/scanWorkspace)"]
+        DaemonClient["VsCodeDaemonClient (daemon-client.ts)"]
+
         subgraph NativeSurfaces["VS Code Native APIs"]
-            TreeView["Gallery TreeView Provider"]
-            Diagnostics["Problems DiagnosticsCollection"]
-            HoverProv["HoverProvider"]
-            CodeLensProv["CodeLensProvider"]
+            TreeView["AnimoriaTreeProvider"]
+            Diagnostics["DiagnosticPublisher"]
+            HoverProv["AnimoriaHoverProvider"]
         end
-        
-        PreviewManager["AnimoriaPreviewPanel.ts"]
+
+        PanelManager["AnimoriaWorkspacePanel"]
+        HostBridge["VsCodeHostBridge"]
+    end
+
+    subgraph DaemonProcess["animoria daemon (native subprocess)"]
+        Daemon["animoria daemon (Protocol v1 NDJSON)"]
     end
 
     subgraph WebviewSurface["VS Code Webview Panel"]
-        WebviewContainer["WebviewPanel Container"]
         SharedUIBundle["@animoria/ui Bundle (Lit Web Components)"]
     end
 
-    ExtensionTS --> CoreLib
-    CoreLib --> NativeSurfaces
-    ExtensionTS --> PreviewManager
-    PreviewManager --> WebviewContainer
-    WebviewContainer --> SharedUIBundle
-    PreviewManager <-->|postMessage / HostBridge| SharedUIBundle
+    ExtensionTS --> DaemonClient
+    DaemonClient <-->|stdin/stdout NDJSON| Daemon
+    ExtensionTS --> NativeSurfaces
+    ExtensionTS --> PanelManager
+    PanelManager --> HostBridge
+    HostBridge <-->|HostOutbound / HostInbound| SharedUIBundle
+    HostBridge -->|calls| DaemonClient
 ```
 
 ### Module Boundaries
 
 | Module | Location | Primary Responsibility |
 |---|---|---|
-| **Extension Entry Point** | [`src/extension.ts`](../../packages/animoria-vscode/src/extension.ts) | Extension activation, command registration, indexer initialization, watcher binding. |
-| **Tree View Provider** | [`src/providers/AnimoriaTreeDataProvider.ts`](../../packages/animoria-vscode/src/providers/) | Manages the native VS Code sidebar gallery tree view. |
-| **Diagnostics Manager** | [`src/diagnostics/AnimoriaDiagnosticsManager.ts`](../../packages/animoria-vscode/src/diagnostics/) | Translates governance findings into native VS Code Problems entries. |
-| **Hover Provider** | [`src/hover/AnimoriaHoverProvider.ts`](../../packages/animoria-vscode/src/hover/) | Displays interactive asset hover preview cards over source code asset paths. |
-| **Preview Panel** | [`src/panels/AnimoriaPreviewPanel.ts`](../../packages/animoria-vscode/src/panels/AnimoriaPreviewPanel.ts) | WebviewPanel manager mounting `@animoria/ui` web components. |
+| **Extension Entry Point** | [`src/extension.ts`](../../packages/animoria-vscode/src/extension.ts) | Activation, command registration, module-level scan state (`lastAnalysis`/`lastReferences`/`lastDuplicateGroups`), `scanWorkspace()`. |
+| **Daemon Client** | [`src/daemon/daemon-client.ts`](../../packages/animoria-vscode/src/daemon/daemon-client.ts) | `VsCodeDaemonClient` — spawns the native binary, resolves its path, frames/correlates NDJSON requests over stdio. |
+| **Host Bridge** | [`src/panels/vscode-host-bridge.ts`](../../packages/animoria-vscode/src/panels/vscode-host-bridge.ts) | `VsCodeHostBridge` — translates the shared UI's `HostOutbound`/`HostInbound` bridge messages into `VsCodeDaemonClient` calls and back. |
+| **Workspace Panel** | [`src/panels/animoria-workspace-panel.ts`](../../packages/animoria-vscode/src/panels) | `AnimoriaWorkspacePanel` — manages the `WebviewPanel` instance(s) mounting `@animoria/ui`, and `.broadcast()`s fresh analyses to every open panel. |
+| **Tree Provider** | [`src/providers/animoria-tree-provider.ts`](../../packages/animoria-vscode/src/providers) | Native sidebar gallery `TreeDataProvider`. |
+| **Diagnostics Publisher** | [`src/diagnostics/diagnostic-publisher.ts`](../../packages/animoria-vscode/src/diagnostics) | Publishes governance diagnostics from `WorkspaceAnalysis` to VS Code's Problems panel. |
+| **Hover Provider** | [`src/providers/animoria-hover-provider.ts`](../../packages/animoria-vscode/src/providers) | Asset hover cards over source-code asset path strings. |
 
 ## 3. Lifecycle
 
-Extension lifecycle follows standard VS Code extension activation:
+```
+VS Code activation
+→ extension.ts activate(context)
+→ new VsCodeDaemonClient(undefined, context.extensionPath) — binary not yet spawned
+→ Register TreeView, HoverProvider, DiagnosticPublisher, file watcher
+→ await scanWorkspace()
+    → daemonClient.scan(rootPath) — this lazily calls VsCodeDaemonClient.start(),
+      which spawns `animoria daemon` and performs the request/response round-trip
+    → Updates lastAnalysis/lastReferences/lastDuplicateGroups
+    → treeProvider.updateAnalysis(...), diagnosticPublisher.publish(...)
+    → AnimoriaWorkspacePanel.broadcast(...) to any already-open panel
+→ File watcher and workspace-folder-change listener re-trigger scanWorkspace()
+→ deactivate() → daemonClient.shutdown() (sends `shutdown`, then kills the subprocess)
+```
 
-```
-VS Code Activation Event (onLanguage / workspace open)
-→ extension.ts activate()
-→ Initialize Core WorkspaceIndexer in-process
-→ Attach vscode.workspace.createFileSystemWatcher to Indexer
-→ Register TreeView, Diagnostics, HoverProvider, CodeLensProvider
-→ Indexer completes scan → Updates TreeView & Diagnostics
-→ User interacts with UI → Executes commands / opens Preview Webview
-```
+Only the first workspace folder is scanned (`folders[0]`) — true multi-root support is a `WorkspaceSession`-level concern `createSessionAdapter()` in `extension.ts` does not yet implement.
 
 ## 4. Core Implementation
 
-### Direct In-Process Core Execution
-Unlike JetBrains (which spawns an out-of-process daemon), `animoria-vscode` imports `@animoria/core` directly as a TypeScript library inside the extension host:
+### Spawning and Speaking to the Native Daemon
+
+`VsCodeDaemonClient` (`src/daemon/daemon-client.ts`) is the only way the extension reaches engine logic — there is no in-process fallback:
 
 ```typescript
-import { Animoria, WorkspaceIndexer } from '@animoria/core';
-```
-
-No IPC serialization or NDJSON streams are required. Extension host code calls Core APIs synchronously or asynchronously in Node.js.
-
-### Native Surfaces & Integrations
-
-#### 1. Gallery TreeView
-- Registered under view ID `animoria.galleryView`.
-- Renders indexed visual assets grouped by folder or format. Supports flat list vs folder tree view mode toggle.
-
-#### 2. Problems & Diagnostics
-- `AnimoriaDiagnosticsManager` maps governance findings (`error` / `warning`) directly to `vscode.Diagnostic` objects on target asset files.
-
-#### 3. Hover Provider (`AnimoriaHoverProvider.ts`)
-- Triggered when a developer hovers over asset path strings in source code (`.ts`, `.tsx`, `.vue`, `.svelte`, `.dart`, `.swift`, `.kt`).
-- Renders an inline SVG thumbnail, resolution, frame rate, layer count, and quick actions ("Open Preview", "Copy Snippet").
-
-#### 4. WebviewPanel & Shared UI Mounting (`AnimoriaPreviewPanel.ts`)
-- Mounts built `@animoria/ui` ESM bundle inside a `WebviewPanel`.
-- Implements `HostBridge` messaging over `webview.postMessage()` and `webview.onDidReceiveMessage()`.
-
-## 5. CLI / Daemon
-
-VS Code executes `@animoria/core` in-process and does **not** use the daemon server mode or NDJSON protocol.
-
-## 6. VS Code Commands Palette
-
-Registered extension commands in [`package.json`](../../packages/animoria-vscode/package.json):
-
-| Command ID | Title | Description |
-|---|---|---|
-| `animoria.openPreview` | Animoria: Open Asset Preview | Opens interactive preview webview for selected asset. |
-| `animoria.search` | Animoria: Search Assets | Focuses gallery search filter input. |
-| `animoria.toggleViewMode` | Animoria: Toggle View Mode | Toggles between flat list and directory tree gallery view. |
-| `animoria.deleteAsset` | Animoria: Delete Asset | Moves selected asset to `.animoria/trash`. |
-| `animoria.revealInExplorer` | Animoria: Reveal in System Explorer | Opens system file manager containing selected asset. |
-
-## 7. JetBrains
-
-JetBrains integration is documented separately in [14-jetbrains-client.md](14-jetbrains-client.md).
-
-## 8. Sandbox
-
-The sandbox harness (`apps/animoria-sandbox`) tests shared UI web components used by VS Code without launching the extension host.
-
-## 9. Contracts & Types
-
-VS Code host bridge messaging adheres to `HostBridge` contracts ([`packages/animoria-ui/src/bridge/`](../../packages/animoria-ui/src/bridge/)):
-
-```typescript
-export interface HostOutbound {
-  readonly type: 'analysisUpdate' | 'animationData';
-  readonly payload: unknown;
+export class VsCodeDaemonClient {
+  constructor(binaryPath?: string, extensionPath?: string) {
+    this.binaryPath = binaryPath ?? this.resolveBinaryPath(extensionPath);
+  }
+  public async start(): Promise<void> {
+    this.process = spawn(this.binaryPath!, ['daemon'], { stdio: ['pipe', 'pipe', 'inherit'] });
+    // ... readline over stdout, NDJSON request/response correlation by `id`
+  }
 }
 ```
 
+#### Binary Resolution (`resolveBinaryPath`)
+
+`resolveBinaryPath` checks, in order:
+1. `ANIMORIA_BINARY_PATH` environment variable, if it points to an existing file.
+2. `extensionPath/bin/<binaryName>` — where a packaged `.vsix` bundles the platform-specific binary (see the release workflow's per-target `linux-x64`/`linux-arm64`/`darwin-arm64`/`win32-x64` packaging).
+3. A series of development-tree relative paths (`__dirname/../bin`, `packages/animoria-core-rust/target/release|debug`, walking up from `process.cwd()`, etc.) — these support running the extension straight from a monorepo checkout without packaging.
+4. `~/.cargo/bin/<binaryName>`, `/opt/homebrew/bin/<binaryName>`, `/usr/local/bin/<binaryName>`.
+5. Falls back to the bare binary name (`animoria`/`animoria.exe`), relying on the system `PATH`, as the last resort.
+
+`binaryName` is `animoria.exe` on `win32`, `animoria` otherwise. If the resolved path is not one of the two bare names and does not exist on disk, `start()` throws with a message pointing at `cargo build --release -p animoria-core-rust` or `ANIMORIA_BINARY_PATH`.
+
+### `VsCodeHostBridge` (`src/panels/vscode-host-bridge.ts`)
+
+`VsCodeHostBridge` implements the shared UI's host contract: it receives `HostOutbound` messages the webview posts (via `webview.postMessage`/`onDidReceiveMessage`) and translates each into a call against the injected `VsCodeDaemonClient`, then translates the daemon's result back into a `HostInbound` message for the webview. It never computes governance results itself — every `HostOutbound` handler ends in a daemon request. `rootForPath` attributes a filesystem path to the most specific matching workspace root rather than falling back to a fabricated `cwd()`-based root when none is found.
+
+### Native Surfaces
+
+#### 1. Gallery TreeView
+`AnimoriaTreeProvider` renders assets from `lastAnalysis`/`lastReferences`/`lastDuplicateGroups`, grouped by folder or format, with a flat/tree view-mode toggle (`animoria.toggleViewMode`).
+
+#### 2. Problems & Diagnostics
+`DiagnosticPublisher.publish(analysis)` maps `WorkspaceAnalysis.diagnostics` (rule findings from the Rust governance pipeline) onto `vscode.Diagnostic` objects.
+
+#### 3. Hover Provider
+`AnimoriaHoverProvider`, registered for `HOVER_LANGUAGES`, reads the same module-level `lastAnalysis` to render an asset preview card when hovering an asset path string in source.
+
+#### 4. `AnimoriaWorkspacePanel` (webview)
+Mounts the built `@animoria/ui` bundle inside a `WebviewPanel` and wires it to a `VsCodeHostBridge` instance backed by the extension's single `daemonClient`. `AnimoriaWorkspacePanel.broadcast(...)` pushes a fresh `MultiRootAnalysis` to every currently open panel after each `scanWorkspace()`.
+
+## 5. CLI / Daemon
+
+VS Code spawns and drives the daemon exactly as specified in [12-daemon-protocol.md](12-daemon-protocol.md) — it is a Protocol v1 client like any other, over the subprocess `VsCodeDaemonClient.start()` spawns.
+
+## 6. VS Code Commands
+
+Commands registered in `extension.ts` (see `packages/animoria-vscode/package.json` for the full manifest):
+
+| Command ID | Description |
+|---|---|
+| `animoria.refresh` | Re-runs `scanWorkspace()`. |
+| `animoria.openPreview` / `animoria.openWorkspace` | Opens `AnimoriaWorkspacePanel` on the `assets` tab, optionally focused on one asset. |
+| `animoria.revealInExplorer` | Reveals the selected asset's file in VS Code's built-in Explorer (`revealInExplorer` command), not the OS file manager. |
+| `animoria.search` | Opens a `QuickPick` filtering the tree provider's assets by name. |
+| `animoria.runGovernance` | Re-scans and then opens the governance report (matches JetBrains' `runGovernance()`). |
+| `animoria.viewGovernanceReport` / `animoria.exportGovernanceReport` | Renders/exports the Markdown governance report built from `lastAnalysis`. |
+| `animoria.viewFindings` / `animoria.viewDuplicates` | Opens `AnimoriaWorkspacePanel` on the `findings`/`duplicates` tab. |
+| `animoria.generateSnippet` | Copies a Core-generated integration snippet to the clipboard (via `generateSnippetsForAsset`), with a `QuickPick` when more than one framework matches. |
+| `animoria.toggleViewMode` | Toggles the tree view between flat and directory-tree modes. |
+| `animoria.deleteAsset` | Moves the asset to the OS/VS Code trash via `vscode.workspace.fs.delete(uri, { useTrash: true })` after a modal confirmation, then re-scans. |
+| `animoria.startCleanupReview` / `animoria.restoreCleanup` / `animoria.resolveDuplicates` | Opens `AnimoriaWorkspacePanel` on the `cleanup`/`duplicates` tab. |
+
+`animoria.deleteAsset` deletes directly through the OS/VS Code trash (`vscode.workspace.fs.delete(uri, { useTrash: true })`) rather than going through the daemon's `trash_asset` and `.animoria/trash/` staging. It does not produce a `ResolutionPlan` or a restorable trash session. This is inconsistent with the rest of the system's remediation model, which is plan-based and reversible (CLAUDE.md invariant 6): every other mutating path (`buildResolutionPlan`/`applyResolutionPlan`, `buildCleanupPlan`/`applyCleanupPlan`, `trash_asset`/`restore_asset`) stages through `.animoria/trash/` and can be undone via `listTrashSessions`/`restoreTrashSession`, but a single-asset delete from the tree view cannot.
+
+## 7. JetBrains
+
+JetBrains integration is documented separately in [14-jetbrains-client.md](14-jetbrains-client.md). Both clients speak the identical Protocol v1 to the identical binary; they differ only in process-lifecycle management (VS Code: one client per extension activation; JetBrains: one `CoreProcessManager` per project, push-driven).
+
+## 8. Sandbox
+
+The sandbox harness (`apps/animoria-sandbox`) spawns the same native `animoria` binary through its own `RustDaemonClient`, letting `@animoria/ui` be developed against the real daemon without launching VS Code. See [15-sandbox-client-parity.md](15-sandbox-client-parity.md).
+
+## 9. Contracts & Types
+
+`VsCodeHostBridge` messaging adheres to the `HostOutbound`/`HostInbound`/`HostCapabilities` contracts defined in [`packages/animoria-ui/src/bridge/`](../../packages/animoria-ui/src/bridge/) and re-exported for host consumption as `@animoria/ui/bridge`. Domain types (`Asset`, `WorkspaceAnalysis`, `DuplicateGroup`, `UsageReference`, `TrashItem`, `ResolutionPlan`, etc.) come from [`@animoria/contracts`](../../packages/animoria-contracts/src/generated/), generated via `ts-rs` from the Rust structs — never hand-authored.
+
 ## 10. Tests & Fixtures
 
-- **VS Code Unit Tests**: [`packages/animoria-vscode/tests/`](../../packages/animoria-vscode/tests)
-  - `extension.test.ts`: Verifies extension activation and command registration.
-  - `hover-provider.test.ts`: Tests hover string matching and markdown preview formatting.
-  - `shared-ui-adoption.test.ts`: Architectural regression test ensuring VS Code consumes `@animoria/ui` without authoring custom product markup.
+- **VS Code test suite**: [`packages/animoria-vscode/tests/`](../../packages/animoria-vscode/tests)
+  - `native-daemon.integration.test.ts`: Spawns the real native binary and exercises the NDJSON round-trip.
+  - `panels/bridge-daemon.e2e.test.ts`, `panels/vscode-host-bridge.test.ts`: Exercise `VsCodeHostBridge` against a daemon client.
+  - `manifest.test.ts`: Verifies commands/contributions declared in `package.json`.
+  - `no-fabricated-values.test.ts`: Architectural regression test guarding against client-side invention of governance values (invariant 2 in the root `CLAUDE.md`).
+  - `diagnostics/diagnostic-publisher.test.ts`, `providers/animoria-tree-item.test.ts`, `providers/thumbnail-lifecycle.test.ts`: Native-surface unit tests.
 
 ## 11. Extension Points
 
 ### How do I add a new VS Code command?
-1. Register command identifier in `packages/animoria-vscode/package.json` under `contributes.commands`.
-2. Register command handler using `vscode.commands.registerCommand` in `src/extension.ts`.
+1. Register the command identifier in `packages/animoria-vscode/package.json` under `contributes.commands`.
+2. Register the handler with `vscode.commands.registerCommand(...)` in `src/extension.ts`, calling into `daemonClient` (directly, or via `AnimoriaWorkspacePanel`'s `VsCodeHostBridge`) rather than computing anything locally.
 
 ## 12. Failure Modes
 
 | Failure Mode | Root Cause | System Behavior |
 |---|---|---|
-| **Webview Load Error** | Bundle path mismatch in media assets | Webview displays blank panel. Check Webview developer tools console. |
-| **Extension Host Lag** | Massive workspace scan blocking thread | Indexer runs asynchronously using debounced scheduler. |
+| **Native binary not found** | No bundled `bin/animoria(.exe)`, no dev-tree build, not on `PATH`, and `ANIMORIA_BINARY_PATH` unset/invalid | `VsCodeDaemonClient.start()` throws before spawning; `scanWorkspace()`'s catch shows `vscode.window.showErrorMessage`. |
+| **Daemon process exits unexpectedly** | Crash, killed externally | All pending NDJSON requests are rejected (`rejectAllPending`); the next call re-spawns via `start()`. |
+| **Malformed daemon line on stdout** | Corrupted or partial NDJSON | `handleLine` silently ignores lines that don't start with `{` or fail `JSON.parse` — no request is settled, so it will eventually be as if the response never arrived. |
 
 ## 13. Common Maintenance Tasks
 
 ### How do I debug the extension host?
-Launch the debugging session in VS Code using `.vscode/launch.json` ("Extension Debugging").
+Launch the extension in VS Code's built-in Extension Development Host (`.vscode/launch.json`), and set `ANIMORIA_BINARY_PATH` if you want to point at a specific daemon build instead of the resolved dev-tree default.
 
 ## 14. Files & Ownership
 
 | Layer | Path | Responsibility |
 |---|---|---|
 | VS Code Client | [`packages/animoria-vscode/src/extension.ts`](../../packages/animoria-vscode/src/extension.ts) | Extension entry point & lifecycle |
-| VS Code Client | [`packages/animoria-vscode/src/providers/`](../../packages/animoria-vscode/src/providers/) | TreeView, Hover, CodeLens providers |
-| VS Code Client | [`packages/animoria-vscode/src/diagnostics/`](../../packages/animoria-vscode/src/diagnostics/) | Problems panel diagnostics manager |
-| VS Code Client | [`packages/animoria-vscode/src/panels/AnimoriaPreviewPanel.ts`](../../packages/animoria-vscode/src/panels/AnimoriaPreviewPanel.ts) | WebviewPanel manager mounting `@animoria/ui` |
+| VS Code Client | [`packages/animoria-vscode/src/daemon/daemon-client.ts`](../../packages/animoria-vscode/src/daemon/daemon-client.ts) | Native daemon process client (spawn, resolve, NDJSON) |
+| VS Code Client | [`packages/animoria-vscode/src/panels/vscode-host-bridge.ts`](../../packages/animoria-vscode/src/panels/vscode-host-bridge.ts) | Shared-UI bridge → daemon client translation |
+| VS Code Client | [`packages/animoria-vscode/src/providers/`](../../packages/animoria-vscode/src/providers) | TreeView, Hover providers |
+| VS Code Client | [`packages/animoria-vscode/src/diagnostics/`](../../packages/animoria-vscode/src/diagnostics) | Problems panel diagnostics publisher |
 
 ## 15. Verification Checklist
-
-Execute VS Code extension test suite:
 
 ```bash
 pnpm --filter animoria-vscode test
 ```
-Verify extension activation, hover provider, and shared UI adoption tests pass cleanly.
+
+Verify the daemon integration test spawns the real `animoria` binary successfully (build it first with `cargo build --release -p animoria-core-rust` if it's not already on the resolved path) and that the host-bridge, manifest, and no-fabricated-values tests pass cleanly.

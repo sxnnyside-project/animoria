@@ -1,12 +1,17 @@
-use std::fs;
-use std::path::Path;
-use crate::cli::ui::{brand, dim, error, format_badge, format_bytes, format_duration, success, title};
+use crate::cli::ui::{
+    self, brand, dim, error, format_badge, format_bytes, format_duration, success, title,
+};
+use crate::cli::workspace::resolve_workspace_path;
 use crate::indexer::AssetIndex;
+use std::path::Path;
+use std::time::Instant;
 
 pub fn execute_scan(target_path: &Path, json: bool) -> anyhow::Result<i32> {
-    let canonical = fs::canonicalize(target_path).unwrap_or_else(|_| target_path.to_path_buf());
+    let canonical = resolve_workspace_path(target_path)?;
     let mut index = AssetIndex::new(canonical.to_string_lossy().to_string(), canonical.clone());
+    let started = Instant::now();
     let analysis = index.scan_workspace(&[])?;
+    let elapsed = started.elapsed();
 
     if json {
         println!("{}", serde_json::to_string_pretty(&analysis)?);
@@ -14,6 +19,12 @@ pub fn execute_scan(target_path: &Path, json: bool) -> anyhow::Result<i32> {
     }
 
     let assets = &analysis.assets;
+
+    if ui::is_quiet() {
+        println!("{} visual asset(s) found", assets.len());
+        return Ok(0);
+    }
+
     println!(
         "\n{} {} {}\n",
         brand("animoria"),
@@ -22,7 +33,10 @@ pub fn execute_scan(target_path: &Path, json: bool) -> anyhow::Result<i32> {
     );
 
     if assets.is_empty() {
-        println!("  {}", dim("No visual assets discovered in this workspace.\n"));
+        println!(
+            "  {}",
+            dim("No visual assets discovered in this workspace.\n")
+        );
         return Ok(0);
     }
 
@@ -65,6 +79,15 @@ pub fn execute_scan(target_path: &Path, json: bool) -> anyhow::Result<i32> {
         );
     }
 
-    println!("\n  {}\n", dim(&format!("Scanned in {}", canonical.display())));
+    let footer = if ui::verbosity() > 0 {
+        format!(
+            "Scanned {} in {:.1}ms",
+            canonical.display(),
+            elapsed.as_secs_f64() * 1000.0
+        )
+    } else {
+        format!("Scanned in {}", canonical.display())
+    };
+    println!("\n  {}\n", dim(&footer));
     Ok(0)
 }

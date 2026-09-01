@@ -72,7 +72,7 @@ The Animoria VS Code extension (`packages/animoria-vscode`) requires a fast, det
 
 ### Positive
 1. **Sub-second Feedback:** Developers and CI run the entire monorepo test suite across packages in a few seconds.
-2. **Unified Test Stack:** `@animoria/core`, `animoria-vscode`, and `animoria-sandbox` all share the same Vitest runner and reporting formats.
+2. **Unified Test Stack:** `@animoria/ui`, `animoria-vscode`, and `animoria-sandbox` all share the same Vitest runner and reporting formats. (The `animoria-core-rust` engine is tested separately under `cargo test`, per its own toolchain.)
 3. **Extensible:** Adding support for new VS Code APIs only requires adding standard mock interfaces to `tests/mocks/vscode.ts`.
 
 ### Negative / Accepted Trade-offs

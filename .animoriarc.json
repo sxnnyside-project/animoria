@@ -2,7 +2,7 @@
   "rules": {
     "no-gif": "warning",
     "max-file-size-kb": ["warning", 512],
-    "no-duplicate-names": "error",
+    "no-duplicate-content": "error",
     "no-unreferenced-assets": "warning"
   }
 }

@@ -1,10 +1,8 @@
-use std::time::{SystemTime, UNIX_EPOCH};
 use crate::contracts::duplicates::DuplicateGroup;
 use crate::contracts::remediation::ResolutionPlan;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-pub fn create_duplicate_resolution_plan(
-    duplicate_group: &DuplicateGroup,
-) -> ResolutionPlan {
+pub fn create_duplicate_resolution_plan(duplicate_group: &DuplicateGroup) -> ResolutionPlan {
     let now_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
@@ -22,6 +20,6 @@ pub fn create_duplicate_resolution_plan(
         created_at_ms: now_ms,
         duplicate_group_id: Some(duplicate_group.id.clone()),
         target_assets_to_delete,
-        references_to_rewrite: Vec::new(),
+        proposed_reference_rewrites: Vec::new(),
     }
 }

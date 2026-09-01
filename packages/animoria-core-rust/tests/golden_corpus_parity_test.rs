@@ -14,7 +14,9 @@ fn fixtures_root() -> PathBuf {
 #[test]
 fn test_golden_1_clean_workspace() {
     let root = fixtures_root().join("clean-workspace");
-    if !root.exists() { return; }
+    if !root.exists() {
+        return;
+    }
 
     let mut index = AssetIndex::new("clean-ws".to_string(), root);
     let analysis = index.scan_workspace(&[]).expect("Scan should succeed");
@@ -35,7 +37,9 @@ fn test_golden_1_clean_workspace() {
 #[test]
 fn test_golden_2_duplicates_workspace() {
     let root = fixtures_root().join("duplicates");
-    if !root.exists() { return; }
+    if !root.exists() {
+        return;
+    }
 
     let mut index = AssetIndex::new("duplicates-ws".to_string(), root);
     let analysis = index.scan_workspace(&[]).expect("Scan should succeed");
@@ -55,7 +59,9 @@ fn test_golden_2_duplicates_workspace() {
 #[test]
 fn test_golden_3_empty_workspace() {
     let root = fixtures_root().join("empty-workspace");
-    if !root.exists() { return; }
+    if !root.exists() {
+        return;
+    }
 
     let mut index = AssetIndex::new("empty-ws".to_string(), root);
     let analysis = index.scan_workspace(&[]).expect("Scan should succeed");
@@ -68,7 +74,9 @@ fn test_golden_3_empty_workspace() {
 #[test]
 fn test_golden_4_malformed_assets_workspace() {
     let root = fixtures_root().join("malformed-assets");
-    if !root.exists() { return; }
+    if !root.exists() {
+        return;
+    }
 
     let mut index = AssetIndex::new("malformed-ws".to_string(), root);
     let analysis = index.scan_workspace(&[]).expect("Scan should succeed");
@@ -82,7 +90,9 @@ fn test_golden_4_malformed_assets_workspace() {
 #[test]
 fn test_golden_5_mixed_governance_workspace() {
     let root = fixtures_root().join("mixed-governance");
-    if !root.exists() { return; }
+    if !root.exists() {
+        return;
+    }
 
     let mut index = AssetIndex::new("mixed-gov-ws".to_string(), root);
     let analysis = index.scan_workspace(&[]).expect("Scan should succeed");
@@ -97,7 +107,9 @@ fn test_golden_5_mixed_governance_workspace() {
 #[test]
 fn test_golden_6_monorepo_scoped_workspace() {
     let root = fixtures_root().join("monorepo-scoped");
-    if !root.exists() { return; }
+    if !root.exists() {
+        return;
+    }
 
     let mut index = AssetIndex::new("monorepo-ws".to_string(), root);
     let analysis = index.scan_workspace(&[]).expect("Scan should succeed");
@@ -109,7 +121,9 @@ fn test_golden_6_monorepo_scoped_workspace() {
 #[test]
 fn test_golden_7_multi_root_workspace() {
     let root = fixtures_root().join("multi-root-workspace");
-    if !root.exists() { return; }
+    if !root.exists() {
+        return;
+    }
 
     // Test multi-root isolation: root-a, root-b, root-c
     let roots = ["root-a", "root-b", "root-c"];
@@ -126,7 +140,9 @@ fn test_golden_7_multi_root_workspace() {
 #[test]
 fn test_golden_8_reference_edge_cases_workspace() {
     let root = fixtures_root().join("reference-edge-cases");
-    if !root.exists() { return; }
+    if !root.exists() {
+        return;
+    }
 
     let mut index = AssetIndex::new("edge-cases-ws".to_string(), root);
     let analysis = index.scan_workspace(&[]).expect("Scan should succeed");
@@ -138,7 +154,9 @@ fn test_golden_8_reference_edge_cases_workspace() {
 #[test]
 fn test_golden_9_reference_formats_workspace() {
     let root = fixtures_root().join("reference-formats");
-    if !root.exists() { return; }
+    if !root.exists() {
+        return;
+    }
 
     let mut index = AssetIndex::new("ref-formats-ws".to_string(), root);
     let analysis = index.scan_workspace(&[]).expect("Scan should succeed");
@@ -150,7 +168,9 @@ fn test_golden_9_reference_formats_workspace() {
 #[test]
 fn test_golden_10_unreferenced_assets_workspace() {
     let root = fixtures_root().join("unreferenced-assets");
-    if !root.exists() { return; }
+    if !root.exists() {
+        return;
+    }
 
     let mut index = AssetIndex::new("unref-ws".to_string(), root);
     let analysis = index.scan_workspace(&[]).expect("Scan should succeed");
@@ -164,4 +184,21 @@ fn test_golden_10_unreferenced_assets_workspace() {
         .collect();
 
     assert!(!unref_diagnostics.is_empty());
+}
+
+#[test]
+fn test_no_false_positive_property_assignment() {
+    use animoria_core::tracing::patterns::is_valid_stem_reference;
+    let line = "common.download = \"download\";";
+    let stem = "download";
+    assert!(!is_valid_stem_reference(
+        &line.to_lowercase(),
+        &stem.to_lowercase()
+    ));
+
+    let line2 = "import download from './download.json';";
+    assert!(is_valid_stem_reference(
+        &line2.to_lowercase(),
+        &stem.to_lowercase()
+    ));
 }

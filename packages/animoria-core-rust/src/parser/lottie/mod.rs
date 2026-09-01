@@ -1,8 +1,8 @@
+use crate::contracts::asset::{Asset, Dimensions, MotionMetadata};
+use serde::Deserialize;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
-use serde::Deserialize;
-use crate::contracts::asset::{Asset, Dimensions, MotionMetadata};
 
 #[derive(Deserialize, Debug)]
 struct LottieDocument {
@@ -25,8 +25,8 @@ pub fn parse_lottie(path: &Path, asset: &mut Asset) -> Result<(), String> {
     let file = File::open(path).map_err(|e| format!("Cannot open Lottie file: {e}"))?;
     let reader = BufReader::new(file);
 
-    let doc: LottieDocument = serde_json::from_reader(reader)
-        .map_err(|e| format!("Malformed Lottie JSON: {e}"))?;
+    let doc: LottieDocument =
+        serde_json::from_reader(reader).map_err(|e| format!("Malformed Lottie JSON: {e}"))?;
 
     let fr = doc.fr.unwrap_or(0.0);
     let ip = doc.ip.unwrap_or(0.0);
@@ -44,11 +44,7 @@ pub fn parse_lottie(path: &Path, asset: &mut Asset) -> Result<(), String> {
         asset.dimensions = Some(Dimensions { width, height });
     }
 
-    let total_frames = if op > ip {
-        (op - ip).round() as u32
-    } else {
-        0
-    };
+    let total_frames = if op > ip { (op - ip).round() as u32 } else { 0 };
 
     let duration_secs = if fr > 0.0 && total_frames > 0 {
         Some((total_frames as f64) / fr)
@@ -61,7 +57,11 @@ pub fn parse_lottie(path: &Path, asset: &mut Asset) -> Result<(), String> {
     asset.motion = Some(MotionMetadata {
         fps: if fr > 0.0 { Some(fr) } else { None },
         duration_secs,
-        total_frames: if total_frames > 0 { Some(total_frames) } else { None },
+        total_frames: if total_frames > 0 {
+            Some(total_frames)
+        } else {
+            None
+        },
         layer_count: Some(layer_count),
         is_animated: total_frames > 1,
     });

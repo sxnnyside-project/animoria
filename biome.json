@@ -13,6 +13,7 @@
       "**/build/**",
       "**/fixtures/**",
       "**/assets/**",
+      "packages/animoria-contracts/src/generated/**",
       "**/*.json",
       "**/*.md",
       "**/*.yaml",

@@ -14,7 +14,7 @@ import com.intellij.openapi.vfs.newvfs.events.VFilePropertyChangeEvent
 
 /**
  * Bridges IntelliJ's Virtual File System (VFS) events to the Animoria daemon's
- * `notifyFileChange` push path via `CoreProcessManager.onWatcherEvent`.
+ * `markStale` method via `CoreProcessManager.notifyFileChanged`.
  *
  * ## Why VFS and not `FileSystemWatcher`
  * IntelliJ's VFS guarantees that all filesystem mutations performed by the IDE
@@ -34,7 +34,9 @@ import com.intellij.openapi.vfs.newvfs.events.VFilePropertyChangeEvent
  * `CoreProcessManager`) is non-blocking (fire-and-forget), so EDT responsiveness
  * is not impacted. The daemon's internal debounce handles rapid bursts.
  */
-class AnimoriaVFSListener(private val project: Project) : BulkFileListener {
+class AnimoriaVFSListener(
+    private val project: Project,
+) : BulkFileListener {
     private val logger = Logger.getInstance(AnimoriaVFSListener::class.java)
     private val manager: CoreProcessManager get() = project.getService(CoreProcessManager::class.java)
 
@@ -50,7 +52,8 @@ class AnimoriaVFSListener(private val project: Project) : BulkFileListener {
      */
     private fun contentRoots(): List<String> =
         runCatching {
-            ModuleManager.getInstance(project)
+            ModuleManager
+                .getInstance(project)
                 .modules
                 .flatMap { module -> ModuleRootManager.getInstance(module).contentRoots.toList() }
                 .mapNotNull { it.canonicalPath }
@@ -61,6 +64,7 @@ class AnimoriaVFSListener(private val project: Project) : BulkFileListener {
         val roots = contentRoots()
         if (roots.isEmpty()) return
 
+        var matched = false
         for (event in events) {
             val path = event.path
             // Segment-boundary containment, not a bare prefix test: `/workspace-old`
@@ -78,14 +82,20 @@ class AnimoriaVFSListener(private val project: Project) : BulkFileListener {
                     else -> continue
                 }
 
-            // Emit a synthetic watcher event so the daemon's WorkspaceIndexer
-            // is notified of the change. This mirrors AnimoriaFileWatcher in VS Code.
-            val payload = """{"type":"$kind","path":"$path"}"""
             logger.debug("Animoria VFS: $kind $path")
+            matched = true
+        }
 
-            // Notify the daemon via the existing watcher callback — the daemon
-            // will call indexer.notifyFileChanged() on receipt and emit an update.
-            manager.onWatcherEvent?.invoke(payload)
+        // One `markStale` per batch, not per event — a save/refactor can fire
+        // dozens of VFS events for a handful of actually-changed files, and the
+        // daemon only needs to know "this root's cached analysis is out of date,"
+        // not how many events led there.
+        if (matched) {
+            // The same root `CoreProcessManager.start()` scanned (`resolveContentRoots()`
+            // via this class's own `contentRoots()`), not `project.basePath` — those
+            // differ for a multi-module project, and `markStale` must key on the root
+            // the daemon actually indexed.
+            manager.notifyFileChanged(roots.first())
         }
     }
 

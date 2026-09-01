@@ -8,24 +8,10 @@ import com.intellij.ui.content.ContentFactory
 import com.sxnnyside.animoria.backend.CoreProcessManager
 
 /**
- * Mounts Animoria's one UI surface into the tool window.
+ * Factory for creating the Animoria Tool Window content in JetBrains IDEs.
  *
- * ## What changed
- * This used to mount `AnimoriaGalleryPanel` — a Swing shell around 279 lines of
- * inline HTML that reimplemented, badly, a screen that already existed twice
- * elsewhere. It now mounts [AnimoriaSharedUiPanel], which loads `@animoria/ui`: the
- * same components VS Code and the sandbox render, driven by the same host bridge.
- *
- * When JCEF is unavailable the panel is the single D-09 degraded screen, not a
- * second UI. That decision is made inside [AnimoriaSharedUiPanel] rather than here,
- * so there is exactly one place that branches on `JBCefApp.isSupported()`.
- *
- * ## Lifecycle
- * The daemon starts with the tool window and stops with it. `start()` is idempotent
- * and recreates its coroutine scope, so closing and reopening the tool window
- * produces a working plugin — it previously produced one whose every feature
- * silently did nothing, because a cancelled `CoroutineScope` rejects later launches
- * without error.
+ * Initializes the native daemon process, registers the tool window instance, and constructs
+ * the content tabs (Assets gallery panel and shared UI panels for Preview, Findings, Duplicates, and Cleanup).
  */
 class AnimoriaToolWindowFactory : ToolWindowFactory {
     override fun createToolWindowContent(
@@ -35,17 +21,9 @@ class AnimoriaToolWindowFactory : ToolWindowFactory {
         val processManager = project.getService(CoreProcessManager::class.java)
         processManager.start()
 
-        // Held so a surface can bring another one forward. Telling a panel what to
-        // show and showing that panel are two different things, and only a host can
-        // do the second.
         AnimoriaToolWindows.register(project, toolWindow)
 
-        // The gallery first, because it is the product's premise.
-        //
-        // `AnimoriaTreeModel` and its renderer were complete and mounted by nothing —
-        // their only references were their own unit tests — so the tool window offered
-        // findings, duplicates and cleanup and no way to see the assets those findings
-        // are about. The "Asset" tab said "select an asset" with nothing to select.
+        // Mount native asset tree gallery tab
         val gallery = AnimoriaGalleryPanel(project, toolWindow.disposable)
         AnimoriaGalleryPanel.register(project, gallery)
         toolWindow.contentManager.addContent(

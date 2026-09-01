@@ -62,8 +62,16 @@ const targetBin = existsSync(rustTargetRelease)
     ? rustTargetDebug
     : null;
 
+import { chmodSync } from 'node:fs';
+
 if (targetBin) {
-  cpSync(targetBin, join(binDir, binName));
+  const dest = join(binDir, binName);
+  cpSync(targetBin, dest);
+  if (!isWindows) {
+    try {
+      chmodSync(dest, 0o755);
+    } catch {}
+  }
   console.log(`[animoria-vscode] native daemon binary copied from ${targetBin} into bin/`);
 } else {
   console.log(

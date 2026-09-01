@@ -8,6 +8,7 @@ import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
 import java.io.PrintWriter
+import java.util.Locale
 
 @DisplayName("JetBrains Plugin Native Daemon Integration & Behavioral Parity")
 class NativeDaemonIntegrationTest {
@@ -21,6 +22,20 @@ class NativeDaemonIntegrationTest {
         val found = candidates.firstOrNull { it.exists() && it.canExecute() }
         assertNotNull(found, "Native animoria binary must exist for integration tests. Run 'cargo build' first.")
         return found!!
+    }
+
+    /**
+     * Reads NDJSON lines until one carries an `id` (a response) rather than
+     * an `event` — the daemon announces `{"event":"ready",...}` before the
+     * first request is even sent, and a test reading exactly one line after
+     * writing its request would read that announcement instead.
+     */
+    private fun readResponseLine(reader: BufferedReader): String? {
+        while (true) {
+            val line = reader.readLine() ?: return null
+            val parsed = runCatching { Json.parseToJsonElement(line).jsonObject }.getOrNull() ?: continue
+            if (parsed.containsKey("id")) return line
+        }
     }
 
     @Test
@@ -46,7 +61,7 @@ class NativeDaemonIntegrationTest {
 
             val startNano = System.nanoTime()
             writer.println(helloReq.toString())
-            val line = reader.readLine()
+            val line = readResponseLine(reader)
             val latencyMs = (System.nanoTime() - startNano) / 1_000_000.0
             println("DEBUG DAEMON RAW LINE: $line")
 
@@ -63,7 +78,7 @@ class NativeDaemonIntegrationTest {
             assertEquals("animoria-core-rust", result!!["engine"]?.jsonPrimitive?.contentOrNull)
             assertEquals(1, result["protocol_version"]?.jsonPrimitive?.intOrNull)
 
-            println("⚡ Native Daemon Hello Handshake Latency: ${String.format("%.3f", latencyMs)} ms")
+            println("⚡ Native Daemon Hello Handshake Latency: ${String.format(Locale.ROOT, "%.3f", latencyMs)} ms")
 
             // Shutdown
             val shutdownReq =
@@ -74,7 +89,7 @@ class NativeDaemonIntegrationTest {
                     put("params", buildJsonObject {})
                 }
             writer.println(shutdownReq.toString())
-            val shutLine = reader.readLine()
+            val shutLine = readResponseLine(reader)
             assertNotNull(shutLine)
         } finally {
             proc.destroyForcibly()
@@ -112,7 +127,7 @@ class NativeDaemonIntegrationTest {
 
             val startNano = System.nanoTime()
             writer.println(scanReq.toString())
-            val line = reader.readLine()
+            val line = readResponseLine(reader)
             val scanLatencyMs = (System.nanoTime() - startNano) / 1_000_000.0
 
             assertNotNull(line, "Daemon must answer scan request")
@@ -133,7 +148,7 @@ class NativeDaemonIntegrationTest {
             assertNotNull(score)
             assertTrue(score!! >= 90, "Clean workspace score should be >= 90")
 
-            println("⚡ Native Daemon Workspace Scan Latency: ${String.format("%.3f", scanLatencyMs)} ms")
+            println("⚡ Native Daemon Workspace Scan Latency: ${String.format(Locale.ROOT, "%.3f", scanLatencyMs)} ms")
         } finally {
             proc.destroyForcibly()
         }

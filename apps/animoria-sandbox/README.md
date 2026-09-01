@@ -11,7 +11,7 @@ Iterating on webview components inside IDE extension development hosts (VS Code 
 The Sandbox provides:
 * **Instant Feedback with HMR:** Fast Vite development server reloading Lit web components instantaneously.
 * **Reference Host Contract:** Implements the canonical `HostBridge` interface, matching the message protocol consumed by VS Code WebviewPanels and JetBrains JCEF windows.
-* **Offline Mock Capabilities:** Simulates workspace analysis, multi-root switching, live daemon events, and finding diagnostics without needing an active IDE host.
+* **A real daemon, not a mock:** `src/host/rust-daemon-client.ts` spawns the same `animoria` binary VS Code and JetBrains do, over the same Protocol v1 NDJSON stdio — every screen in the sandbox is Core's real analysis of the fixtures in `fixtures/`, not a simulated one.
 
 ---
 

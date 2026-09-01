@@ -13,4 +13,7 @@ pub use context::AnalysisContext;
 pub use engine::GovernanceEngine;
 pub use policy::GovernancePolicy;
 pub use rule::Rule;
-pub use rules::{AllowedFormatsRule, MaxFileSizeRule, NoDuplicateContentRule, NoGifRule, NoUnreferencedAssetsRule};
+pub use rules::{
+    AllowedFormatsRule, MaxFileSizeRule, NoDuplicateContentRule, NoGifRule,
+    NoUnreferencedAssetsRule,
+};
