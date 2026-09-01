@@ -159,7 +159,7 @@ impl AssetReferenceDetector {
                             // An asset file cannot reference itself
                             let source_str = source_path.to_string_lossy();
                             if source_str
-                                .ends_with(&format!("/{}", &patterns[mat.pattern().as_usize()]))
+                                .ends_with(&format!("/{}", patterns[mat.pattern().as_usize()]))
                                 || source_str == *asset_path
                             {
                                 continue;

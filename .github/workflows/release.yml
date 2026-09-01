@@ -27,15 +27,6 @@ permissions:
   contents: write
 
 jobs:
-  # ── Version consistency is verified before anything is built or published ────
-  # The tag is the single source of truth. Every versioned artifact — the VS Code
-  # extension and the JetBrains plugin — must agree with it.
-  #
-  # This job exists because the JetBrains plugin version was previously a hardcoded
-  # literal in build.gradle.kts that no check compared against the tag: every release
-  # after the first therefore republished the same version, the Marketplace rejected
-  # it as a duplicate, and (because the publish step was `continue-on-error`) the
-  # release reported success while the plugin silently never updated.
   verify-versions:
     name: Verify version consistency
     runs-on: ubuntu-latest
@@ -84,11 +75,6 @@ jobs:
     name: Build native daemon (${{ matrix.platform_arch }})
     needs: verify-versions
     strategy:
-      # Every entry here is a real vsce/Open VSX platform target string — the
-      # VS Code packaging step below reuses these names directly. A platform
-      # missing from this matrix is a platform the extension ships with no
-      # native binary, and the JetBrains plugin falls back to requiring a
-      # system Rust/Node install, which most users do not have.
       matrix:
         include:
           - os: ubuntu-latest
@@ -106,10 +92,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable (2026-08-05)
 
       - name: Cache cargo registry & build
-        uses: actions/cache@6849a6489940f00c2f30c0fb92c6274307ccb58a # v4.1.2
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -122,10 +108,6 @@ jobs:
         run: cargo build --release --manifest-path packages/animoria-core-rust/Cargo.toml
 
       - name: Import macOS signing certificate
-        # A fresh runner's keychain is empty — ANIMORIA_SIGNING_IDENTITY alone
-        # names an identity, it doesn't put its certificate anywhere codesign
-        # can find it. This decodes the exported .p12 into a throwaway keychain
-        # so the signing step below actually has something to sign with.
         if: runner.os == 'macOS'
         env:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
@@ -155,11 +137,6 @@ jobs:
           echo "codesign identities available after import: $(security find-identity -v -p codesigning build.keychain | grep -c '^[[:space:]]*[0-9]\+)')"
 
       - name: Sign and notarize macOS binary
-        # An ad-hoc signature satisfies the loader on the machine that produced
-        # it and nothing else: Gatekeeper rejects an ad-hoc-signed binary
-        # downloaded from the internet, so a release shipping one fails to
-        # launch its daemon on every user's Mac. Missing credentials must fail
-        # this job rather than silently ship an unlaunchable binary.
         if: runner.os == 'macOS'
         env:
           ANIMORIA_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
@@ -219,8 +196,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: [verify-versions, build-native-daemon]
     env:
-      # Consumed by packages/animoria-jetbrains/build.gradle.kts. Without it the
-      # Gradle build falls back to 0.0.0-dev, which the publish step below refuses.
       ANIMORIA_VERSION: ${{ needs.verify-versions.outputs.version }}
 
     steps:
@@ -261,8 +236,6 @@ jobs:
       - name: Run tests
         run: pnpm test
 
-      # Every release-critical gate, and none of them `continue-on-error`. A release
-      # that cannot produce a correct artifact must fail rather than ship one.
       - name: Typecheck
         run: pnpm typecheck
 
@@ -297,15 +270,9 @@ jobs:
           merge-multiple: true
 
       - name: Restore native daemon executable permissions
-        # GitHub Actions artifact upload/download does not preserve the
-        # executable bit on non-Windows binaries.
         run: find native-daemon -type f -name animoria -exec chmod +x {} \;
 
       - name: Package and publish VS Code extension per platform
-        # One .vsix per target, each bundling only that platform's binary in
-        # `bin/` (see `daemon-client.ts`'s `resolveBinaryPath`, which looks
-        # there first) — a single platform-agnostic .vsix has nowhere to put
-        # four different native binaries at once.
         working-directory: packages/animoria-vscode
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
@@ -371,8 +338,6 @@ jobs:
             exit 1
           fi
 
-      # NOT `continue-on-error`. A failed Marketplace publish must fail the release:
-      # silently swallowing it is what allowed the plugin to stop updating unnoticed.
       - name: Publish to JetBrains Marketplace
         env:
           JETBRAINS_PUBLISH_TOKEN: ${{ secrets.JETBRAINS_PUBLISH_TOKEN }}
@@ -405,9 +370,6 @@ jobs:
 
   hotfix-jetbrains:
     name: Hotfix — publish JetBrains only
-    # Only runs when explicitly asked for via workflow_dispatch input, never
-    # on the tag-push trigger — this must not become a second path that
-    # publishes JetBrains on every normal release.
     if: github.event_name == 'workflow_dispatch' && inputs.hotfix_jetbrains_version != ''
     runs-on: ubuntu-latest
     env:

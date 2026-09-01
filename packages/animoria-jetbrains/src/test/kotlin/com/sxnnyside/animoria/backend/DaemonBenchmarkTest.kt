@@ -11,11 +11,26 @@ import java.io.PrintWriter
 
 @DisplayName("JetBrains Consumer Benchmark: Legacy vs Native Daemon")
 class DaemonBenchmarkTest {
+    // Same release-then-debug fallback as `NativeDaemonIntegrationTest` — CI
+    // only builds a debug binary ahead of this suite for speed, and a
+    // release-only path here made this test fail with a bare `IOException`
+    // (file not found) instead of a clear message.
+    private fun resolveNativeBinary(root: File): File {
+        val candidates =
+            listOf(
+                File(root, "packages/animoria-core-rust/target/release/animoria"),
+                File(root, "packages/animoria-core-rust/target/debug/animoria"),
+            )
+        val found = candidates.firstOrNull { it.exists() && it.canExecute() }
+        assertNotNull(found, "Native animoria binary must exist for this benchmark. Run 'cargo build' first.")
+        return found!!
+    }
+
     @Test
     @DisplayName("Benchmark Native Rust Daemon when driven by JetBrains")
     fun benchmarkNativeDaemon() {
         val root = File("../..").canonicalFile
-        val nativeBin = File(root, "packages/animoria-core-rust/target/release/animoria")
+        val nativeBin = resolveNativeBinary(root)
         val fixturesDir = File(root, "fixtures")
         val cleanWs = File(fixturesDir, "clean-workspace")
         val dupWs = File(fixturesDir, "duplicates")

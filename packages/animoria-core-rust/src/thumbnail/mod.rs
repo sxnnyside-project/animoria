@@ -43,7 +43,7 @@ pub fn resolve_thumbnail(workspace_root: &Path, asset: &Asset) -> Option<String>
         return None;
     }
 
-    let filename = format!("{}-{}.svg", asset.stem, &asset.id);
+    let filename = format!("{}-{}.svg", asset.stem, asset.id);
     let target: PathBuf = thumb_dir.join(&filename);
 
     if !target.exists() {
