@@ -516,6 +516,13 @@ impl DaemonServer {
                 let root_path = PathBuf::from(root_path_str);
                 let canonical_root = std::fs::canonicalize(&root_path).unwrap_or(root_path);
 
+                let enable_audit = req
+                    .params
+                    .get("enable_audit_log")
+                    .or_else(|| req.params.get("enableAuditLog"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true);
+
                 let root_id = canonical_root.to_string_lossy().to_string();
                 let mut index = AssetIndex::new(root_id.clone(), canonical_root.clone());
 
@@ -523,16 +530,21 @@ impl DaemonServer {
                     Ok(analysis) => {
                         let references = index.references().to_vec();
                         let duplicate_groups = index.duplicate_groups().to_vec();
-                        crate::daemon::audit::record_analysis_snapshot(&canonical_root, &analysis);
-                        crate::daemon::audit::record_audit_event(
-                            &canonical_root,
-                            crate::contracts::events::AuditEventKind::ScanCompleted,
-                            "daemon",
-                            serde_json::json!({
-                                "asset_count": analysis.assets.len(),
-                                "health_score": analysis.health_score.score,
-                            }),
-                        );
+                        if enable_audit && !analysis.assets.is_empty() {
+                            crate::daemon::audit::record_analysis_snapshot(
+                                &canonical_root,
+                                &analysis,
+                            );
+                            crate::daemon::audit::record_audit_event(
+                                &canonical_root,
+                                crate::contracts::events::AuditEventKind::ScanCompleted,
+                                "daemon",
+                                serde_json::json!({
+                                    "asset_count": analysis.assets.len(),
+                                    "health_score": analysis.health_score.score,
+                                }),
+                            );
+                        }
                         self.indices.insert(root_id, index);
 
                         #[derive(Serialize)]

@@ -13,6 +13,19 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.1.0] — 2026-09-08
+
+### Changed
+
+- Updated Gradle wrapper to `8.14.4` ensuring full compatibility with Kotlin 2.5 without deprecation warnings.
+- Updated `kotlinx-serialization-json` dependency to `1.11.0`.
+
+### Fixed
+
+- Corrected redundant null-check condition in `JetBrainsHostBridge.kt` when parsing and confirming rewrite proposals.
+
+---
+
 ## [2.0.0] — 2026-08-31
 
 ### Added
@@ -66,7 +79,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/sxnnyside-project/animoria/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/sxnnyside-project/animoria/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/sxnnyside-project/animoria/releases/tag/v1.0.0
 [0.2.0]: https://github.com/sxnnyside-project/animoria/releases/tag/v0.2.0

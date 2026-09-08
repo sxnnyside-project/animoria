@@ -2,7 +2,7 @@
   "name": "animoria-vscode",
   "displayName": "Animoria",
   "description": "Visual Asset Governance for developers \u2014 discover, preview, trace, and clean up animated (Lottie, dotLottie, Rive, GIF, APNG, SVG) and static (SVG, PNG, JPEG, WebP, AVIF) assets directly inside VS Code.",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "publisher": "SxnnysideProject",
   "author": {
     "name": "Sxnnyside Project",
@@ -224,6 +224,16 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Generate static thumbnail previews for animated assets in the gallery sidebar. Rendered natively \u2014 no Chrome/Chromium installation required."
+        },
+        "animoria.enableAuditLog": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Persist scan snapshots and audit events to `.animoria/audit-log.jsonl` and `snapshots.jsonl`. When disabled (default), routine scans do not write audit logs to disk."
+        },
+        "animoria.autoGitignore": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Automatically ensure `.animoria/` is listed in `.gitignore` when visual assets are indexed in a Git repository."
         }
       }
     },

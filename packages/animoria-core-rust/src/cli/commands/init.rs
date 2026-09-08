@@ -48,6 +48,37 @@ pub fn execute_init(target_path: &Path, force: bool) -> anyhow::Result<i32> {
         println!("  {} Created {}", success("✔"), success(".animoriaignore"));
     }
 
+    let gitignore_path = canonical.join(".gitignore");
+    if gitignore_path.is_file() {
+        if let Ok(content) = fs::read_to_string(&gitignore_path) {
+            let already_ignored = content.lines().any(|l| {
+                let trimmed = l.trim();
+                trimmed == ".animoria"
+                    || trimmed == ".animoria/"
+                    || trimmed == "/.animoria"
+                    || trimmed == "/.animoria/"
+                    || trimmed == "**/.animoria"
+                    || trimmed == "**/.animoria/**"
+            });
+            if !already_ignored {
+                let entry = if content.ends_with('\n') || content.is_empty() {
+                    "\n# Animoria cache & staged cleanup\n.animoria/\n"
+                } else {
+                    "\n\n# Animoria cache & staged cleanup\n.animoria/\n"
+                };
+                if let Ok(mut file) = fs::OpenOptions::new().append(true).open(&gitignore_path) {
+                    use std::io::Write;
+                    let _ = write!(file, "{}", entry);
+                    println!(
+                        "  {} Updated {} (added .animoria/)",
+                        success("✔"),
+                        success(".gitignore")
+                    );
+                }
+            }
+        }
+    }
+
     println!(
         "\n  {} Run {} to audit visual assets.\n",
         success("Workspace initialized successfully!"),

@@ -661,17 +661,16 @@ class JetBrainsHostBridge(
         scope.launch {
             for (element in proposals) {
                 val proposal = parseRewriteProposal(element)
-                val accepted = proposal != null && confirmRewrite(proposal)
-                if (!accepted || proposal == null) continue
-
-                call(
-                    Method.APPLY_REFERENCE_REWRITE,
-                    buildJsonObject {
-                        put("workspace_path", workspacePath)
-                        put("proposal", proposal.raw)
-                    },
-                    "Could not rewrite ${proposal.fileName}.",
-                )
+                if (proposal != null && confirmRewrite(proposal)) {
+                    call(
+                        Method.APPLY_REFERENCE_REWRITE,
+                        buildJsonObject {
+                            put("workspace_path", workspacePath)
+                            put("proposal", proposal.raw)
+                        },
+                        "Could not rewrite ${proposal.fileName}.",
+                    )
+                }
             }
         }
     }

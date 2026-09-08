@@ -13,6 +13,21 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.1.0] — 2026-09-08
+
+### Added
+
+- **Multi-Root Scanning**: `scanWorkspace()` now traverses all open workspace folders, aggregating health scores and displaying combined diagnostics across multi-root repositories.
+- **Gitignore Integration**: Automatically adds `.animoria/` to the workspace's `.gitignore` if git is initialized and assets are indexed.
+- **Configurable Audit Logging**: New setting `animoria.enableAuditLog` (default: `false`) prevents generation of `.animoria/audit-log.jsonl` and snapshots in repositories with no assets or when disabled.
+- **Configurable Gitignore Automation**: New setting `animoria.autoGitignore` (default: `true`).
+
+### Changed
+
+- Status bar indicator now displays asset counts aggregated across all active workspace folders.
+
+---
+
 ## [2.0.0] — 2026-08-31
 
 ### Added
@@ -86,7 +101,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/sxnnyside-project/animoria/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/sxnnyside-project/animoria/compare/v1.0.1...v2.0.0
 [1.0.0]: https://github.com/sxnnyside-project/animoria/releases/tag/v1.0.0
 [0.2.0]: https://github.com/sxnnyside-project/animoria/compare/v0.1.0...v0.2.0

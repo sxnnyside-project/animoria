@@ -207,12 +207,17 @@ export class VsCodeDaemonClient {
 
   public async scan(
     workspacePath: string,
-    customIgnorePatterns: string[] = []
+    customIgnorePatterns: string[] = [],
+    enableAuditLog?: boolean
   ): Promise<DaemonScanResult> {
-    return this.request<DaemonScanResult>('scan', {
+    const params: Record<string, unknown> = {
       workspace_path: workspacePath,
       custom_ignore_patterns: customIgnorePatterns,
-    });
+    };
+    if (typeof enableAuditLog === 'boolean') {
+      params.enable_audit_log = enableAuditLog;
+    }
+    return this.request<DaemonScanResult>('scan', params);
   }
 
   public async check(
@@ -223,6 +228,12 @@ export class VsCodeDaemonClient {
       workspace_path: workspacePath,
       custom_ignore_patterns: customIgnorePatterns,
     });
+  }
+
+  public async aggregateHealthScores(
+    roots: { report: WorkspaceAnalysis['health_score']; asset_count: number }[]
+  ): Promise<WorkspaceAnalysis['health_score']> {
+    return this.request<WorkspaceAnalysis['health_score']>('aggregateHealthScores', { roots });
   }
 
   /** Builds a `ResolutionPlan` for keeping one candidate in a duplicate group. */

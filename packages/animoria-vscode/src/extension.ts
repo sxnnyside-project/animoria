@@ -18,6 +18,7 @@ import {
 import { AnimoriaFileWatcher } from './watchers/animoria-file-watcher.js';
 import { ActiveEditorTracker } from './workspace-context/active-editor-tracker.js';
 import { buildIntegrationContext } from './workspace-context/build-integration-context.js';
+import { ensureGitignoreContainsAnimoria } from './workspace-context/gitignore.js';
 
 export class GovernanceReportContentProvider implements vscode.TextDocumentContentProvider {
   private _content = '';
@@ -42,13 +43,13 @@ let treeProvider: AnimoriaTreeProvider;
 let daemonClient: VsCodeDaemonClient | undefined;
 let fileWatcher: AnimoriaFileWatcher | undefined;
 let lastAnalysis: WorkspaceAnalysis | undefined;
+let lastAnalysisRoots: WorkspaceAnalysis[] = [];
 let lastReferences: UsageReference[] = [];
 let lastDuplicateGroups: DuplicateGroup[] = [];
 let hoverRegistration: vscode.Disposable | undefined;
 let diagnosticPublisher: DiagnosticPublisher | undefined;
 let activeEditorTracker: ActiveEditorTracker | undefined;
 
-// Only one workspace root is supported today, so indexerForRoot/indexerForPath ignore the id/path given.
 function createSessionAdapter(): WorkspaceSession {
   const folders = vscode.workspace.workspaceFolders ?? [];
   const rootPath = folders[0]?.uri.fsPath ?? process.cwd();
@@ -58,31 +59,45 @@ function createSessionAdapter(): WorkspaceSession {
     if (p) refCounts[p] = (refCounts[p] ?? 0) + 1;
   }
 
+  const effectiveRoots =
+    lastAnalysisRoots.length > 0 ? lastAnalysisRoots : lastAnalysis ? [lastAnalysis] : [];
+  const allAssets =
+    effectiveRoots.length > 0
+      ? effectiveRoots.flatMap((r) => r.assets)
+      : (lastAnalysis?.assets ?? []);
+
   return {
     identity: 'root',
     roots: folders.map((f, i) => ({ id: `root-${i}`, name: f.name, path: f.uri.fsPath })),
     getAnalysis: (): MultiRootAnalysis => ({
-      roots: lastAnalysis ? [lastAnalysis] : [],
-      assets: lastAnalysis?.assets ?? [],
+      roots: effectiveRoots,
+      assets: allAssets,
       duplicateGroups: lastDuplicateGroups,
       referenceCounts: refCounts,
       readiness: { referencesResolved: true },
     }),
-    indexerForRoot: (_id: string) =>
-      lastAnalysis
+    indexerForRoot: (id: string) => {
+      const index = Number(id.replace('root-', ''));
+      const analysis =
+        effectiveRoots[index] ?? effectiveRoots.find((r) => r.root_id === id) ?? lastAnalysis;
+      return analysis
         ? {
-            getAnalysis: () => lastAnalysis as WorkspaceAnalysis,
+            getAnalysis: () => analysis,
             usageReferencesFor: (assetPath: string) =>
               lastReferences.filter((r) => r.asset_id === assetPath),
           }
-        : null,
-    indexerForPath: (_path: string) => ({
-      root: { path: rootPath },
-      indexer: {
-        usageReferencesFor: (assetPath: string) =>
-          lastReferences.filter((r) => r.asset_id === assetPath),
-      },
-    }),
+        : null;
+    },
+    indexerForPath: (path: string) => {
+      const match = folders.find((f) => path.startsWith(f.uri.fsPath));
+      return {
+        root: { path: match?.uri.fsPath ?? rootPath },
+        indexer: {
+          usageReferencesFor: (assetPath: string) =>
+            lastReferences.filter((r) => r.asset_id === assetPath),
+        },
+      };
+    },
   };
 }
 
@@ -271,6 +286,13 @@ export async function activate(context: vscode.ExtensionContext) {
       const workspacePath = folders[0]?.uri.fsPath ?? process.cwd();
 
       try {
+        const autoGitignore = vscode.workspace
+          .getConfiguration('animoria')
+          .get<boolean>('autoGitignore', true);
+        if (autoGitignore) {
+          void ensureGitignoreContainsAnimoria(workspacePath);
+        }
+
         // Uses the daemon's plan-based trash (.animoria/trash/, restorable), not vscode.workspace.fs.delete.
         await daemonClient.trashAsset(workspacePath, assetId, path);
         void scanWorkspace();
@@ -356,43 +378,98 @@ export async function deactivate() {
   }
 }
 
-// Only scans the first workspace folder; multi-root support isn't implemented yet (matches createSessionAdapter).
+// Scans all open workspace folders and aggregates multi-root analysis.
 async function scanWorkspace(): Promise<void> {
   const folders = vscode.workspace.workspaceFolders;
   if (!folders || folders.length === 0 || !daemonClient) return;
 
-  const first = folders[0];
-  if (!first) return;
-  const rootPath = first.uri.fsPath;
-
   try {
-    const result = await daemonClient.scan(rootPath);
-    lastAnalysis = result.analysis;
-    lastReferences = result.references;
-    lastDuplicateGroups = result.duplicate_groups;
+    const enableAuditLog = vscode.workspace
+      .getConfiguration('animoria')
+      .get<boolean>('enableAuditLog', false);
+    const autoGitignore = vscode.workspace
+      .getConfiguration('animoria')
+      .get<boolean>('autoGitignore', true);
 
-    treeProvider.updateAnalysis(result.analysis, result.references, result.duplicate_groups);
+    const scannedRoots: WorkspaceAnalysis[] = [];
+    const allReferences: UsageReference[] = [];
+    const allDuplicateGroups: DuplicateGroup[] = [];
+
+    for (const folder of folders) {
+      const rootPath = folder.uri.fsPath;
+      try {
+        const result = await daemonClient.scan(rootPath, [], enableAuditLog);
+        scannedRoots.push(result.analysis);
+        allReferences.push(...result.references);
+        allDuplicateGroups.push(...result.duplicate_groups);
+
+        if (autoGitignore && result.analysis.assets.length > 0) {
+          void ensureGitignoreContainsAnimoria(rootPath);
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        vscode.window.showErrorMessage(`Animoria Scan Failed for "${folder.name}": ${msg}`);
+      }
+    }
+
+    const firstScanned = scannedRoots[0];
+    const firstFolder = folders[0];
+    if (!firstScanned || !firstFolder) return;
+
+    lastAnalysisRoots = scannedRoots;
+    lastReferences = allReferences;
+    lastDuplicateGroups = allDuplicateGroups;
+
+    let combinedHealth = firstScanned.health_score;
+    if (scannedRoots.length > 1) {
+      try {
+        combinedHealth = await daemonClient.aggregateHealthScores(
+          scannedRoots.map((r) => ({
+            report: r.health_score,
+            asset_count: r.assets.length,
+          }))
+        );
+      } catch {
+        // Fallback to first root score
+      }
+    }
+
+    const combinedAnalysis: WorkspaceAnalysis = {
+      root_id: scannedRoots.length === 1 ? firstScanned.root_id : 'multi-root',
+      root_path: firstFolder.uri.fsPath,
+      state: scannedRoots.every((r) => r.state === 'ready') ? 'ready' : 'incomplete',
+      assets: scannedRoots.flatMap((r) => r.assets),
+      diagnostics: scannedRoots.flatMap((r) => r.diagnostics),
+      health_score: combinedHealth,
+      indexed_at_ms: Date.now(),
+    };
+
+    lastAnalysis = combinedAnalysis;
+
+    treeProvider.updateAnalysis(combinedAnalysis, allReferences, allDuplicateGroups);
 
     if (diagnosticPublisher) {
-      diagnosticPublisher.publish(result.analysis);
+      diagnosticPublisher.publish(combinedAnalysis);
     }
 
     const refCounts: Record<string, number> = {};
-    for (const r of result.references) {
+    for (const r of allReferences) {
       const p = r.asset_id;
       if (p) refCounts[p] = (refCounts[p] ?? 0) + 1;
     }
 
     AnimoriaWorkspacePanel.broadcast({
-      roots: [result.analysis],
-      assets: result.analysis.assets,
-      duplicateGroups: result.duplicate_groups,
+      roots: scannedRoots,
+      assets: combinedAnalysis.assets,
+      duplicateGroups: allDuplicateGroups,
       referenceCounts: refCounts,
       readiness: { referencesResolved: true },
     });
 
+    const rootSummary =
+      scannedRoots.length > 1 ? ` across ${scannedRoots.length} workspace folders` : '';
     vscode.window.setStatusBarMessage(
-      `Animoria: ${result.analysis.assets.length} assets indexed (Health: ${result.analysis.health_score?.score ?? 100}%)`,
+      `Animoria: ${combinedAnalysis.assets.length} assets indexed${rootSummary} (Health: ${combinedAnalysis.health_score?.score ?? 100}%)`,
       4000
     );
   } catch (err: unknown) {

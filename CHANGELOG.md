@@ -13,6 +13,31 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.1.0] — 2026-09-08
+
+### Added
+
+- **Ergonomics DX / Zero-Asset Quiet Mode**: The daemon no longer creates the `.animoria/` governance directory, `audit-log.jsonl`, or `snapshots.jsonl` when opening workspaces that contain zero visual assets.
+- **Git Ignore Auto-Provisioning**: Automatically appends `.animoria/` to `.gitignore` when initializing workspaces or indexing visual assets in Git repositories.
+- **Multi-Root Workspace Scanning**: VS Code extension now indexes and aggregates diagnostics across all configured `workspaceFolders` rather than only the first root.
+- **New VS Code Settings**:
+  - `animoria.enableAuditLog` (boolean, default: `false`): Enables writing governance audit logs and snapshots to `.animoria/`.
+  - `animoria.autoGitignore` (boolean, default: `true`): Automatically configures `.gitignore` when visual assets are indexed.
+
+### Changed
+
+- **Build / Toolchain**:
+  - Upgraded JetBrains plugin Gradle wrapper to `8.14.4` to eliminate deprecation warnings under Kotlin 2.5 while preserving Gradle 8 plugin compatibility.
+  - Bumped CI actions `actions/setup-java` to v6.0.0 and `softprops/action-gh-release` to v3.0.3.
+  - Bumped `kotlinx-serialization-json` to 1.11.0.
+
+### Fixed
+
+- JetBrains: Corrected redundant boolean condition when evaluating rewrite proposals in `JetBrainsHostBridge.kt`.
+- Rust Core: Suppressed `ts-rs` serde attribute parsing warnings using the official `no-serde-warnings` crate feature.
+
+---
+
 ## [2.0.0] — 2026-08-31
 
 ### Added
@@ -102,7 +127,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/sxnnyside-project/animoria/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/sxnnyside-project/animoria/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/sxnnyside-project/animoria/releases/tag/v1.0.0
 [0.2.0]: https://github.com/sxnnyside-project/animoria/compare/v0.1.0...v0.2.0

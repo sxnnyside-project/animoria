@@ -1,6 +1,6 @@
 [package]
 name = "animoria-core"
-version = "2.0.0"
+version = "2.1.0"
 edition = "2021"
 authors = ["Sxnnyside Project <houjou.sxnnyside@sxnnysideproject.com>"]
 description = "High-performance Rust core engine for Animoria: visual asset discovery, format parsing, usage tracing, and governance."
@@ -29,7 +29,7 @@ quick-xml = "0.41"
 aho-corasick = "1.1"
 regex = "1.11"
 base64 = "0.22"
-ts-rs = { version = "10.1", features = ["serde-compat", "serde-json-impl"], optional = true }
+ts-rs = { version = "10.1", features = ["no-serde-warnings", "serde-compat", "serde-json-impl"], optional = true }
 
 [dev-dependencies]
 tempfile = "3.17"

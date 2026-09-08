@@ -235,3 +235,49 @@ fn test_daemon_protocol_lifecycle() {
     assert!(shutdown_resp.error.is_none());
     assert!(should_exit);
 }
+
+#[test]
+fn test_scan_empty_workspace_does_not_create_animoria_folder() {
+    let empty_dir = tempfile::tempdir().unwrap();
+    let mut server = DaemonServer::new();
+
+    let scan_req = DaemonRequest {
+        protocol: PROTOCOL_VERSION,
+        id: "req-scan-empty".to_string(),
+        method: "scan".to_string(),
+        params: serde_json::json!({
+            "workspace_path": empty_dir.path().to_string_lossy().to_string(),
+        }),
+    };
+    let (scan_resp, _) = server.handle_request(scan_req);
+    assert!(scan_resp.error.is_none());
+    let animoria_folder = empty_dir.path().join(".animoria");
+    assert!(
+        !animoria_folder.exists(),
+        ".animoria folder must NOT be created when workspace has 0 assets"
+    );
+
+    // Also verify when enable_audit_log is explicitly false on workspace with assets
+    let ws_with_asset = tempfile::tempdir().unwrap();
+    std::fs::write(
+        ws_with_asset.path().join("hero.svg"),
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"></svg>"#,
+    )
+    .unwrap();
+
+    let scan_no_audit = DaemonRequest {
+        protocol: PROTOCOL_VERSION,
+        id: "req-scan-no-audit".to_string(),
+        method: "scan".to_string(),
+        params: serde_json::json!({
+            "workspace_path": ws_with_asset.path().to_string_lossy().to_string(),
+            "enable_audit_log": false,
+        }),
+    };
+    let (no_audit_resp, _) = server.handle_request(scan_no_audit);
+    assert!(no_audit_resp.error.is_none());
+    assert!(
+        !ws_with_asset.path().join(".animoria").exists(),
+        ".animoria folder must NOT be created when enable_audit_log is false"
+    );
+}
