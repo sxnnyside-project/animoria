@@ -31,9 +31,9 @@
     "lottie-web": "5.13.0"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
-    "typescript": "^5.9.3",
+    "@types/node": "^26.4.1",
+    "typescript": "^7.0.2",
     "vite": "^8.2.1",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.0"
   }
 }
