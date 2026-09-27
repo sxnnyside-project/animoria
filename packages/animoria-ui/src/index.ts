@@ -32,6 +32,7 @@ export { AnimoriaEvidencePanel } from './components/animoria-evidence-panel.js';
 export { AnimoriaFinding } from './components/animoria-finding.js';
 export { AnimoriaHealthSummary } from './components/animoria-health-summary.js';
 export { AnimoriaStatePanel } from './components/animoria-state-panel.js';
+export { AnimoriaTimelinePanel } from './components/animoria-timeline-panel.js';
 
 export type {
   AnimationPreview,

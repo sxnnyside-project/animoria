@@ -55,10 +55,10 @@ The original "Milestone 2: v1.2.0 — Static Asset Full Implementation" was writ
 ┌────────────────────────────────────────────────────────────────────────┐
 │                        FUTURE MILESTONES ROADMAP                       │
 │                                                                        │
-│   v2.1.0 History & Governance   →   v2.2.0 Static Finish   →   v2.3.0 Automation │
-│   • Asset Timeline (pending)     • Raster downscaling         • Quick-Fix Actions│
-│   • Change Event Audits ✅        • Native static snippets     • Auto Compression │
-│   • Custom AST Linter            • (S1-S4, S7 already done)   • central Registry │
+│   v2.1.0 History & Governance   →   v2.2.0 Static Finish ✅ →   v2.3.0 Automation │
+│   • Asset Timeline ✅            • Raster downscaling ✅      • Quick-Fix Actions│
+│   • Change Event Audits ✅        • Native static snippets ✅  • Auto Compression │
+│   • Custom AST Linter            • Interactive Rive ✅        • central Registry │
 │   • Reference Rewriting ✅ (propose-diff)                                        │
 └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -67,20 +67,20 @@ The original "Milestone 2: v1.2.0 — Static Asset Full Implementation" was writ
 
 **Objective:** Deepen governance insights, historical tracking, and project policy customization.
 
-- **Visual Asset Timeline:** An interactive timeline in the preview panel illustrating when assets were added, updated, moved, or became orphaned. Not started — this is a UI feature layered on top of `AnalysisSnapshot` history (below), which now exists.
+- **Visual Asset Timeline:** ✅ **Done.** Implemented `animoria-timeline-panel` in `@animoria/ui`, rendering historical analysis snapshots and audit events directly in the UI.
 - **Governance Audit Logs & Analysis Snapshots:** ✅ **Done.** `daemon::audit` (`packages/animoria-core-rust/src/daemon/audit.rs`) records a real `AuditEvent` on every scan completion, trash, restore, and duplicate-resolution mutation, and a real `AnalysisSnapshot` after every completed scan — both appended to `.animoria/*.jsonl` and retrievable via the `listAuditEvents`/`listAnalysisSnapshots` daemon methods. `AuditEvent`/`AnalysisSnapshot` are no longer contract types with no producer.
 - **Custom AST Lint Rules:** Support for custom Abstract Syntax Tree (AST) rules in the `.animoriarc` engine. Not started — no AST-based rule infrastructure exists in `governance/` today.
-- **Visual Parity Extensions:** Bring native Rive preview capabilities (`@rive-app/canvas` web runtime) into the extension's preview pane. Not started — Rive is currently only used for a MIME-type mapping, not a live preview.
+- **Visual Parity Extensions:** ✅ **Done.** Native Rive preview runtime (`@rive-app/canvas`) integrated into `@animoria/ui` preview stage with interactive play/pause, speed, and zoom controls.
 - **Source Reference Rewriting on Duplicate Resolution:** ✅ **Done, as a propose-diff.** `remediation::reference_rewrite` computes one `ReferenceRewriteProposal` (file, line, before/after) per traced reference to an asset a `ResolutionPlan` would delete, attached to the plan's new `proposed_reference_rewrites` field — never auto-applied. A host calls the new `applyReferenceRewrite` daemon method per proposal only after a human confirms it; the method refuses if the target line has changed since the proposal was computed. Rewrites the *whole path token* (not just the filename), recomputing a real relative path from the referencing file to the canonical asset and preserving that token's own relative-path style (`./`, `../`, or bare) — one generic implementation covers all 26 traced extensions uniformly (quotes/`url()` bound the token without needing per-language parsing), matching the fact that `tracing::detector` itself is a line-heuristic scanner, not a set of per-syntax AST parsers.
 
 ---
 
-### Milestone 2: v2.2.0 — Static Asset Governance, Finished
+### Milestone 2: v2.2.0 — Static Asset Governance, Finished ✅
 
 **Objective:** Close the two remaining gaps from the Rust migration's static-asset audit (§3 above) — everything else in the original static-parity milestone is already done.
 
-- **Raster Downscaling & Thumbnails:** Extend the thumbnail engine to actually downscale and cache large static images, rather than emitting a placeholder SVG.
-- **Native Static Boilerplate Snippets:** Add SwiftUI `Image`, Flutter `Image.asset`, and Jetpack Compose `Image` snippet generators for static formats, matching the coverage motion formats already have.
+- **Raster Downscaling & Thumbnails:** ✅ **Done.** Extended `thumbnail/mod.rs` to downscale raster images (>256px) into `.animoria/thumbnails/` using the `image` crate.
+- **Native Static Boilerplate Snippets:** ✅ **Done.** Added SwiftUI `Image`, Flutter `Image.asset`, and Jetpack Compose `Image` snippet generators for static formats in `integration::snippets`.
 
 ---
 

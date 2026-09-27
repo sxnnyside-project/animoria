@@ -69,9 +69,11 @@ export class AnimoriaAssetStage extends LitElement {
   @state() private _playerError = '';
 
   @query('.lottie-mount') private _mount!: HTMLDivElement | null;
+  @query('.rive-canvas') private _riveCanvas!: HTMLCanvasElement | null;
 
   /** The `lottie-web` instance, kept untyped so the player stays a lazy import. */
   private _animation: LottieInstance | null = null;
+  private _riveInstance: { play(): void; pause(): void; cleanup(): void } | null = null;
   private _frameTimer: number | undefined;
 
   static override styles = css`
@@ -133,6 +135,15 @@ export class AnimoriaAssetStage extends LitElement {
     .lottie-mount {
       width: 280px;
       height: 280px;
+    }
+
+    .rive-canvas {
+      display: block;
+      width: 280px;
+      height: 280px;
+      max-width: 100%;
+      max-height: 280px;
+      object-fit: contain;
     }
 
     .note {
@@ -214,18 +225,46 @@ export class AnimoriaAssetStage extends LitElement {
       clearInterval(this._frameTimer);
       this._frameTimer = undefined;
     }
-    // Destroyed, not dropped. `lottie-web` holds a requestAnimationFrame loop and a
-    // resize listener per instance; leaking one per asset click is how a panel that
+    // Destroyed, not dropped. Leaking one per asset click is how a panel that
     // felt fine at first becomes unusable after ten minutes of browsing.
     this._animation?.destroy();
     this._animation = null;
+    this._riveInstance?.cleanup();
+    this._riveInstance = null;
     this._playerError = '';
     this._frame = 0;
   }
 
   private async _mountPlayer(): Promise<void> {
     const preview = this.preview;
-    if (!preview || preview.kind !== 'lottie') return;
+    if (!preview) return;
+
+    if (preview.kind === 'rive') {
+      await this.updateComplete;
+      const canvas = this._riveCanvas;
+      if (!canvas) return;
+
+      try {
+        const { Rive } = await import('@rive-app/canvas');
+        const rive = new Rive({
+          src: preview.sourceUrl,
+          canvas: canvas,
+          autoplay: this._playing,
+          onLoad: () => {
+            rive.resizeDrawingSurfaceToCanvas();
+          },
+        });
+        this._riveInstance = rive as unknown as { play(): void; pause(): void; cleanup(): void };
+      } catch (error) {
+        this._playerError =
+          error instanceof Error
+            ? `The Rive player could not start: ${error.message}`
+            : 'The Rive player could not start.';
+      }
+      return;
+    }
+
+    if (preview.kind !== 'lottie') return;
 
     // The element exists only after this render, so wait for it rather than
     // querying a mount point that is not there yet.
@@ -270,8 +309,13 @@ export class AnimoriaAssetStage extends LitElement {
 
   private _togglePlay(): void {
     this._playing = !this._playing;
-    if (this._playing) this._animation?.play();
-    else this._animation?.pause();
+    if (this._playing) {
+      this._animation?.play();
+      this._riveInstance?.play();
+    } else {
+      this._animation?.pause();
+      this._riveInstance?.pause();
+    }
   }
 
   private _scrub(frame: number): void {
@@ -310,6 +354,14 @@ export class AnimoriaAssetStage extends LitElement {
       return html`<div class="surface" style=${scale}><div class="lottie-mount"></div></div>`;
     }
 
+    if (preview.kind === 'rive') {
+      return html`
+        <div class="surface" style=${scale}>
+          <canvas class="rive-canvas" width="280" height="280"></canvas>
+        </div>
+      `;
+    }
+
     if (preview.kind === 'still') {
       return html`
         <div class="surface" style=${scale}>
@@ -326,16 +378,24 @@ export class AnimoriaAssetStage extends LitElement {
   private _renderControls() {
     const preview = this.preview;
     const isLottie = preview?.kind === 'lottie';
+    const isRive = preview?.kind === 'rive';
+    const canPlayPause = isLottie || isRive;
     const canScrub = isLottie && this._totalFrames > 0;
 
     return html`
       <div class="controls">
         ${
-          isLottie
+          canPlayPause
             ? html`
                 <button type="button" @click=${() => this._togglePlay()}>
                   ${this._playing ? 'Pause' : 'Play'}
                 </button>
+              `
+            : nothing
+        }
+        ${
+          canScrub
+            ? html`
                 <input
                   class="scrubber"
                   type="range"

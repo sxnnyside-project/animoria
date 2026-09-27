@@ -84,11 +84,26 @@ impl BenchmarkWorkspace {
             // Reference 5 assets per source file
             for r in 0..5 {
                 let target_idx = (s * 5 + r) % total_assets;
+                let folder = match target_idx % 5 {
+                    0 => "features/auth",
+                    1 => "features/dashboard",
+                    2 => "features/settings",
+                    3 => "common/icons",
+                    _ => "marketing/hero",
+                };
                 match target_idx % 4 {
-                    0 => src.push_str(&format!("import a_{r} from '../assets/features/auth/anim_{target_idx}.json';\n")),
-                    1 => src.push_str(&format!("<Icon src=\"../assets/common/icons/icon_{target_idx}.svg\" />\n")),
-                    2 => src.push_str(&format!("const img = require('../assets/features/dashboard/img_{target_idx}.png');\n")),
-                    _ => src.push_str(&format!("const g = 'assets/marketing/hero/graphic_{target_idx}.webp';\n")),
+                    0 => src.push_str(&format!(
+                        "import a_{r} from '../assets/{folder}/anim_{target_idx}.json';\n"
+                    )),
+                    1 => src.push_str(&format!(
+                        "<Icon src=\"../assets/{folder}/icon_{target_idx}.svg\" />\n"
+                    )),
+                    2 => src.push_str(&format!(
+                        "const img = require('../assets/{folder}/img_{target_idx}.png');\n"
+                    )),
+                    _ => src.push_str(&format!(
+                        "const g = 'assets/{folder}/graphic_{target_idx}.webp';\n"
+                    )),
                 }
             }
 

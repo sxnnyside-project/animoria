@@ -6,8 +6,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use super::patterns::{
-    is_line_comment_or_url, is_source_file_extension, is_valid_exact_filename_reference,
-    is_valid_stem_reference,
+    asset_matches_path_token, extract_path_token, extract_quoted_tokens, is_line_comment_or_url,
+    is_source_file_extension, is_valid_exact_filename_reference, is_valid_stem_reference,
 };
 use crate::contracts::asset::Asset;
 use crate::contracts::usage::UsageReference;
@@ -136,9 +136,25 @@ impl AssetReferenceDetector {
                     .to_lowercase();
 
                 let mut file_refs = Vec::new();
+                let mut in_block_comment = false;
 
                 for (line_idx, line) in content.lines().enumerate() {
                     let line_number = (line_idx + 1) as u32;
+                    let trimmed = line.trim();
+
+                    if in_block_comment {
+                        if trimmed.contains("*/") || trimmed.contains("-->") {
+                            in_block_comment = false;
+                        }
+                        continue;
+                    }
+
+                    if (trimmed.starts_with("/*") && !trimmed.contains("*/"))
+                        || (trimmed.starts_with("<!--") && !trimmed.contains("-->"))
+                    {
+                        in_block_comment = true;
+                        continue;
+                    }
 
                     // Skip comment lines
                     if is_line_comment_or_url(line) {
@@ -146,6 +162,11 @@ impl AssetReferenceDetector {
                     }
 
                     let mut matched_assets_on_line = std::collections::HashSet::new();
+
+                    let path_tokens_on_line: Vec<&str> = extract_quoted_tokens(line)
+                        .into_iter()
+                        .filter(|t| t.contains('/'))
+                        .collect();
 
                     // Aho-Corasick linear scan on line
                     for mat in ac.find_overlapping_iter(line) {
@@ -175,6 +196,26 @@ impl AssetReferenceDetector {
                                 continue;
                             }
 
+                            // Multi-asset disambiguation: if the line contains explicit path specifiers with '/',
+                            // the candidate asset MUST match at least one of those paths.
+                            if !path_tokens_on_line.is_empty() {
+                                let matches_any_path = path_tokens_on_line.iter().any(|token| {
+                                    asset_matches_path_token(asset_path, source_path, token)
+                                });
+                                if !matches_any_path {
+                                    continue;
+                                }
+                            }
+
+                            // Disambiguation for tokens enclosing the match
+                            if let Some(token) = extract_path_token(line, match_start, mat.end()) {
+                                if token.contains('/')
+                                    && !asset_matches_path_token(asset_path, source_path, token)
+                                {
+                                    continue;
+                                }
+                            }
+
                             let line_lower = line.to_lowercase();
 
                             if *is_exact_filename {
@@ -191,7 +232,15 @@ impl AssetReferenceDetector {
                                 }
                             }
 
-                            let confidence = if *is_exact_filename { "high" } else { "medium" };
+                            // Documentation files (.md, .mdx) get low confidence so documentation mentions
+                            // do not mask assets that are orphaned in production code
+                            let confidence = if syntax_type == "md" || syntax_type == "mdx" {
+                                "low"
+                            } else if *is_exact_filename {
+                                "high"
+                            } else {
+                                "medium"
+                            };
 
                             file_refs.push(UsageReference {
                                 asset_id: asset_path.clone(),
@@ -211,5 +260,111 @@ impl AssetReferenceDetector {
             .collect();
 
         references
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::contracts::asset::{AssetFormat, AssetKind};
+    use tempfile::tempdir;
+
+    fn make_test_asset(
+        id: &str,
+        abs_path: &str,
+        rel_path: &str,
+        filename: &str,
+        stem: &str,
+    ) -> Asset {
+        Asset {
+            id: id.to_string(),
+            path: abs_path.to_string(),
+            relative_path: rel_path.to_string(),
+            name: filename.to_string(),
+            stem: stem.to_string(),
+            size_bytes: 1024,
+            mtime_ms: 1000,
+            kind: AssetKind::Static,
+            format: AssetFormat::Png,
+            content_hash: None,
+            dimensions: None,
+            motion: None,
+            static_meta: None,
+            thumbnail_path: None,
+            is_valid: true,
+            error: None,
+        }
+    }
+
+    #[test]
+    fn test_disambiguates_homonymous_assets_by_relative_path() {
+        let dir = tempdir().unwrap();
+        let ws_root = dir.path();
+
+        let web_icon_rel = "apps/web/public/icon.png";
+        let ui_icon_rel = "packages/ui/assets/icon.png";
+
+        let web_icon_abs = ws_root.join(web_icon_rel);
+        let ui_icon_abs = ws_root.join(ui_icon_rel);
+
+        fs::create_dir_all(web_icon_abs.parent().unwrap()).unwrap();
+        fs::create_dir_all(ui_icon_abs.parent().unwrap()).unwrap();
+        fs::write(&web_icon_abs, b"fake png").unwrap();
+        fs::write(&ui_icon_abs, b"fake png").unwrap();
+
+        // Source file in apps/web referencing its local icon
+        let src_file = ws_root.join("apps/web/src/App.tsx");
+        fs::create_dir_all(src_file.parent().unwrap()).unwrap();
+        fs::write(&src_file, "import icon from '../public/icon.png';\n").unwrap();
+
+        let asset1 = make_test_asset(
+            &web_icon_abs.to_string_lossy(),
+            &web_icon_abs.to_string_lossy(),
+            web_icon_rel,
+            "icon.png",
+            "icon",
+        );
+        let asset2 = make_test_asset(
+            &ui_icon_abs.to_string_lossy(),
+            &ui_icon_abs.to_string_lossy(),
+            ui_icon_rel,
+            "icon.png",
+            "icon",
+        );
+
+        let detector = AssetReferenceDetector::new(ws_root.to_path_buf(), &[]).unwrap();
+        let refs = detector.detect_references(&[asset1, asset2]);
+
+        // Only the web icon should be referenced, not the ui icon!
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].asset_id, web_icon_abs.to_string_lossy().to_string());
+    }
+
+    #[test]
+    fn test_markdown_reference_has_low_confidence() {
+        let dir = tempdir().unwrap();
+        let ws_root = dir.path();
+
+        let icon_rel = "public/icon.png";
+        let icon_abs = ws_root.join(icon_rel);
+        fs::create_dir_all(icon_abs.parent().unwrap()).unwrap();
+        fs::write(&icon_abs, b"fake png").unwrap();
+
+        let md_file = ws_root.join("README.md");
+        fs::write(&md_file, "See [our icon](public/icon.png)\n").unwrap();
+
+        let asset = make_test_asset(
+            &icon_abs.to_string_lossy(),
+            &icon_abs.to_string_lossy(),
+            icon_rel,
+            "icon.png",
+            "icon",
+        );
+
+        let detector = AssetReferenceDetector::new(ws_root.to_path_buf(), &[]).unwrap();
+        let refs = detector.detect_references(&[asset]);
+
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].confidence, "low");
     }
 }

@@ -563,8 +563,33 @@ export const window = {
   },
 };
 
+export class CodeActionKind {
+  static readonly QuickFix = new CodeActionKind('quickfix');
+  static readonly Refactor = new CodeActionKind('refactor');
+  constructor(readonly value: string) {}
+}
+
+export class CodeAction {
+  title: string;
+  kind?: CodeActionKind;
+  diagnostics?: unknown[];
+  command?: unknown;
+  isPreferred?: boolean;
+  constructor(title: string, kind?: CodeActionKind) {
+    this.title = title;
+    this.kind = kind;
+  }
+}
+
 export const languages = {
   registerHoverProvider(_selector: unknown, _provider: unknown): Disposable {
+    return new Disposable(() => {});
+  },
+  registerCodeActionsProvider(
+    _selector: unknown,
+    _provider: unknown,
+    _metadata?: unknown
+  ): Disposable {
     return new Disposable(() => {});
   },
   /** The most recently created collection, so a test can inspect what was published. */

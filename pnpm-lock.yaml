@@ -66,6 +66,9 @@ importers:
       '@animoria/contracts':
         specifier: workspace:*
         version: link:../animoria-contracts
+      '@rive-app/canvas':
+        specifier: ^2.42.2
+        version: 2.42.2
       lit:
         specifier: ^3.3.3
         version: 3.3.3
@@ -526,6 +529,9 @@ packages:
 
   '@oxc-project/types@0.147.0':
     resolution: {integrity: sha512-IJ3s6ltHLp45S0bh7phkX+gJO7A1Wuz2EaqpAhb8WjqDwbzMiWKHhyyT42tskaWjEYXtHtVCPpnBJVT9+dcRLg==}
+
+  '@rive-app/canvas@2.42.2':
+    resolution: {integrity: sha512-NlSngaccl6L0XambU8XuK+0MT9cIbQBQrBod+/tWPLIjL/G82cXs7c6hj6wdrfk9YSVj8ZNuXcUEKoEo6YABYg==}
 
   '@rolldown/binding-android-arm-eabi@1.2.6':
     resolution: {integrity: sha512-b+jTcARdTiFLI6jB4a5XjTm0RWd6KcRfQj/I2356fxUZemiho9zQLxo0RtCuMDAyKcLo6cEltkgbQp6d1+sjjQ==}
@@ -2551,6 +2557,8 @@ snapshots:
       fastq: 1.20.1
 
   '@oxc-project/types@0.147.0': {}
+
+  '@rive-app/canvas@2.42.2': {}
 
   '@rolldown/binding-android-arm-eabi@1.2.6':
     optional: true

@@ -13,6 +13,17 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.2.0] — 2026-09-27
+
+### Added
+
+- **Precise Hover Token Bounds**: `AssetResolver` now evaluates exact cursor position within asset token boundaries, disambiguating multiple assets on the same line and eliminating whole-line false hovers.
+- **Source-Code Diagnostics & Lightbulb Quick-Fixes**: In addition to asset files, diagnostics are now published at the referencing lines in source files. Registered `AnimoriaCodeActionProvider` offering quick-fixes for duplicate resolution, cleanup review, and governance audits.
+- **Rendered Markdown Governance Preview**: The `animoria.viewGovernanceReport` command now invokes `markdown.showPreviewToSide` for an artifact-style preview instead of opening raw text.
+- **Interactive Rive Web Runtime**: Integrated Rive web player in the preview stage with play/pause and scaling controls.
+
+---
+
 ## [2.1.0] — 2026-09-08
 
 ### Added
@@ -101,7 +112,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/sxnnyside-project/animoria/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/sxnnyside-project/animoria/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/sxnnyside-project/animoria/compare/v1.0.1...v2.0.0
 [1.0.0]: https://github.com/sxnnyside-project/animoria/releases/tag/v1.0.0

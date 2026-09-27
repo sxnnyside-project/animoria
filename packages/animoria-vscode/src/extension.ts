@@ -10,6 +10,7 @@ import {
   type WorkspaceSession,
   generateSnippetsForAsset,
 } from './panels/vscode-host-bridge.js';
+import { AnimoriaCodeActionProvider } from './providers/animoria-code-action-provider.js';
 import { AnimoriaHoverProvider, HOVER_LANGUAGES } from './providers/animoria-hover-provider.js';
 import {
   AnimoriaGovernanceIssueItem,
@@ -355,6 +356,16 @@ export async function activate(context: vscode.ExtensionContext) {
   );
   context.subscriptions.push(hoverRegistration);
 
+  // Setup code action provider (lightbulb quick-fixes)
+  const codeActionRegistration = vscode.languages.registerCodeActionsProvider(
+    HOVER_LANGUAGES.map((lang) => ({ language: lang })),
+    new AnimoriaCodeActionProvider(),
+    {
+      providedCodeActionKinds: AnimoriaCodeActionProvider.providedCodeActionKinds,
+    }
+  );
+  context.subscriptions.push(codeActionRegistration);
+
   // Initial scan
   await scanWorkspace();
 
@@ -516,20 +527,18 @@ async function viewGovernanceReport(): Promise<void> {
   governanceReportContentProvider.update(markdownContent);
 
   try {
-    const doc = await vscode.workspace.openTextDocument(GOVERNANCE_REPORT_URI);
-    await vscode.window.showTextDocument(doc, {
-      preview: true,
-      viewColumn: vscode.ViewColumn.Beside,
-    });
+    // Open in rendered/styled preview mode (artifact mode)
+    await vscode.commands.executeCommand('markdown.showPreviewToSide', GOVERNANCE_REPORT_URI);
   } catch {
-    const doc = await vscode.workspace.openTextDocument({
-      language: 'markdown',
-      content: markdownContent,
-    });
-    await vscode.window.showTextDocument(doc, {
-      preview: true,
-      viewColumn: vscode.ViewColumn.Beside,
-    });
+    try {
+      await vscode.commands.executeCommand('markdown.showPreview', GOVERNANCE_REPORT_URI);
+    } catch {
+      const doc = await vscode.workspace.openTextDocument(GOVERNANCE_REPORT_URI);
+      await vscode.window.showTextDocument(doc, {
+        preview: true,
+        viewColumn: vscode.ViewColumn.Beside,
+      });
+    }
   }
 }
 

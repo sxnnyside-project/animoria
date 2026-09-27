@@ -27,31 +27,74 @@ fn needs_generated_thumbnail(format: AssetFormat) -> bool {
 }
 
 /// Resolves (and, if necessary, generates) the thumbnail path for `asset`.
-/// Returns `None` only if SVG generation itself fails (e.g. an unwritable
-/// `.animoria/thumbnails/` directory).
+/// Returns `None` only if generation itself fails.
 pub fn resolve_thumbnail(workspace_root: &Path, asset: &Asset) -> Option<String> {
     if !asset.is_valid {
         return None;
     }
 
-    if !needs_generated_thumbnail(asset.format) {
-        return Some(asset.path.clone());
+    if needs_generated_thumbnail(asset.format) {
+        let thumb_dir = workspace_root.join(".animoria").join("thumbnails");
+        if fs::create_dir_all(&thumb_dir).is_err() {
+            return None;
+        }
+
+        let filename = format!("{}-{}.svg", asset.stem, asset.id);
+        let target: PathBuf = thumb_dir.join(&filename);
+
+        if !target.exists() {
+            let svg = render_badge_svg(asset);
+            if fs::write(&target, svg).is_err() {
+                return None;
+            }
+        }
+
+        return Some(target.to_string_lossy().to_string());
     }
 
+    // Downscale large raster images (PNG, JPEG) if dimensions exceed 256px
+    if should_downscale_raster(asset) {
+        if let Some(downscaled_path) = downscale_raster_thumbnail(workspace_root, asset) {
+            return Some(downscaled_path);
+        }
+    }
+
+    Some(asset.path.clone())
+}
+
+fn should_downscale_raster(asset: &Asset) -> bool {
+    if !matches!(asset.format, AssetFormat::Png | AssetFormat::Jpeg) {
+        return false;
+    }
+
+    if let Some(dims) = asset.dimensions {
+        dims.width > 256 || dims.height > 256
+    } else {
+        asset.size_bytes > 500_000
+    }
+}
+
+fn downscale_raster_thumbnail(workspace_root: &Path, asset: &Asset) -> Option<String> {
     let thumb_dir = workspace_root.join(".animoria").join("thumbnails");
     if fs::create_dir_all(&thumb_dir).is_err() {
         return None;
     }
 
-    let filename = format!("{}-{}.svg", asset.stem, asset.id);
+    let ext = if asset.format == AssetFormat::Jpeg {
+        "jpg"
+    } else {
+        "png"
+    };
+    let filename = format!("{}-{}-thumb.{}", asset.stem, asset.id, ext);
     let target: PathBuf = thumb_dir.join(&filename);
 
-    if !target.exists() {
-        let svg = render_badge_svg(asset);
-        if fs::write(&target, svg).is_err() {
-            return None;
-        }
+    if target.exists() {
+        return Some(target.to_string_lossy().to_string());
     }
+
+    let img = image::open(&asset.path).ok()?;
+    let thumb = img.thumbnail(256, 256);
+    thumb.save(&target).ok()?;
 
     Some(target.to_string_lossy().to_string())
 }
@@ -209,5 +252,36 @@ mod tests {
             format_label(AssetFormat::DotLottie)
         );
         assert_eq!(format_label(AssetFormat::Png), "");
+    }
+
+    #[test]
+    fn downscales_large_raster_images() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws_root = dir.path();
+
+        // Create a 512x512 PNG file using image crate
+        let img = image::RgbaImage::new(512, 512);
+        let img_path = ws_root.join("huge.png");
+        img.save(&img_path).unwrap();
+
+        let mut asset = make_asset(AssetFormat::Png, true);
+        asset.id = "huge123".to_string();
+        asset.path = img_path.to_string_lossy().to_string();
+        asset.stem = "huge".to_string();
+        asset.name = "huge.png".to_string();
+        asset.dimensions = Some(crate::contracts::asset::Dimensions {
+            width: 512,
+            height: 512,
+        });
+
+        let thumb = resolve_thumbnail(ws_root, &asset).expect("thumbnail resolved");
+        assert_ne!(thumb, asset.path);
+        assert!(thumb.ends_with(".png"));
+        assert!(thumb.contains(".animoria/thumbnails"));
+
+        // Verify that the generated thumbnail is indeed <= 256x256
+        let generated_img = image::open(&thumb).expect("thumbnail opens");
+        assert!(generated_img.width() <= 256);
+        assert!(generated_img.height() <= 256);
     }
 }

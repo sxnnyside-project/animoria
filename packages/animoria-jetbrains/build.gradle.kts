@@ -26,12 +26,12 @@ repositories {
 // that only covered `compileJava`/`compileKotlin` by name and silently left
 // `compileTestJava`/`compileTestKotlin` on whatever JDK was first on PATH.
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(21)
 }
 
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(17))
+        languageVersion.set(JavaLanguageVersion.of(21))
     }
 }
 
@@ -47,12 +47,12 @@ detekt {
 }
 
 tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
-    jvmTarget = "17"
+    jvmTarget = "21"
 }
 
 intellij {
     pluginName.set("Animoria")
-    version.set("2024.1")
+    version.set("2024.2.4")
     type.set("IC")
     updateSinceUntilBuild.set(false)
     // markdown plugin for governance report rendering
@@ -249,7 +249,7 @@ tasks.named("processResources") {
 
 tasks {
     patchPluginXml {
-        sinceBuild.set("241")
+        sinceBuild.set("242")
     }
 
     test {

@@ -12,4 +12,7 @@ pub mod detector;
 pub mod patterns;
 
 pub use detector::AssetReferenceDetector;
-pub use patterns::{is_line_comment_or_url, is_source_file_extension, SOURCE_EXTENSIONS};
+pub use patterns::{
+    asset_matches_path_token, extract_path_token, extract_quoted_tokens, is_line_comment_or_url,
+    is_source_file_extension, SOURCE_EXTENSIONS,
+};

@@ -251,6 +251,32 @@ pub fn generate_snippets_for_asset(
                 )),
                 None,
             ),
+            snippet(
+                "SwiftUI Image",
+                "swift",
+                format!("Image(\"{stem}\")\n    .resizable()\n    .scaledToFit()\n    .frame(width: 100, height: 100)"),
+                Some("import SwiftUI".to_string()),
+                None,
+            ),
+            snippet(
+                "Flutter Image.asset",
+                "dart",
+                format!(
+                    "Image.asset(\n  '{}',\n  width: 100,\n  height: 100,\n  fit: BoxFit.contain,\n)",
+                    import_path.trim_start_matches("./")
+                ),
+                Some("import 'package:flutter/widgets.dart';".to_string()),
+                None,
+            ),
+            snippet(
+                "Jetpack Compose Image",
+                "kotlin",
+                format!(
+                    "Image(\n    painter = painterResource(id = R.drawable.{var_name}),\n    contentDescription = \"{stem}\",\n    modifier = Modifier.size(100.dp)\n)"
+                ),
+                Some("import androidx.compose.foundation.Image\nimport androidx.compose.ui.res.painterResource\nimport androidx.compose.ui.Modifier\nimport androidx.compose.ui.unit.dp".to_string()),
+                None,
+            ),
         ],
     }
 }
@@ -360,6 +386,39 @@ mod tests {
     }
 
     #[test]
+    fn static_formats_generate_mobile_and_web_snippets() {
+        let snippets = generate_snippets_for_asset(
+            "logo-banner",
+            AssetFormat::Png,
+            "./assets/logo-banner.png",
+            PackageManager::Pnpm,
+        );
+        let labels: Vec<&str> = snippets.iter().map(|s| s.label.as_str()).collect();
+        assert!(labels.contains(&"React / Next.js Image"));
+        assert!(labels.contains(&"SwiftUI Image"));
+        assert!(labels.contains(&"Flutter Image.asset"));
+        assert!(labels.contains(&"Jetpack Compose Image"));
+
+        let swift = snippets
+            .iter()
+            .find(|s| s.label == "SwiftUI Image")
+            .unwrap();
+        assert!(swift.code.contains("Image(\"logo-banner\")"));
+
+        let flutter = snippets
+            .iter()
+            .find(|s| s.label == "Flutter Image.asset")
+            .unwrap();
+        assert!(flutter.code.contains("'assets/logo-banner.png'"));
+
+        let compose = snippets
+            .iter()
+            .find(|s| s.label == "Jetpack Compose Image")
+            .unwrap();
+        assert!(compose.code.contains("R.drawable.logoBanner"));
+    }
+
+    #[test]
     fn static_formats_generate_image_snippets_with_no_install_hint() {
         for format in [
             AssetFormat::Svg,
@@ -371,7 +430,7 @@ mod tests {
         ] {
             let snippets =
                 generate_snippets_for_asset("icon", format, "./icon.png", PackageManager::Npm);
-            assert_eq!(snippets.len(), 4, "format {format:?}");
+            assert_eq!(snippets.len(), 7, "format {format:?}");
             assert!(snippets.iter().all(|s| s.install_hint.is_none()));
             assert!(snippets.iter().any(|s| s.label == "HTML / Astro <img>"));
         }

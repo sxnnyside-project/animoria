@@ -13,6 +13,14 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.2.0] — 2026-09-27
+
+### Added
+
+- **Editor Hover Precision with Column Checking**: `AnimoriaUsageHoverProvider` now inspects the exact cursor column (`visualPosition.column`) within token boundaries, preventing spurious full-line popups and correctly differentiating multiple referenced assets on a single line.
+
+---
+
 ## [2.1.0] — 2026-09-08
 
 ### Changed
@@ -79,7 +87,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/sxnnyside-project/animoria/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/sxnnyside-project/animoria/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/sxnnyside-project/animoria/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/sxnnyside-project/animoria/releases/tag/v1.0.0

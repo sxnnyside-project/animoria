@@ -90,7 +90,7 @@ Modern multi-module applications, mobile apps, and full-stack codebases constant
 
 ## System Requirements
 
-* **IDE Compatibility:** Any JetBrains IDE based on platform **2024.1 or later** (IntelliJ IDEA Ultimate/Community, Android Studio, WebStorm, PyCharm, GoLand, Rider, PhpStorm, CLion, DataGrip, RustRover).
+* **IDE Compatibility:** Any JetBrains IDE based on platform **2024.2 or later** (Java 21+) (IntelliJ IDEA Ultimate/Community, Android Studio, WebStorm, PyCharm, GoLand, Rider, PhpStorm, CLion, DataGrip, RustRover).
 * **Architecture:** macOS (Apple Silicon), Linux (x64/ARM64), Windows (x64).
 
 ---

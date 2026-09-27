@@ -232,6 +232,10 @@ export type AnimationPreview =
       readonly totalFrames: number;
       readonly frameRate: number;
     }
+  | {
+      readonly kind: 'rive';
+      readonly sourceUrl: string;
+    }
   /**
    * Bytes the browser animates natively — GIF, APNG, animated SVG.
    *
@@ -283,6 +287,12 @@ export function buildAnimationPreview(input: {
       frameRate: input.frameRate ?? 0,
     };
   }
+  if (input.format === 'rive' && input.sourceUrl) {
+    return {
+      kind: 'rive',
+      sourceUrl: input.sourceUrl,
+    };
+  }
   const formatLower = input.format.toLowerCase();
   if (
     STATIC_IMAGE_FORMATS.includes(formatLower as (typeof STATIC_IMAGE_FORMATS)[number]) &&
@@ -299,7 +309,7 @@ export function buildAnimationPreview(input: {
       source: input.stillUrl,
       reason:
         input.format === 'rive'
-          ? 'Rive playback needs the Rive runtime, which Animoria does not bundle. This is the frame Animoria rendered — open the file to play it.'
+          ? 'Rive playback encountered an issue reading the source bytes. This is the frame Animoria rendered instead.'
           : `Animoria could not read this ${input.format} document, so this is the frame it rendered instead.`,
     };
   }

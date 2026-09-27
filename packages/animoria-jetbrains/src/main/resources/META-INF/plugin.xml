@@ -3,7 +3,7 @@
     <name>Animoria</name>
     <vendor id="sxnnyside-project" email="support.sxnnyside@sxnnysideproject.com" url="https://github.com/sxnnyside-project">Sxnnyside Project</vendor>
 
-    <idea-version since-build="241"/>
+    <idea-version since-build="242"/>
 
     <description><![CDATA[
         <h3>Animoria — Visual Asset Governance</h3>

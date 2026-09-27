@@ -22,6 +22,15 @@ export class DiagnosticPublisher implements vscode.Disposable {
       const list = byFile.get(diagnostic.target_asset_path) ?? [];
       list.push(this._toVsCodeDiagnostic(diagnostic));
       byFile.set(diagnostic.target_asset_path, list);
+
+      // Attach diagnostic directly to the source file where the reference was traced
+      if (diagnostic.evidence_file && diagnostic.evidence_file !== diagnostic.target_asset_path) {
+        const line = Math.max(0, (diagnostic.evidence_line ?? 1) - 1);
+        const sourceRange = new vscode.Range(line, 0, line, 200);
+        const sourceList = byFile.get(diagnostic.evidence_file) ?? [];
+        sourceList.push(this._toVsCodeDiagnostic(diagnostic, sourceRange));
+        byFile.set(diagnostic.evidence_file, sourceList);
+      }
     }
 
     this._collection.clear();
@@ -38,9 +47,10 @@ export class DiagnosticPublisher implements vscode.Disposable {
     this._collection.dispose();
   }
 
-  private _toVsCodeDiagnostic(diagnostic: RuleDiagnostic): vscode.Diagnostic {
-    const range = new vscode.Range(0, 0, 0, 0);
-
+  private _toVsCodeDiagnostic(
+    diagnostic: RuleDiagnostic,
+    range: vscode.Range = new vscode.Range(0, 0, 0, 0)
+  ): vscode.Diagnostic {
     const message = [
       diagnostic.message,
       '',

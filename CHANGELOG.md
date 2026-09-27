@@ -13,6 +13,24 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.2.0] — 2026-09-27
+
+### Added
+
+- **Multi-Route Reference Disambiguation**: Path tokens (`./`, `../`, subpaths) in source files are now normalized to resolve to their exact target asset directory, eliminating false positive matches between homonymous assets in different folders.
+- **Multiline Comment Filtering**: Source code scanner ignores block comments (`/* ... */` and `<!-- ... -->`).
+- **Markdown Reference Confidence**: Asset mentions in `.md` and `.mdx` files now receive `"low"` confidence, ensuring orphan governance audits are not masked by documentation references.
+- **Cursor Column Precision in Editor Hovers**: VS Code and JetBrains hover providers now check the exact cursor column within token bounds, supporting multiple assets per line and eliminating spurious whole-line triggers.
+- **Multilingual Rive Parsing**: Rive `.riv` parser recognizes Spanish animation identifiers and candidate names.
+- **Raster Downscaling & Thumbnail Caching**: Large raster images (>256px) are automatically downscaled and cached under `.animoria/thumbnails/` to optimize WebView memory.
+- **Interactive Rive Web Player**: Added `@rive-app/canvas` runtime to `@animoria/ui` stage with play/pause, speed, and zoom controls.
+- **Native Static Boilerplate Snippets**: Generates idiomatic code snippets for SwiftUI (`Image`), Flutter (`Image.asset`), and Jetpack Compose (`Image`).
+- **Visual Asset Timeline Panel**: New Lit component (`animoria-timeline-panel`) in `@animoria/ui` rendering historical snapshots and audit events.
+- **Source-Code Diagnostics & Quick-Fixes**: In VS Code, governance diagnostics are attached directly to import lines in source files with Lightbulb Quick-Fixes (`AnimoriaCodeActionProvider`).
+- **Rendered Markdown Governance Report**: VS Code opens governance reports using `markdown.showPreviewToSide` for an artifact-style view.
+
+---
+
 ## [2.1.0] — 2026-09-08
 
 ### Added
@@ -127,7 +145,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/sxnnyside-project/animoria/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/sxnnyside-project/animoria/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/sxnnyside-project/animoria/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/sxnnyside-project/animoria/releases/tag/v1.0.0
