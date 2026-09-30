@@ -1,8 +1,32 @@
 {
-  "rules": {
-    "no-gif": "warning",
-    "max-file-size-kb": ["warning", 512],
-    "no-duplicate-content": "error",
-    "no-unreferenced-assets": "warning"
+  "$schema": "https://raw.githubusercontent.com/sxnnyside-project/animoria/main/packages/animoria-vscode/schemas/animoriarc.schema.json",
+  "files": {
+    "ignore": [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/.animoria/**"
+    ]
+  },
+  "tracing": {
+    "minStemLength": 3
+  },
+  "governance": {
+    "enabled": true,
+    "rules": {
+      "no-gif": "warning",
+      "max-file-size-kb": {
+        "severity": "warning",
+        "threshold": 512
+      },
+      "no-duplicate-content": {
+        "severity": "error",
+        "ignoreAppIcons": true
+      },
+      "no-unreferenced-assets": {
+        "severity": "warning",
+        "ignoreAppIcons": true
+      }
+    }
   }
 }

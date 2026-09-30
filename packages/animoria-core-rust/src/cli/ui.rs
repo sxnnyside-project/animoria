@@ -150,6 +150,14 @@ pub fn format_badge(format: AssetFormat) -> String {
         AssetFormat::Jpeg => colorize(YELLOW, "[JPEG]"),
         AssetFormat::Webp => colorize(CYAN, "[WebP]"),
         AssetFormat::Avif => colorize(MAGENTA, "[AVIF]"),
+        AssetFormat::Bmp => colorize(YELLOW, "[BMP]"),
+        AssetFormat::Ico => colorize(CYAN, "[ICO]"),
+        AssetFormat::Psd => colorize(BLUE, "[PSD]"),
+        AssetFormat::Tiff => colorize(GREEN, "[TIFF]"),
+        AssetFormat::Icns => colorize(MAGENTA, "[ICNS]"),
+        AssetFormat::Eps => colorize(BLUE, "[EPS]"),
+        AssetFormat::Ps => colorize(BLUE, "[PS]"),
+        AssetFormat::Odd => colorize(YELLOW, "[ODD]"),
     }
 }
 

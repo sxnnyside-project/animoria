@@ -64,6 +64,14 @@ const FORMAT_LABELS: Record<AssetFormat, string> = {
   jpeg: 'JPEG',
   webp: 'WebP',
   avif: 'AVIF',
+  bmp: 'BMP',
+  eps: 'EPS',
+  icns: 'ICNS',
+  ico: 'ICO',
+  odd: 'ODD',
+  ps: 'PostScript',
+  psd: 'Photoshop',
+  tiff: 'TIFF',
 };
 
 function buildFormatDetail(asset: Asset): string | null {

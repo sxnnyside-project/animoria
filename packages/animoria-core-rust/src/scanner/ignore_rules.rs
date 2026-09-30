@@ -73,10 +73,23 @@ impl IgnoreRules {
                 continue;
             }
 
-            push_rule(&mut rules, pattern, negate)?;
-            if !pattern.contains('/') {
-                push_rule(&mut rules, &format!("**/{pattern}"), negate)?;
-                push_rule(&mut rules, &format!("**/{pattern}/**"), negate)?;
+            let is_dir = pattern.ends_with('/');
+            let clean = pattern.trim_end_matches('/');
+
+            if is_dir {
+                push_rule(&mut rules, clean, negate)?;
+                push_rule(&mut rules, &format!("{clean}/**"), negate)?;
+                push_rule(&mut rules, &format!("**/{clean}/**"), negate)?;
+                push_rule(&mut rules, &format!("**/{clean}"), negate)?;
+            } else if !clean.contains('/') {
+                push_rule(&mut rules, clean, negate)?;
+                push_rule(&mut rules, &format!("**/{clean}"), negate)?;
+                push_rule(&mut rules, &format!("**/{clean}/**"), negate)?;
+            } else {
+                push_rule(&mut rules, clean, negate)?;
+                push_rule(&mut rules, &format!("{clean}/**"), negate)?;
+                push_rule(&mut rules, &format!("**/{clean}"), negate)?;
+                push_rule(&mut rules, &format!("**/{clean}/**"), negate)?;
             }
         }
 
@@ -86,13 +99,31 @@ impl IgnoreRules {
     }
 
     pub fn is_ignored(&self, path: &Path) -> bool {
+        let normalized = path.to_string_lossy().replace('\\', "/");
+        let path_obj = Path::new(&normalized);
+        let trimmed_str = normalized.trim_start_matches("./");
+        let trimmed_obj = Path::new(trimmed_str);
+
         let mut ignored = false;
         for rule in self.rules.iter() {
-            if rule.matcher.is_match(path) {
+            if rule.matcher.is_match(path)
+                || rule.matcher.is_match(path_obj)
+                || rule.matcher.is_match(trimmed_obj)
+            {
                 ignored = !rule.negate;
             }
         }
         ignored
+    }
+
+    pub fn is_ignored_relative(&self, path: &Path, root: &Path) -> bool {
+        if self.is_ignored(path) {
+            return true;
+        }
+        if let Ok(rel) = path.strip_prefix(root) {
+            return self.is_ignored(rel);
+        }
+        false
     }
 }
 
@@ -143,5 +174,18 @@ mod tests {
 
         assert!(!rules.is_ignored(&PathBuf::from("node_modules/keep-me.json")));
         assert!(rules.is_ignored(&PathBuf::from("node_modules/other.json")));
+    }
+
+    #[test]
+    fn trailing_slash_pattern_ignores_directory_and_all_nested_files() {
+        let rules = IgnoreRules::new(&[
+            "fixtures/".to_string(),
+            "packages/core/tests/fixtures/".to_string(),
+        ])
+        .unwrap();
+
+        assert!(rules.is_ignored(&PathBuf::from("fixtures/clean-workspace/assets/hero.json")));
+        assert!(rules.is_ignored(&PathBuf::from("packages/core/tests/fixtures/icon.png")));
+        assert!(!rules.is_ignored(&PathBuf::from("src/assets/hero.json")));
     }
 }

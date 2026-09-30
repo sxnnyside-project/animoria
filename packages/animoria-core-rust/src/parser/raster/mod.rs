@@ -21,6 +21,13 @@ pub fn parse_raster(path: &Path, asset: &mut Asset) -> Result<(), String> {
         AssetFormat::Jpeg => parse_jpeg(&buffer, asset),
         AssetFormat::Webp => parse_webp(&buffer, asset),
         AssetFormat::Avif => parse_avif(&buffer, asset),
+        AssetFormat::Bmp => parse_bmp(&buffer, asset),
+        AssetFormat::Ico => parse_ico(&buffer, asset),
+        AssetFormat::Psd => parse_psd(&buffer, asset),
+        AssetFormat::Tiff => parse_tiff(&buffer, asset),
+        AssetFormat::Icns => parse_icns(&buffer, asset),
+        AssetFormat::Eps | AssetFormat::Ps => parse_ps_eps(&buffer, asset),
+        AssetFormat::Odd => parse_odd(&buffer, asset),
         _ => Err(format!("Unsupported raster format: {:?}", asset.format)),
     }
 }
@@ -305,6 +312,187 @@ fn parse_avif(data: &[u8], asset: &mut Asset) -> Result<(), String> {
     asset.static_meta = Some(StaticMetadata {
         color_depth: Some(8),
         has_alpha: Some(true),
+    });
+    asset.is_valid = true;
+    asset.error = None;
+    Ok(())
+}
+
+fn parse_bmp(data: &[u8], asset: &mut Asset) -> Result<(), String> {
+    if data.len() < 26 || &data[0..2] != b"BM" {
+        return Err("Invalid BMP header".to_string());
+    }
+
+    // DIB header size at 14..18
+    let header_size = u32::from_le_bytes([data[14], data[15], data[16], data[17]]);
+    if header_size >= 12 && data.len() >= 26 {
+        // BITMAPINFOHEADER (size 40) or similar: width (i32) at 18..22, height (i32) at 22..26
+        let w = i32::from_le_bytes([data[18], data[19], data[20], data[21]]).unsigned_abs();
+        let h = i32::from_le_bytes([data[22], data[23], data[24], data[25]]).unsigned_abs();
+        if w > 0 && h > 0 {
+            asset.dimensions = Some(Dimensions {
+                width: w,
+                height: h,
+            });
+        }
+    }
+
+    let bpp = if data.len() >= 30 {
+        Some(u16::from_le_bytes([data[28], data[29]]) as u8)
+    } else {
+        None
+    };
+
+    asset.kind = AssetKind::Static;
+    asset.format = AssetFormat::Bmp;
+    asset.static_meta = Some(StaticMetadata {
+        color_depth: bpp,
+        has_alpha: Some(bpp == Some(32)),
+    });
+    asset.is_valid = true;
+    asset.error = None;
+    Ok(())
+}
+
+fn parse_ico(data: &[u8], asset: &mut Asset) -> Result<(), String> {
+    if data.len() < 6 || data[0..4] != [0x00, 0x00, 0x01, 0x00] {
+        return Err("Invalid ICO header".to_string());
+    }
+
+    // Number of images at offset 4..6
+    let count = u16::from_le_bytes([data[4], data[5]]);
+    if count == 0 {
+        return Err("ICO contains zero images".to_string());
+    }
+
+    // First image directory entry at offset 6..22
+    if data.len() >= 22 {
+        let mut width = data[6] as u32;
+        let mut height = data[7] as u32;
+        if width == 0 {
+            width = 256;
+        }
+        if height == 0 {
+            height = 256;
+        }
+        asset.dimensions = Some(Dimensions { width, height });
+    }
+
+    asset.kind = AssetKind::Static;
+    asset.format = AssetFormat::Ico;
+    asset.static_meta = Some(StaticMetadata {
+        color_depth: Some(32),
+        has_alpha: Some(true),
+    });
+    asset.is_valid = true;
+    asset.error = None;
+    Ok(())
+}
+
+fn parse_psd(data: &[u8], asset: &mut Asset) -> Result<(), String> {
+    if data.len() < 26 || &data[0..4] != b"8BPS" {
+        return Err("Invalid PSD header".to_string());
+    }
+
+    // Height at 14..18 (big-endian), Width at 18..22 (big-endian)
+    let height = u32::from_be_bytes([data[14], data[15], data[16], data[17]]);
+    let width = u32::from_be_bytes([data[18], data[19], data[20], data[21]]);
+    let depth = u16::from_be_bytes([data[22], data[23]]) as u8;
+
+    if width > 0 && height > 0 {
+        asset.dimensions = Some(Dimensions { width, height });
+    }
+
+    asset.kind = AssetKind::Static;
+    asset.format = AssetFormat::Psd;
+    asset.static_meta = Some(StaticMetadata {
+        color_depth: Some(depth),
+        has_alpha: Some(true),
+    });
+    asset.is_valid = true;
+    asset.error = None;
+    Ok(())
+}
+
+fn parse_tiff(data: &[u8], asset: &mut Asset) -> Result<(), String> {
+    if data.len() < 8 {
+        return Err("TIFF file too small".to_string());
+    }
+
+    let is_le = match &data[0..2] {
+        b"II" => true,
+        b"MM" => false,
+        _ => return Err("Invalid TIFF byte order mark".to_string()),
+    };
+
+    // Verify 42 magic
+    let magic = if is_le {
+        u16::from_le_bytes([data[2], data[3]])
+    } else {
+        u16::from_be_bytes([data[2], data[3]])
+    };
+
+    if magic != 42 {
+        return Err("Invalid TIFF magic number".to_string());
+    }
+
+    asset.kind = AssetKind::Static;
+    asset.format = AssetFormat::Tiff;
+    asset.static_meta = Some(StaticMetadata {
+        color_depth: Some(8),
+        has_alpha: Some(false),
+    });
+    asset.is_valid = true;
+    asset.error = None;
+    Ok(())
+}
+
+fn parse_icns(data: &[u8], asset: &mut Asset) -> Result<(), String> {
+    if data.len() < 8 || &data[0..4] != b"icns" {
+        return Err("Invalid ICNS header".to_string());
+    }
+
+    asset.kind = AssetKind::Static;
+    asset.format = AssetFormat::Icns;
+    asset.static_meta = Some(StaticMetadata {
+        color_depth: Some(32),
+        has_alpha: Some(true),
+    });
+    asset.is_valid = true;
+    asset.error = None;
+    Ok(())
+}
+
+fn parse_ps_eps(data: &[u8], asset: &mut Asset) -> Result<(), String> {
+    let is_eps = data.starts_with(b"%!PS-Adobe")
+        || data.starts_with(&[0xC5, 0xD0, 0xD3, 0xC6])
+        || asset.format == AssetFormat::Eps;
+
+    asset.kind = AssetKind::Static;
+    asset.format = if is_eps {
+        AssetFormat::Eps
+    } else {
+        AssetFormat::Ps
+    };
+    asset.static_meta = Some(StaticMetadata {
+        color_depth: None,
+        has_alpha: Some(true),
+    });
+    asset.is_valid = true;
+    asset.error = None;
+    Ok(())
+}
+
+fn parse_odd(data: &[u8], asset: &mut Asset) -> Result<(), String> {
+    if data.is_empty() {
+        return Err("Empty ODD file".to_string());
+    }
+
+    asset.kind = AssetKind::Static;
+    asset.format = AssetFormat::Odd;
+    asset.static_meta = Some(StaticMetadata {
+        color_depth: None,
+        has_alpha: None,
     });
     asset.is_valid = true;
     asset.error = None;

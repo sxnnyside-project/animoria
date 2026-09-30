@@ -1,8 +1,9 @@
-use crate::contracts::analysis::{DiagnosticSeverity, RuleDiagnostic};
+use crate::contracts::analysis::RuleDiagnostic;
 use crate::governance::context::AnalysisContext;
+use crate::governance::helpers::{is_app_icon, matches_any_pattern};
 use crate::governance::rule::Rule;
 
-/// Flags every non-canonical copy in a duplicate group as an error.
+/// Flags every non-canonical copy in a duplicate group.
 ///
 /// The canonical asset (`DuplicateGroup::canonical_asset_id`, chosen by
 /// `deduplication::cluster::find_duplicate_groups`) is deliberately exempt:
@@ -29,9 +30,26 @@ impl Rule for NoDuplicateContentRule {
                 // The canonical asset is not flagged; all duplicate copies are flagged
                 if asset_id != &group.canonical_asset_id {
                     if let Some(asset) = ctx.assets.iter().find(|a| &a.id == asset_id) {
+                        // Skip application icons if configured
+                        if ctx.policy.no_duplicate_ignore_app_icons
+                            && is_app_icon(&asset.relative_path, &asset.name)
+                        {
+                            continue;
+                        }
+
+                        // Skip assets matching custom ignore patterns
+                        if !ctx.policy.no_duplicate_ignore.is_empty()
+                            && matches_any_pattern(
+                                &asset.relative_path,
+                                &ctx.policy.no_duplicate_ignore,
+                            )
+                        {
+                            continue;
+                        }
+
                         diagnostics.push(RuleDiagnostic {
                             rule_id: self.id().to_string(),
-                            severity: DiagnosticSeverity::Error,
+                            severity: ctx.policy.no_duplicate_severity,
                             message: format!(
                                 "Asset '{}' is a byte-identical duplicate of canonical asset '{}' (SHA-256: {}).",
                                 asset.relative_path, group.canonical_asset_id, &group.content_hash[..8]

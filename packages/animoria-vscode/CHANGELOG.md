@@ -13,6 +13,20 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.2.1] — 2026-09-30
+
+### Added
+
+- **Expanded Static Asset Previews & Governance**: Native support for previewing and governing `avif`, `bmp`, `eps`, `icns`, `ico`, `jpg`/`jpeg`, `odd`, `png`, `ps`, `psd`, `tiff`, and `webp` assets.
+- **Dynamic Template & Source Tracing**: Automatic reference recognition in PHP, Blade, Twig, Jinja, Liquid, ERB, HTMX, GoHTML, CSHTML, and custom source extensions configured via `.animoriarc.json` (`tracing.includeSourceExtensions`).
+
+### Fixed
+
+- **File Watcher Debounce & Flicker Elimination**: Separated asset file changes from source reference changes with robust 300ms debounce, preventing continuous workspace re-indexing and UI diagnostic flickering during editing.
+- **Fixture Directory Ignored**: Honor `.animoriaignore` directory patterns (e.g. `fixtures/`) recursively across the workspace tree.
+
+---
+
 ## [2.2.0] — 2026-09-27
 
 ### Added
@@ -112,7 +126,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.2.1...HEAD
+[2.2.1]: https://github.com/sxnnyside-project/animoria/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/sxnnyside-project/animoria/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/sxnnyside-project/animoria/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/sxnnyside-project/animoria/compare/v1.0.1...v2.0.0

@@ -1,4 +1,4 @@
-use crate::contracts::analysis::{DiagnosticSeverity, RuleDiagnostic};
+use crate::contracts::analysis::RuleDiagnostic;
 use crate::governance::context::AnalysisContext;
 use crate::governance::rule::Rule;
 
@@ -22,7 +22,7 @@ impl Rule for MaxFileSizeRule {
             if asset.size_bytes > max_bytes {
                 diagnostics.push(RuleDiagnostic {
                     rule_id: self.id().to_string(),
-                    severity: DiagnosticSeverity::Warning,
+                    severity: ctx.policy.max_file_size_severity,
                     message: format!(
                         "Asset '{}' ({:.1} KB) exceeds maximum configured size threshold of {} KB.",
                         asset.relative_path,

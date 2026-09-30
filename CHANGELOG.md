@@ -13,6 +13,22 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.2.1] — 2026-09-30
+
+### Added
+
+- **Expanded Static Asset Discovery & Parser Engine**: Added support for `avif`, `bmp`, `eps`, `icns`, `ico`, `jpg`/`jpeg`, `odd`, `png`, `ps`, `psd`, `tiff`, and `webp` with magic-byte verification, header parsing, dimension extraction, and format badges.
+- **Dynamic Framework & Template Tracing**: Expanded built-in source code tracing to cover PHP, Blade, Twig, Liquid, ERB, Nunjucks, EJS, Handlebars, Mustache, Jinja, HEEx, HTMX, GoHTML, Razor/CSHTML, Python, Ruby, Rust, Go, C/C++, C#, and TOML.
+- **Configurable Source Extensions in `.animoriarc.json`**: Added `tracing.includeSourceExtensions` and `tracing.ignoredSourceExtensions` to governance schema and native engine, enabling custom template engines and proprietary extensions to be traced or excluded dynamically.
+- **Nested Quote Token Extraction**: Tracing engine recursively inspects inner quoted strings and HTML attributes (e.g. `src="..."` inside single-quoted strings or template literals).
+
+### Fixed
+
+- **Directory-Level `.animoriaignore` Matching**: Trailing-slash patterns (such as `fixtures/`) and relative directory exclusions are now normalized and matched recursively against nested assets, preventing unwanted fixture directories from being ingested.
+- **File Watcher Debouncing & Incremental Rescan**: Fixed aggressive re-scanning loops and error view flickering on rapid edits by debouncing change events and isolating asset modifications from source code references.
+
+---
+
 ## [2.2.0] — 2026-09-27
 
 ### Added
@@ -145,7 +161,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.2.1...HEAD
+[2.2.1]: https://github.com/sxnnyside-project/animoria/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/sxnnyside-project/animoria/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/sxnnyside-project/animoria/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/sxnnyside-project/animoria/compare/v1.0.0...v2.0.0

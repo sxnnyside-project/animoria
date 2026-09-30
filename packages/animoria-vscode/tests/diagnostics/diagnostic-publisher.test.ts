@@ -103,4 +103,32 @@ describe('DiagnosticPublisher', () => {
     publisher.clear();
     expect(collection().get({ fsPath: subject.path } as never) ?? []).toHaveLength(0);
   });
+
+  it('performs differential updates without clearing untouched files', () => {
+    const assetA = buildAsset({ path: '/workspace/assets/a.json' });
+    const assetB = buildAsset({ path: '/workspace/assets/b.json' });
+
+    publisher.publish(
+      buildAnalysis({
+        assets: [assetA, assetB],
+        diagnostics: [
+          buildDiagnostic({ target_asset_path: assetA.path }),
+          buildDiagnostic({ target_asset_path: assetB.path }),
+        ],
+      })
+    );
+    expect(collection().get({ fsPath: assetA.path } as never)).toHaveLength(1);
+    expect(collection().get({ fsPath: assetB.path } as never)).toHaveLength(1);
+
+    // Second publish: assetA problem resolved, assetB remains
+    publisher.publish(
+      buildAnalysis({
+        assets: [assetA, assetB],
+        diagnostics: [buildDiagnostic({ target_asset_path: assetB.path })],
+      })
+    );
+
+    expect(collection().get({ fsPath: assetA.path } as never) ?? []).toHaveLength(0);
+    expect(collection().get({ fsPath: assetB.path } as never)).toHaveLength(1);
+  });
 });

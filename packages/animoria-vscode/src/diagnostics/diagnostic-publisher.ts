@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
  */
 export class DiagnosticPublisher implements vscode.Disposable {
   private readonly _collection: vscode.DiagnosticCollection;
+  private _publishedPaths = new Set<string>();
 
   constructor() {
     this._collection = vscode.languages.createDiagnosticCollection('animoria');
@@ -33,18 +34,31 @@ export class DiagnosticPublisher implements vscode.Disposable {
       }
     }
 
-    this._collection.clear();
+    const currentPaths = new Set<string>(byFile.keys());
+
+    // 1. Remove diagnostics for files that are no longer reported (differential delete)
+    for (const path of this._publishedPaths) {
+      if (!currentPaths.has(path)) {
+        this._collection.delete(vscode.Uri.file(path));
+      }
+    }
+
+    // 2. Set/update diagnostics for reported files without clearing the entire collection
     for (const [path, diagnostics] of byFile) {
       this._collection.set(vscode.Uri.file(path), diagnostics);
     }
+
+    this._publishedPaths = currentPaths;
   }
 
   clear(): void {
     this._collection.clear();
+    this._publishedPaths.clear();
   }
 
   dispose(): void {
     this._collection.dispose();
+    this._publishedPaths.clear();
   }
 
   private _toVsCodeDiagnostic(

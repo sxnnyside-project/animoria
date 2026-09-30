@@ -27,7 +27,15 @@ impl ParserRegistry {
             | AssetFormat::Png
             | AssetFormat::Jpeg
             | AssetFormat::Webp
-            | AssetFormat::Avif => parse_raster(path, asset),
+            | AssetFormat::Avif
+            | AssetFormat::Bmp
+            | AssetFormat::Ico
+            | AssetFormat::Psd
+            | AssetFormat::Tiff
+            | AssetFormat::Icns
+            | AssetFormat::Eps
+            | AssetFormat::Ps
+            | AssetFormat::Odd => parse_raster(path, asset),
         };
 
         if let Err(err_msg) = result {

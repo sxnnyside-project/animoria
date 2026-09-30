@@ -24,14 +24,36 @@ use crate::scanner::ignore_rules::IgnoreRules;
 pub struct AssetReferenceDetector {
     root_path: PathBuf,
     ignore_rules: IgnoreRules,
+    included_source_extensions: Vec<String>,
+    ignored_source_extensions: Vec<String>,
+    min_stem_length: usize,
 }
 
 impl AssetReferenceDetector {
     pub fn new(root_path: PathBuf, custom_ignore_patterns: &[String]) -> anyhow::Result<Self> {
+        Self::new_with_options(root_path, custom_ignore_patterns, &[], &[], None)
+    }
+
+    pub fn new_with_options(
+        root_path: PathBuf,
+        custom_ignore_patterns: &[String],
+        included_source_extensions: &[String],
+        ignored_source_extensions: &[String],
+        min_stem_length: Option<usize>,
+    ) -> anyhow::Result<Self> {
         let ignore_rules = IgnoreRules::new(custom_ignore_patterns)?;
         Ok(Self {
             root_path,
             ignore_rules,
+            included_source_extensions: included_source_extensions
+                .iter()
+                .map(|e| e.trim_start_matches('.').to_lowercase())
+                .collect(),
+            ignored_source_extensions: ignored_source_extensions
+                .iter()
+                .map(|e| e.trim_start_matches('.').to_lowercase())
+                .collect(),
+            min_stem_length: min_stem_length.unwrap_or(3),
         })
     }
 
@@ -55,11 +77,26 @@ impl AssetReferenceDetector {
             if !path.is_file() {
                 continue;
             }
-            if self.ignore_rules.is_ignored(path) {
+            if self.ignore_rules.is_ignored(path)
+                || self.ignore_rules.is_ignored_relative(path, &self.root_path)
+            {
                 continue;
             }
             if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                if is_source_file_extension(ext) {
+                let ext_lower = ext.to_lowercase();
+                if self
+                    .ignored_source_extensions
+                    .iter()
+                    .any(|ignored| ignored == &ext_lower)
+                {
+                    continue;
+                }
+                let is_recognized = is_source_file_extension(&ext_lower)
+                    || self
+                        .included_source_extensions
+                        .iter()
+                        .any(|inc| inc == &ext_lower);
+                if is_recognized {
                     sources.push(path.to_path_buf());
                 }
             }
@@ -92,8 +129,8 @@ impl AssetReferenceDetector {
             patterns.push(asset.name.clone());
             pattern_to_asset.insert(idx1, (asset.path.clone(), asset.stem.clone(), true));
 
-            // Pattern 2: Stem (e.g. "hero", "logo") if stem length >= 3
-            if asset.stem.len() >= 3 && asset.stem != asset.name {
+            // Pattern 2: Stem (e.g. "hero", "logo") if stem length >= min_stem_length
+            if asset.stem.len() >= self.min_stem_length && asset.stem != asset.name {
                 let idx2 = patterns.len();
                 patterns.push(asset.stem.clone());
                 pattern_to_asset.insert(idx2, (asset.path.clone(), asset.stem.clone(), false));
@@ -366,5 +403,82 @@ mod tests {
 
         assert_eq!(refs.len(), 1);
         assert_eq!(refs[0].confidence, "low");
+    }
+
+    #[test]
+    fn test_ignored_source_extensions_skips_files() {
+        let dir = tempdir().unwrap();
+        let ws_root = dir.path();
+
+        let icon_rel = "public/icon.png";
+        let icon_abs = ws_root.join(icon_rel);
+        fs::create_dir_all(icon_abs.parent().unwrap()).unwrap();
+        fs::write(&icon_abs, b"fake png").unwrap();
+
+        let md_file = ws_root.join("README.md");
+        fs::write(&md_file, "See [our icon](public/icon.png)\n").unwrap();
+
+        let vue_file = ws_root.join("Component.vue");
+        fs::write(
+            &vue_file,
+            "<template><img src=\"public/icon.png\"></template>\n",
+        )
+        .unwrap();
+
+        let asset = make_test_asset(
+            &icon_abs.to_string_lossy(),
+            &icon_abs.to_string_lossy(),
+            icon_rel,
+            "icon.png",
+            "icon",
+        );
+
+        // Detector ignoring both md and vue
+        let detector = AssetReferenceDetector::new_with_options(
+            ws_root.to_path_buf(),
+            &[],
+            &[],
+            &["md".to_string(), "vue".to_string()],
+            None,
+        )
+        .unwrap();
+
+        let refs = detector.detect_references(&[asset]);
+        assert_eq!(refs.len(), 0);
+    }
+
+    #[test]
+    fn test_included_source_extensions_traces_custom_framework() {
+        let dir = tempdir().unwrap();
+        let ws_root = dir.path();
+
+        let icon_rel = "public/icon.png";
+        let icon_abs = ws_root.join(icon_rel);
+        fs::create_dir_all(icon_abs.parent().unwrap()).unwrap();
+        fs::write(&icon_abs, b"fake png").unwrap();
+
+        let custom_file = ws_root.join("Template.myframework");
+        fs::write(&custom_file, "load_asset('public/icon.png')\n").unwrap();
+
+        let asset = make_test_asset(
+            &icon_abs.to_string_lossy(),
+            &icon_abs.to_string_lossy(),
+            icon_rel,
+            "icon.png",
+            "icon",
+        );
+
+        let detector = AssetReferenceDetector::new_with_options(
+            ws_root.to_path_buf(),
+            &[],
+            &["myframework".to_string()],
+            &[],
+            None,
+        )
+        .unwrap();
+
+        let refs = detector.detect_references(&[asset]);
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].syntax_type, "myframework");
     }
 }

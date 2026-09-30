@@ -5,12 +5,14 @@
 
 pub mod context;
 pub mod engine;
+pub mod helpers;
 pub mod policy;
 pub mod rule;
 pub mod rules;
 
 pub use context::AnalysisContext;
 pub use engine::GovernanceEngine;
+pub use helpers::{is_app_icon, matches_any_pattern};
 pub use policy::GovernancePolicy;
 pub use rule::Rule;
 pub use rules::{

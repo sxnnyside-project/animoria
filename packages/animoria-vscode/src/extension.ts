@@ -389,8 +389,27 @@ export async function deactivate() {
   }
 }
 
-// Scans all open workspace folders and aggregates multi-root analysis.
+let isScanning = false;
+let scanPending = false;
+
+// Scans all open workspace folders and aggregates multi-root analysis with serialized execution.
 async function scanWorkspace(): Promise<void> {
+  if (isScanning) {
+    scanPending = true;
+    return;
+  }
+  isScanning = true;
+  try {
+    do {
+      scanPending = false;
+      await performScanWorkspace();
+    } while (scanPending);
+  } finally {
+    isScanning = false;
+  }
+}
+
+async function performScanWorkspace(): Promise<void> {
   const folders = vscode.workspace.workspaceFolders;
   if (!folders || folders.length === 0 || !daemonClient) return;
 

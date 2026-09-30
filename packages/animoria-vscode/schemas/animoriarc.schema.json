@@ -2,73 +2,99 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://raw.githubusercontent.com/sxnnyside-project/animoria/main/packages/animoria-vscode/schemas/animoriarc.schema.json",
   "title": "Animoria configuration",
-  "description": "Workspace-wide governance policy for Animoria. Every property under \"rules\" is optional — an absent rule simply does not run. This schema validates only the shapes below; unrecognized rule ids are still accepted (and reported by Animoria itself as unknown, not rejected by the editor), since a rule registered by a future Animoria version should not need this file republished to be usable.",
+  "description": "Workspace-wide governance policy and analysis configuration for Animoria.",
   "type": "object",
   "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON schema URL for editor validation and autocompletion."
+    },
+    "files": {
+      "type": "object",
+      "description": "Filesystem inclusion and ignore filters.",
+      "properties": {
+        "include": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of glob patterns for files or folders to include in scans."
+        },
+        "ignore": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of glob patterns for files or folders to ignore during scans."
+        }
+      },
+      "additionalProperties": false
+    },
+    "tracing": {
+      "type": "object",
+      "description": "Multi-syntax code reference tracing options.",
+      "properties": {
+        "ignoreSourceExtensions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Source file extensions to exclude from reference detection (e.g. [\"md\", \"mdx\", \"vue\"])."
+        },
+        "includeSourceExtensions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Additional source file extensions to trace for references (e.g. [\"php\", \"blade\", \"twig\", \"htmx\"])."
+        },
+        "minStemLength": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Minimum character length for asset stems matched in code (default: 3)."
+        },
+        "ignoreComments": {
+          "type": "boolean",
+          "description": "Whether to ignore references located inside code comments (default: true)."
+        }
+      },
+      "additionalProperties": false
+    },
+    "governance": {
+      "type": "object",
+      "description": "Governance rules and repository policy enforcement.",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable or disable governance policy evaluation globally."
+        },
+        "rules": {
+          "$ref": "#/properties/rules"
+        }
+      },
+      "additionalProperties": false
+    },
     "rules": {
       "type": "object",
-      "description": "Rule configuration, keyed by rule id. Each value is either a bare severity, or a [severity, options] tuple for rules that take options.",
+      "description": "Rule configuration, keyed by rule id. Each value is either a bare severity, a [severity, options] tuple, or a rich rule configuration object.",
       "properties": {
         "no-gif": {
-          "description": "Disallows GIF assets in favor of more efficient animated formats.",
+          "description": "Disallows GIF assets in favor of more efficient modern formats.",
           "$ref": "#/definitions/severityOnly"
         },
         "no-unreferenced-assets": {
           "description": "Disallows assets with no detected references in source code.",
-          "$ref": "#/definitions/severityOnly"
+          "$ref": "#/definitions/unreferencedRule"
         },
         "no-duplicate-content": {
           "description": "Disallows two assets with byte-identical contents.",
-          "$ref": "#/definitions/severityOnly"
+          "$ref": "#/definitions/duplicateRule"
+        },
+        "no-duplicate-names": {
+          "description": "Compatibility stub for filename duplicate checks (handled via no-duplicate-content).",
+          "$ref": "#/definitions/duplicateRule"
         },
         "max-file-size-kb": {
-          "description": "Disallows assets larger than a configured size threshold, in kibibytes.",
-          "oneOf": [
-            {
-              "type": "number",
-              "exclusiveMinimum": 0,
-              "description": "A bare limit in KB. Severity is implied \"error\"."
-            },
-            {
-              "type": "array",
-              "minItems": 2,
-              "maxItems": 2,
-              "items": [
-                { "$ref": "#/definitions/severity" },
-                { "type": "number", "exclusiveMinimum": 0 }
-              ],
-              "description": "[severity, limitKb]"
-            },
-            { "const": "off" }
-          ]
+          "$ref": "#/definitions/fileSizeRule"
         },
         "allowed-formats": {
-          "description": "Restricts which animated asset formats are permitted in the workspace.",
-          "oneOf": [
-            {
-              "type": "array",
-              "items": { "$ref": "#/definitions/animatedFormat" },
-              "description": "A bare list of permitted formats. Severity is implied \"error\"."
-            },
-            {
-              "type": "array",
-              "minItems": 2,
-              "maxItems": 2,
-              "items": [
-                { "$ref": "#/definitions/severity" },
-                {
-                  "type": "array",
-                  "items": { "$ref": "#/definitions/animatedFormat" }
-                }
-              ],
-              "description": "[severity, formats]"
-            },
-            { "const": "off" }
-          ]
+          "$ref": "#/definitions/allowedFormatsRule"
         }
       },
       "additionalProperties": {
-        "description": "A rule id this schema does not yet know about. Animoria's own config loader — not the editor — is the authority on whether it is valid."
+        "description": "A rule id this schema does not yet know about. Animoria's own config loader is the authority on whether it is valid."
       }
     }
   },
@@ -76,15 +102,174 @@
   "definitions": {
     "severity": {
       "type": "string",
-      "enum": ["error", "warning", "off"]
+      "enum": ["error", "warning", "warn", "info", "off"]
     },
     "severityOnly": {
-      "$ref": "#/definitions/severity",
-      "description": "This rule takes no options — configure it with a bare severity."
+      "oneOf": [
+        { "$ref": "#/definitions/severity" },
+        { "type": "boolean" },
+        {
+          "type": "object",
+          "properties": {
+            "severity": { "$ref": "#/definitions/severity" },
+            "enabled": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        }
+      ]
     },
-    "animatedFormat": {
+    "unreferencedRule": {
+      "oneOf": [
+        { "$ref": "#/definitions/severity" },
+        { "type": "boolean" },
+        {
+          "type": "object",
+          "properties": {
+            "severity": { "$ref": "#/definitions/severity" },
+            "enabled": { "type": "boolean" },
+            "ignoreAppIcons": {
+              "type": "boolean",
+              "description": "Ignore application icons across different resolutions (iOS AppIcon.appiconset, Android mipmaps, favicons, etc.)."
+            },
+            "ignore": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Glob patterns of assets to exempt from unreferenced asset checks."
+            },
+            "ignoreSourceExtensions": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Source file extensions whose references should NOT count towards marking the asset as used (e.g. [\"md\", \"vue\"])."
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "duplicateRule": {
+      "oneOf": [
+        { "$ref": "#/definitions/severity" },
+        { "type": "boolean" },
+        {
+          "type": "object",
+          "properties": {
+            "severity": { "$ref": "#/definitions/severity" },
+            "enabled": { "type": "boolean" },
+            "ignoreAppIcons": {
+              "type": "boolean",
+              "description": "Ignore identical or multi-size app icons in platform catalog directories from being flagged as duplicates."
+            },
+            "ignore": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Glob patterns of assets to exempt from duplicate checks."
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "fileSizeRule": {
+      "description": "Disallows assets larger than a configured size threshold, in kibibytes.",
+      "oneOf": [
+        {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "A bare limit in KB. Severity is implied \"error\"."
+        },
+        {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": [
+            { "$ref": "#/definitions/severity" },
+            { "type": "number", "exclusiveMinimum": 0 }
+          ],
+          "description": "[severity, limitKb]"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "severity": { "$ref": "#/definitions/severity" },
+            "enabled": { "type": "boolean" },
+            "threshold": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Maximum allowed size in kilobytes."
+            },
+            "maxKb": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Alias for threshold in kilobytes."
+            }
+          },
+          "additionalProperties": false
+        },
+        { "const": "off" }
+      ]
+    },
+    "allowedFormatsRule": {
+      "description": "Restricts which visual asset formats are permitted in the workspace.",
+      "oneOf": [
+        {
+          "type": "array",
+          "items": { "$ref": "#/definitions/assetFormat" },
+          "description": "A bare list of permitted formats. Severity is implied \"error\"."
+        },
+        {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": [
+            { "$ref": "#/definitions/severity" },
+            {
+              "type": "array",
+              "items": { "$ref": "#/definitions/assetFormat" }
+            }
+          ],
+          "description": "[severity, formats]"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "severity": { "$ref": "#/definitions/severity" },
+            "enabled": { "type": "boolean" },
+            "formats": {
+              "type": "array",
+              "items": { "$ref": "#/definitions/assetFormat" },
+              "description": "List of allowed asset formats."
+            }
+          },
+          "additionalProperties": false
+        },
+        { "const": "off" }
+      ]
+    },
+    "assetFormat": {
       "type": "string",
-      "enum": ["lottie", "dotlottie", "rive", "gif", "apng", "animated-svg"]
+      "enum": [
+        "lottie",
+        "dotlottie",
+        "rive",
+        "gif",
+        "apng",
+        "animated-svg",
+        "svg",
+        "png",
+        "jpg",
+        "jpeg",
+        "webp",
+        "avif",
+        "bmp",
+        "eps",
+        "icns",
+        "ico",
+        "odd",
+        "ps",
+        "psd",
+        "tiff",
+        "tif"
+      ]
     }
   }
 }

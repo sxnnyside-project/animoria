@@ -20,6 +20,14 @@ pub fn detect_format(path: &Path) -> Option<Result<AssetFormat, String>> {
         "jpg" | "jpeg" => detect_jpeg(path),
         "webp" => detect_webp(path),
         "avif" => detect_avif(path),
+        "bmp" => detect_bmp(path),
+        "eps" => detect_eps(path),
+        "icns" => detect_icns(path),
+        "ico" | "cur" => detect_ico(path),
+        "odd" => detect_odd(path),
+        "ps" => detect_ps(path),
+        "psd" => detect_psd(path),
+        "tiff" | "tif" => detect_tiff(path),
         _ => None,
     }
 }
@@ -197,5 +205,109 @@ fn detect_avif(path: &Path) -> Option<Result<AssetFormat, String>> {
         Some(Ok(AssetFormat::Avif))
     } else {
         Some(Err("Invalid AVIF ftyp box".to_string()))
+    }
+}
+
+fn detect_bmp(path: &Path) -> Option<Result<AssetFormat, String>> {
+    let header = match read_header(path, 2) {
+        Ok(h) => h,
+        Err(e) => return Some(Err(format!("Cannot read BMP file: {e}"))),
+    };
+    if header.len() >= 2 && &header[0..2] == b"BM" {
+        Some(Ok(AssetFormat::Bmp))
+    } else {
+        Some(Err("Invalid BMP magic header (expected 'BM')".to_string()))
+    }
+}
+
+fn detect_eps(path: &Path) -> Option<Result<AssetFormat, String>> {
+    let header = match read_header(path, 4) {
+        Ok(h) => h,
+        Err(e) => return Some(Err(format!("Cannot read EPS file: {e}"))),
+    };
+    if (header.len() >= 4 && &header[0..4] == b"%!PS")
+        || (header.len() >= 4 && header[0..4] == [0xC5, 0xD0, 0xD3, 0xC6])
+    {
+        Some(Ok(AssetFormat::Eps))
+    } else {
+        Some(Err("Invalid EPS header".to_string()))
+    }
+}
+
+fn detect_icns(path: &Path) -> Option<Result<AssetFormat, String>> {
+    let header = match read_header(path, 4) {
+        Ok(h) => h,
+        Err(e) => return Some(Err(format!("Cannot read ICNS file: {e}"))),
+    };
+    if header.len() >= 4 && &header[0..4] == b"icns" {
+        Some(Ok(AssetFormat::Icns))
+    } else {
+        Some(Err("Invalid ICNS header (expected 'icns')".to_string()))
+    }
+}
+
+fn detect_ico(path: &Path) -> Option<Result<AssetFormat, String>> {
+    let header = match read_header(path, 4) {
+        Ok(h) => h,
+        Err(e) => return Some(Err(format!("Cannot read ICO file: {e}"))),
+    };
+    if header.len() >= 4
+        && (header[0..4] == [0x00, 0x00, 0x01, 0x00] || header[0..4] == [0x00, 0x00, 0x02, 0x00])
+    {
+        Some(Ok(AssetFormat::Ico))
+    } else {
+        Some(Err("Invalid ICO header".to_string()))
+    }
+}
+
+fn detect_odd(path: &Path) -> Option<Result<AssetFormat, String>> {
+    let header = match read_header(path, 4) {
+        Ok(h) => h,
+        Err(e) => return Some(Err(format!("Cannot read ODD file: {e}"))),
+    };
+    if !header.is_empty() {
+        Some(Ok(AssetFormat::Odd))
+    } else {
+        Some(Err("Empty ODD file".to_string()))
+    }
+}
+
+fn detect_ps(path: &Path) -> Option<Result<AssetFormat, String>> {
+    let header = match read_header(path, 4) {
+        Ok(h) => h,
+        Err(e) => return Some(Err(format!("Cannot read PS file: {e}"))),
+    };
+    if header.len() >= 4 && &header[0..4] == b"%!PS" {
+        Some(Ok(AssetFormat::Ps))
+    } else {
+        Some(Err(
+            "Invalid PostScript header (expected '%!PS')".to_string()
+        ))
+    }
+}
+
+fn detect_psd(path: &Path) -> Option<Result<AssetFormat, String>> {
+    let header = match read_header(path, 4) {
+        Ok(h) => h,
+        Err(e) => return Some(Err(format!("Cannot read PSD file: {e}"))),
+    };
+    if header.len() >= 4 && &header[0..4] == b"8BPS" {
+        Some(Ok(AssetFormat::Psd))
+    } else {
+        Some(Err("Invalid PSD header (expected '8BPS')".to_string()))
+    }
+}
+
+fn detect_tiff(path: &Path) -> Option<Result<AssetFormat, String>> {
+    let header = match read_header(path, 4) {
+        Ok(h) => h,
+        Err(e) => return Some(Err(format!("Cannot read TIFF file: {e}"))),
+    };
+    if header.len() >= 4
+        && (header[0..4] == [0x49, 0x49, 0x2A, 0x00] || header[0..4] == [0x4D, 0x4D, 0x00, 0x2A])
+    {
+        Some(Ok(AssetFormat::Tiff))
+    } else {
+        Some(Err("Invalid TIFF byte order indicator".to_string()))
     }
 }

@@ -1,7 +1,64 @@
 pub const SOURCE_EXTENSIONS: &[&str] = &[
-    "ts", "tsx", "js", "jsx", "mjs", "cjs", "vue", "svelte", "astro", "kt", "kts", "java", "swift",
-    "dart", "html", "htm", "css", "scss", "sass", "less", "md", "mdx", "json", "xml", "yml",
+    "ts",
+    "tsx",
+    "js",
+    "jsx",
+    "mjs",
+    "cjs",
+    "vue",
+    "svelte",
+    "astro",
+    "kt",
+    "kts",
+    "java",
+    "swift",
+    "dart",
+    "html",
+    "htm",
+    "css",
+    "scss",
+    "sass",
+    "less",
+    "md",
+    "mdx",
+    "json",
+    "xml",
+    "yml",
     "yaml",
+    "php",
+    "phtml",
+    "blade",
+    "twig",
+    "erb",
+    "liquid",
+    "njk",
+    "nunjucks",
+    "ejs",
+    "hbs",
+    "handlebars",
+    "mustache",
+    "jinja",
+    "jinja2",
+    "j2",
+    "heex",
+    "eex",
+    "leex",
+    "htmx",
+    "gohtml",
+    "gotmpl",
+    "razor",
+    "cshtml",
+    "vbhtml",
+    "py",
+    "rb",
+    "rs",
+    "go",
+    "c",
+    "cpp",
+    "h",
+    "hpp",
+    "cs",
+    "toml",
 ];
 
 pub fn is_source_file_extension(ext: &str) -> bool {
@@ -163,7 +220,11 @@ pub fn extract_quoted_tokens(line: &str) -> Vec<&str> {
                 }
             }
             if j <= bytes.len() {
-                tokens.push(&line[start..j]);
+                let inner = &line[start..j];
+                tokens.push(inner);
+                if inner.contains('"') || inner.contains('\'') || inner.contains('`') {
+                    tokens.extend(extract_quoted_tokens(inner));
+                }
             }
             i = j + 1;
         } else {

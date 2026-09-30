@@ -194,6 +194,10 @@ export class FakeDiagnosticCollection {
     this.entries.set(uri.fsPath, diagnostics);
   }
 
+  delete(uri: Uri): void {
+    this.entries.delete(uri.fsPath);
+  }
+
   get(uri: Uri): Diagnostic[] | undefined {
     return this.entries.get(uri.fsPath);
   }
@@ -332,7 +336,7 @@ class FakeStatusBarItem {
   dispose(): void {}
 }
 
-class FakeFileSystemWatcher implements Disposable {
+export class FakeFileSystemWatcher implements Disposable {
   private readonly _onDidCreate = new EventEmitter<Uri>();
   private readonly _onDidChange = new EventEmitter<Uri>();
   private readonly _onDidDelete = new EventEmitter<Uri>();
@@ -632,8 +636,11 @@ export const workspace = {
   getConfiguration(section: string): FakeWorkspaceConfiguration {
     return new FakeWorkspaceConfiguration(section);
   },
+  _lastFileSystemWatcher: undefined as FakeFileSystemWatcher | undefined,
   createFileSystemWatcher(_pattern: RelativePattern | string): FakeFileSystemWatcher {
-    return new FakeFileSystemWatcher();
+    const watcher = new FakeFileSystemWatcher();
+    workspace._lastFileSystemWatcher = watcher;
+    return watcher;
   },
   onDidChangeWorkspaceFolders(_listener: () => unknown): Disposable {
     return new Disposable(() => {});

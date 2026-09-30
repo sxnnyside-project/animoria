@@ -1,4 +1,4 @@
-use crate::contracts::analysis::{DiagnosticSeverity, RuleDiagnostic};
+use crate::contracts::analysis::RuleDiagnostic;
 use crate::contracts::asset::AssetFormat;
 use crate::governance::context::AnalysisContext;
 use crate::governance::rule::Rule;
@@ -22,7 +22,7 @@ impl Rule for AllowedFormatsRule {
             if !allowed.contains(&asset.format) {
                 diagnostics.push(RuleDiagnostic {
                     rule_id: self.id().to_string(),
-                    severity: DiagnosticSeverity::Error,
+                    severity: ctx.policy.allowed_formats_severity,
                     message: format!(
                         "Format '{:?}' of asset '{}' is disallowed by workspace policy.",
                         asset.format, asset.relative_path
@@ -58,7 +58,7 @@ impl Rule for NoGifRule {
             if asset.format == AssetFormat::Gif {
                 diagnostics.push(RuleDiagnostic {
                     rule_id: self.id().to_string(),
-                    severity: DiagnosticSeverity::Warning,
+                    severity: ctx.policy.no_gif_severity,
                     message: format!(
                         "Legacy GIF asset '{}' detected. Consider converting to WebP, APNG, or Lottie.",
                         asset.relative_path

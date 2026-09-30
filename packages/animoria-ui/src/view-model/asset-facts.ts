@@ -191,6 +191,22 @@ export function describeFormat(format: AssetFormat | string): string {
       return 'WebP';
     case 'avif':
       return 'AVIF';
+    case 'bmp':
+      return 'BMP';
+    case 'eps':
+      return 'EPS';
+    case 'icns':
+      return 'ICNS';
+    case 'ico':
+      return 'ICO';
+    case 'odd':
+      return 'ODD';
+    case 'ps':
+      return 'PostScript';
+    case 'psd':
+      return 'Photoshop';
+    case 'tiff':
+      return 'TIFF';
     default:
       return String(format).toUpperCase();
   }

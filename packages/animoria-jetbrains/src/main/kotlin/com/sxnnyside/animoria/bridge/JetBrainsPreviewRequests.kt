@@ -168,4 +168,8 @@ private val MIME_BY_EXTENSION =
         "jpg" to "image/jpeg",
         "jpeg" to "image/jpeg",
         "jfif" to "image/jpeg",
+        "bmp" to "image/bmp",
+        "ico" to "image/x-icon",
+        "tiff" to "image/tiff",
+        "tif" to "image/tiff",
     )

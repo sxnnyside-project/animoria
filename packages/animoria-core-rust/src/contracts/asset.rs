@@ -42,6 +42,14 @@ pub enum AssetFormat {
     Jpeg,
     Webp,
     Avif,
+    Bmp,
+    Eps,
+    Icns,
+    Ico,
+    Odd,
+    Ps,
+    Psd,
+    Tiff,
 }
 
 impl AssetFormat {
@@ -57,7 +65,15 @@ impl AssetFormat {
             | AssetFormat::Png
             | AssetFormat::Jpeg
             | AssetFormat::Webp
-            | AssetFormat::Avif => AssetKind::Static,
+            | AssetFormat::Avif
+            | AssetFormat::Bmp
+            | AssetFormat::Eps
+            | AssetFormat::Icns
+            | AssetFormat::Ico
+            | AssetFormat::Odd
+            | AssetFormat::Ps
+            | AssetFormat::Psd
+            | AssetFormat::Tiff => AssetKind::Static,
         }
     }
 
@@ -73,6 +89,14 @@ impl AssetFormat {
             AssetFormat::Jpeg => "jpg",
             AssetFormat::Webp => "webp",
             AssetFormat::Avif => "avif",
+            AssetFormat::Bmp => "bmp",
+            AssetFormat::Eps => "eps",
+            AssetFormat::Icns => "icns",
+            AssetFormat::Ico => "ico",
+            AssetFormat::Odd => "odd",
+            AssetFormat::Ps => "ps",
+            AssetFormat::Psd => "psd",
+            AssetFormat::Tiff => "tiff",
         }
     }
 }

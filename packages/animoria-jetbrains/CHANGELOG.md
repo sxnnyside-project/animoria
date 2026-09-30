@@ -13,6 +13,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.2.1] — 2026-09-30
+
+### Added
+
+- **Expanded Static Asset Preview (JCEF Inline Rendering)**: Added MIME type mappings for `bmp`, `ico`, and `tiff` in `JetBrainsPreviewRequests`, enabling seamless inline previewing in the JCEF WebView tool window.
+- **Full Parity with Core 2.2.1**: Benefits from the updated native daemon engine with expanded static format governance (`avif`, `bmp`, `eps`, `icns`, `ico`, `jpg`, `odd`, `png`, `ps`, `psd`, `tiff`, `webp`), multi-framework reference tracing (PHP, Blade, Twig, Jinja, etc.), and recursive `.animoriaignore` directory matching.
+
+---
+
 ## [2.2.0] — 2026-09-27
 
 ### Added
@@ -87,7 +96,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.2.1...HEAD
+[2.2.1]: https://github.com/sxnnyside-project/animoria/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/sxnnyside-project/animoria/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/sxnnyside-project/animoria/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/sxnnyside-project/animoria/compare/v1.0.0...v2.0.0

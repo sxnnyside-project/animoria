@@ -155,6 +155,14 @@ impl AssetIndex {
                     "png" => crate::contracts::asset::AssetFormat::Png,
                     "webp" => crate::contracts::asset::AssetFormat::Webp,
                     "avif" => crate::contracts::asset::AssetFormat::Avif,
+                    "bmp" => crate::contracts::asset::AssetFormat::Bmp,
+                    "ico" => crate::contracts::asset::AssetFormat::Ico,
+                    "psd" => crate::contracts::asset::AssetFormat::Psd,
+                    "tiff" | "tif" => crate::contracts::asset::AssetFormat::Tiff,
+                    "icns" => crate::contracts::asset::AssetFormat::Icns,
+                    "eps" => crate::contracts::asset::AssetFormat::Eps,
+                    "ps" => crate::contracts::asset::AssetFormat::Ps,
+                    "odd" => crate::contracts::asset::AssetFormat::Odd,
                     _ => crate::contracts::asset::AssetFormat::Jpeg,
                 };
                 (fmt, fmt.kind(), false, Some(err_msg))
@@ -216,8 +224,19 @@ impl AssetIndex {
         self.diagnostics.clear();
         self.incomplete_count = 0;
 
+        // Load workspace governance policy upfront so files and tracing settings apply
+        let policy = GovernancePolicy::load_from_workspace(&self.root_path);
+
+        // Combine custom_ignore_patterns with policy.files_ignore
+        let mut combined_ignores = custom_ignore_patterns.to_vec();
+        for pat in &policy.files_ignore {
+            if !combined_ignores.contains(pat) {
+                combined_ignores.push(pat.clone());
+            }
+        }
+
         // 1. Filesystem crawler
-        let scanner = match WorkspaceScanner::new(self.root_path.clone(), custom_ignore_patterns) {
+        let scanner = match WorkspaceScanner::new(self.root_path.clone(), &combined_ignores) {
             Ok(s) => s,
             Err(e) => {
                 self.state = LifecycleState::Failed;
@@ -242,18 +261,22 @@ impl AssetIndex {
         self.duplicate_groups = find_duplicate_groups(&asset_list);
 
         // 4. Multi-syntax source code reference tracing
-        let detector =
-            match AssetReferenceDetector::new(self.root_path.clone(), custom_ignore_patterns) {
-                Ok(d) => d,
-                Err(e) => {
-                    self.state = LifecycleState::Failed;
-                    return Err(e);
-                }
-            };
+        let detector = match AssetReferenceDetector::new_with_options(
+            self.root_path.clone(),
+            &combined_ignores,
+            &policy.tracing_include_source_extensions,
+            &policy.tracing_ignore_source_extensions,
+            policy.tracing_min_stem_length,
+        ) {
+            Ok(d) => d,
+            Err(e) => {
+                self.state = LifecycleState::Failed;
+                return Err(e);
+            }
+        };
         self.references = detector.detect_references(&asset_list);
 
         // 5. Governance policy & rule evaluation
-        let policy = GovernancePolicy::load_from_workspace(&self.root_path);
         let ctx = AnalysisContext::new(
             &self.root_path,
             &asset_list,

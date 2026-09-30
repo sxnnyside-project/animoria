@@ -3,7 +3,8 @@ use ignore::WalkBuilder;
 use std::path::{Path, PathBuf};
 
 pub const RECOGNIZED_EXTENSIONS: &[&str] = &[
-    "json", "lottie", "riv", "gif", "apng", "svg", "png", "jpg", "jpeg", "webp", "avif",
+    "json", "lottie", "riv", "gif", "apng", "svg", "png", "jpg", "jpeg", "webp", "avif", "bmp",
+    "eps", "icns", "ico", "odd", "ps", "psd", "tiff", "tif",
 ];
 
 pub struct WorkspaceScanner {
@@ -57,7 +58,9 @@ impl WorkspaceScanner {
             }
 
             // Check custom ignore rules (.animoriaignore / default excludes)
-            if self.ignore_rules.is_ignored(path) {
+            if self.ignore_rules.is_ignored(path)
+                || self.ignore_rules.is_ignored_relative(path, &self.root_path)
+            {
                 continue;
             }
 
