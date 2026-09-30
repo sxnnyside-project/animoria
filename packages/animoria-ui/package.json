@@ -27,7 +27,7 @@
   },
   "dependencies": {
     "@animoria/contracts": "workspace:*",
-    "@rive-app/canvas": "^2.42.2",
+    "@rive-app/canvas": "^2.43.1",
     "lit": "^3.3.3",
     "lottie-web": "5.13.0"
   },
