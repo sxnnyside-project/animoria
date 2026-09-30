@@ -73,8 +73,8 @@ Modern multi-module applications, mobile apps, and full-stack codebases constant
 * **Animated SVG** (`.svg`)
 
 ### 🖼️ Static Formats (Discovery & Inspection)
-* **Vector:** SVG (`.svg`)
-* **Raster:** PNG (`.png`), JPEG (`.jpg`, `.jpeg`), WebP (`.webp`), AVIF (`.avif`)
+* **Vector:** SVG (`.svg`), EPS (`.eps`), PostScript (`.ps`)
+* **Raster:** PNG (`.png`), JPEG (`.jpg`, `.jpeg`), WebP (`.webp`), AVIF (`.avif`), BMP (`.bmp`), ICO (`.ico`), ICNS (`.icns`), TIFF (`.tiff`, `.tif`), PSD (`.psd`), ODD (`.odd`)
 
 ---
 
