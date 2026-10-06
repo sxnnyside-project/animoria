@@ -13,7 +13,7 @@ use std::path::Path;
 pub fn compute_file_sha256(path: &Path) -> std::io::Result<String> {
     let mut file = File::open(path)?;
     let mut hasher = Sha256::new();
-    let mut buffer = [0u8; 16384];
+    let mut buffer = [0u8; 65536];
 
     loop {
         let n = file.read(&mut buffer)?;

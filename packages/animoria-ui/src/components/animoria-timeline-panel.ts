@@ -1,6 +1,6 @@
+import type { AnalysisSnapshot, AuditEvent, AuditEventKind } from '@animoria/contracts';
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import type { AnalysisSnapshot, AuditEvent, AuditEventKind } from '@animoria/contracts';
 
 interface TimelineItem {
   id: string;
@@ -320,7 +320,7 @@ export class AnimoriaTimelinePanel extends LitElement {
         detail: { snapshotId },
         bubbles: true,
         composed: true,
-      })
+      }),
     );
   }
 
@@ -425,7 +425,7 @@ export class AnimoriaTimelinePanel extends LitElement {
                           <div class="entry-body">
                             <span class="tag actor">actor: ${ev.actor}</span>
                             ${Object.entries(ev.details || {}).map(
-                              ([key, val]) => html`<span class="tag">${key}: ${String(val)}</span>`
+                              ([key, val]) => html`<span class="tag">${key}: ${String(val)}</span>`,
                             )}
                           </div>
                         </div>

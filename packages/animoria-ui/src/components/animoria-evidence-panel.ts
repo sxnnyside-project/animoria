@@ -83,7 +83,7 @@ export class AnimoriaEvidencePanel extends LitElement {
         detail: { file: loc.file, line: loc.line },
         bubbles: true,
         composed: true,
-      })
+      }),
     );
   }
 
@@ -104,7 +104,7 @@ export class AnimoriaEvidencePanel extends LitElement {
                       <span>${loc.file}${loc.line ? `:${loc.line}` : ''}</span>
                       ${loc.excerpt ? html`<span class="excerpt">"${loc.excerpt}"</span>` : nothing}
                     </div>
-                  `
+                  `,
                 )}
               </div>
             `

@@ -27,7 +27,7 @@ const tokens = join(here, '..', '..', 'animoria-ui', 'src', 'styles', 'tokens.cs
 
 if (!existsSync(bundleEs) || !existsSync(bundleGlobal)) {
   console.error(
-    `[animoria-vscode] @animoria/ui is not built.\n  Expected: ${bundleEs}\n  Run: pnpm --filter @animoria/ui build`
+    `[animoria-vscode] @animoria/ui is not built.\n  Expected: ${bundleEs}\n  Run: pnpm --filter @animoria/ui build`,
   );
   process.exit(1);
 }
@@ -50,7 +50,7 @@ const rustTargetRelease = join(
   'animoria-core-rust',
   'target',
   'release',
-  binName
+  binName,
 );
 const rustTargetDebug = join(here, '..', '..', 'animoria-core-rust', 'target', 'debug', binName);
 const binDir = join(here, '..', 'bin');
@@ -75,6 +75,6 @@ if (targetBin) {
   console.log(`[animoria-vscode] native daemon binary copied from ${targetBin} into bin/`);
 } else {
   console.log(
-    '[animoria-vscode] note: native daemon binary not yet built in target/release or debug.'
+    '[animoria-vscode] note: native daemon binary not yet built in target/release or debug.',
   );
 }

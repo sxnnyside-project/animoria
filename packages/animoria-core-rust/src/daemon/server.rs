@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 
-use crate::contracts::analysis::WorkspaceAnalysis;
 use crate::contracts::duplicates::DuplicateGroup;
 use crate::contracts::remediation::{ResolutionPlan, TrashItem};
 use crate::contracts::usage::UsageReference;
@@ -69,60 +68,10 @@ fn read_capped_line<R: BufRead>(reader: &mut R, max_bytes: usize) -> io::Result<
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DaemonRequest {
-    #[serde(default = "default_protocol_version")]
-    pub protocol: u32,
-    pub id: String,
-    #[serde(alias = "type")]
-    pub method: String,
-    #[serde(default, alias = "payload")]
-    pub params: serde_json::Value,
-}
-
-fn default_protocol_version() -> u32 {
-    1
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DaemonErrorPayload {
-    pub code: String,
-    pub message: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub detail: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DaemonResponse {
-    pub protocol: u32,
-    pub id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub result: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<DaemonErrorPayload>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DaemonEvent {
-    pub protocol: u32,
-    pub event: String,
-    pub sequence: u64,
-    pub payload: serde_json::Value,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HelloResultPayload {
-    pub engine: String,
-    pub version: String,
-    pub protocol_version: u32,
-    pub supported_formats: Vec<String>,
-    pub capabilities: Vec<String>,
-    /// Every request method this daemon actually answers — checked by hosts
-    /// (JetBrains' `verifyDaemonCapabilities`) against what they call, so a
-    /// daemon that predates a feature is diagnosed once at handshake instead
-    /// of as a stream of per-feature `unsupported-method` errors.
-    pub methods: Vec<String>,
-}
+pub use crate::contracts::protocol::{
+    DaemonErrorPayload, DaemonEvent, DaemonRequest, DaemonResponse, DaemonScanResult,
+    HelloResultPayload,
+};
 
 /// Kept in one place so `hello.methods` cannot drift from the methods the
 /// `match` below actually handles.
@@ -314,7 +263,40 @@ impl DaemonServer {
                 }
             }
 
-            let (response, should_exit) = self.handle_request(request);
+            let req_id = request.id.clone();
+            let req_method = request.method.clone();
+
+            let (response, should_exit) =
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    self.handle_request(request)
+                })) {
+                    Ok(res) => res,
+                    Err(panic_err) => {
+                        let panic_msg = if let Some(s) = panic_err.downcast_ref::<&str>() {
+                            s.to_string()
+                        } else if let Some(s) = panic_err.downcast_ref::<String>() {
+                            s.clone()
+                        } else {
+                            "Unknown internal panic in daemon handler".to_string()
+                        };
+                        eprintln!(
+                            "[Daemon] Panic trapped in '{req_method}' (id: {req_id}): {panic_msg}"
+                        );
+                        let resp = DaemonResponse {
+                            protocol: PROTOCOL_VERSION,
+                            id: req_id,
+                            result: None,
+                            error: Some(DaemonErrorPayload {
+                                code: "internal-panic".to_string(),
+                                message: format!(
+                                    "Internal panic occurred during '{req_method}': {panic_msg}"
+                                ),
+                                detail: Some(panic_msg),
+                            }),
+                        };
+                        (resp, false)
+                    }
+                };
             let json = serde_json::to_string(&response)?;
             writeln!(stdout, "{json}")?;
             stdout.flush()?;
@@ -547,14 +529,7 @@ impl DaemonServer {
                         }
                         self.indices.insert(root_id, index);
 
-                        #[derive(Serialize)]
-                        struct ScanResultPayload {
-                            analysis: WorkspaceAnalysis,
-                            references: Vec<UsageReference>,
-                            duplicate_groups: Vec<DuplicateGroup>,
-                        }
-
-                        let payload = ScanResultPayload {
+                        let payload = DaemonScanResult {
                             analysis,
                             references,
                             duplicate_groups,
@@ -593,13 +568,7 @@ impl DaemonServer {
 
                 match self.resolve_root(workspace_path) {
                     Some((_root_id, index)) => {
-                        #[derive(Serialize)]
-                        struct ScanResultPayload {
-                            analysis: WorkspaceAnalysis,
-                            references: Vec<UsageReference>,
-                            duplicate_groups: Vec<DuplicateGroup>,
-                        }
-                        let payload = ScanResultPayload {
+                        let payload = DaemonScanResult {
                             analysis: index.to_workspace_analysis(),
                             references: index.references().to_vec(),
                             duplicate_groups: index.duplicate_groups().to_vec(),

@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { WorkspaceAnalysis } from '@animoria/contracts';
 import type { HostInbound } from '@animoria/ui/bridge';
 import { afterEach, describe, expect, it } from 'vitest';
 import { VsCodeHostBridge } from '../../src/panels/vscode-host-bridge.js';
@@ -54,7 +55,7 @@ function analysisStub(assets: WorkspaceAnalysis['assets']): WorkspaceAnalysis {
     health: { status: 'unavailable', reason: 'no-assets', message: 'No assets.' },
     freshness: 'current',
     failure: null,
-  } as WorkspaceAnalysis;
+  } as unknown as WorkspaceAnalysis;
 }
 
 function makeBridge(assets: WorkspaceAnalysis['assets']) {

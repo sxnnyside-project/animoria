@@ -12,11 +12,38 @@ pub fn run_cli() -> anyhow::Result<i32> {
 
     match cli.command {
         Commands::Scan { path, json } => commands::scan::execute_scan(&path, json),
-        Commands::Check { path, json, strict } => {
-            commands::check::execute_check(&path, json, strict)
-        }
+        Commands::Check {
+            path,
+            json,
+            sarif,
+            format,
+            compact,
+            only_violations,
+            strict,
+            min_score,
+            max_warnings,
+        } => commands::check::execute_check(
+            &path,
+            commands::check::CheckArgs {
+                json,
+                sarif,
+                format: format.as_deref(),
+                compact,
+                only_violations,
+                strict,
+                min_score,
+                max_warnings,
+            },
+        ),
         Commands::Report { path, json } => commands::report::execute_report(&path, json),
-        Commands::Clean { path, apply } => commands::clean::execute_clean(&path, apply),
+        Commands::Clean {
+            path,
+            apply,
+            dry_run,
+        } => {
+            let effective_apply = apply && !dry_run;
+            commands::clean::execute_clean(&path, effective_apply)
+        }
         Commands::Restore {
             path,
             list,
@@ -24,6 +51,7 @@ pub fn run_cli() -> anyhow::Result<i32> {
             all,
         } => commands::restore::execute_restore(&path, list, session.as_deref(), all),
         Commands::Init { path, force } => commands::init::execute_init(&path, force),
+        Commands::Explain { rule_id } => commands::explain::execute_explain(rule_id.as_deref()),
         Commands::Daemon => {
             let mut server = crate::daemon::DaemonServer::new();
             server.run()?;

@@ -60,7 +60,7 @@ export class AssetCardRenderer {
 
   private static _renderFull(
     md: vscode.MarkdownString,
-    card: AssetCardModel
+    card: AssetCardModel,
   ): vscode.MarkdownString {
     // ── Thumbnail ────────────────────────────────────────────────────────────
     if (card.thumbnailPath) {
@@ -154,7 +154,7 @@ export class AssetCardRenderer {
 
   private static _renderCompact(
     md: vscode.MarkdownString,
-    card: AssetCardModel
+    card: AssetCardModel,
   ): vscode.MarkdownString {
     const parts: string[] = [card.formatLabel];
     if (card.width !== null && card.height !== null) parts.push(`${card.width}×${card.height}`);

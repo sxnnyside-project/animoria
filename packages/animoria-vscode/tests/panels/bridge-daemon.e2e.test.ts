@@ -1,13 +1,13 @@
 import { resolve } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Asset, DuplicateGroup, WorkspaceAnalysis } from '@animoria/contracts';
+import type { HostInbound } from '@animoria/ui/bridge';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { VsCodeDaemonClient } from '../../src/daemon/daemon-client.js';
 import {
-  VsCodeHostBridge,
   type MultiRootAnalysis,
+  VsCodeHostBridge,
   type WorkspaceSession,
 } from '../../src/panels/vscode-host-bridge.js';
-import type { HostInbound } from '@animoria/ui/bridge';
 
 // Unlike every other bridge test (hand-built fixture sessions), this drives VsCodeHostBridge with a real daemon scan,
 // so a mismatch between what the daemon returns and what extension.ts's session adapter expects can't hide behind a mock.
@@ -76,7 +76,7 @@ describe('VsCodeHostBridge — real daemon data through the real bridge', () => 
     expect(analysisMessage!.analysis.assets.length).toBeGreaterThan(0);
     expect(analysisMessage!.analysis.roots).toHaveLength(1);
     expect(analysisMessage!.analysis.roots[0]!.assets.length).toBe(
-      analysisMessage!.analysis.assets.length
+      analysisMessage!.analysis.assets.length,
     );
   });
 

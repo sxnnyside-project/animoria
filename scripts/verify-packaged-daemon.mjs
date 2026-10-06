@@ -14,7 +14,7 @@
  * fails here too.
  */
 import { spawn } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -34,9 +34,9 @@ function requiredMethods() {
   const source = readFileSync(
     join(
       repoRoot,
-      'packages/animoria-jetbrains/src/main/kotlin/com/sxnnyside/animoria/backend/CoreProcessManager.kt'
+      'packages/animoria-jetbrains/src/main/kotlin/com/sxnnyside/animoria/backend/CoreProcessManager.kt',
     ),
-    'utf8'
+    'utf8',
   );
   const block = /REQUIRED_METHODS: Set<String> =\s*setOf\(([\s\S]*?)\)/.exec(source)?.[1] ?? '';
   return [...block.matchAll(/"([A-Za-z]+)"/g)].map((match) => match[1]);
@@ -51,7 +51,7 @@ if (!existsSync(nativeRoot))
   fail(`no packaged daemon under ${nativeRoot}. Run: pnpm package:native-daemon`);
 
 const platforms = readdirSync(nativeRoot, { withFileTypes: true }).filter((entry) =>
-  entry.isDirectory()
+  entry.isDirectory(),
 );
 if (platforms.length === 0)
   fail('no platform directories under native/. Run: pnpm package:native-daemon');
@@ -87,7 +87,7 @@ for (const platform of platforms) {
 if (verified === 0) {
   fail(
     `no platform directory matches this runner (${here}); nothing was actually verified. ` +
-      `Platforms present: ${platforms.map((p) => p.name).join(', ')}`
+      `Platforms present: ${platforms.map((p) => p.name).join(', ')}`,
   );
 }
 
@@ -112,14 +112,14 @@ async function verify(binary, platformName) {
         ? `\nstderr:\n${stderr.trim()}`
         : ' (no stderr output — likely genuinely slow, not crashed)';
       fail(
-        `${platformName}: the packaged daemon did not answer within ${TIMEOUT_MS / 1000}s${detail}`
+        `${platformName}: the packaged daemon did not answer within ${TIMEOUT_MS / 1000}s${detail}`,
       );
     }, TIMEOUT_MS);
 
     const send = (message) => daemon.stdin.write(`${JSON.stringify(message)}\n`);
 
     daemon.on('error', (error) =>
-      fail(`${platformName}: could not spawn the daemon — ${error.message}`)
+      fail(`${platformName}: could not spawn the daemon — ${error.message}`),
     );
 
     let answered = false;
@@ -134,7 +134,7 @@ async function verify(binary, platformName) {
       const detail = stderr.trim() ? `\nstderr:\n${stderr.trim()}` : '';
       fail(
         `${platformName}: the packaged daemon exited before answering ` +
-          `(code ${code}, signal ${signal})${detail}`
+          `(code ${code}, signal ${signal})${detail}`,
       );
     });
 
@@ -167,7 +167,7 @@ async function verify(binary, platformName) {
             answered = true;
             daemon.kill();
             fail(
-              `${platformName}: hello did not declare a method list — the daemon predates the check`
+              `${platformName}: hello did not declare a method list — the daemon predates the check`,
             );
           }
           const missing = required.filter((method) => !methods.includes(method));
@@ -210,7 +210,7 @@ async function verify(binary, platformName) {
           daemon.kill();
           if (message.error) {
             fail(
-              `${platformName}: getUsageReferences failed — ${message.error.code}: ${message.error.message}`
+              `${platformName}: getUsageReferences failed — ${message.error.code}: ${message.error.message}`,
             );
           }
           if (!Array.isArray(message.result?.references)) {
@@ -218,7 +218,7 @@ async function verify(binary, platformName) {
           }
           console.log(
             `[verify-packaged-daemon] ${platformName}: ${message.result.references.length} references, ` +
-              `${required.length} required methods present`
+              `${required.length} required methods present`,
           );
           resolve();
         }

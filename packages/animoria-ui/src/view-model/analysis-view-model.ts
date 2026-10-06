@@ -67,7 +67,7 @@ export interface AnalysisViewModel {
 
 export function buildAnalysisViewModel(
   analysis: WorkspaceAnalysis | MultiRootAnalysis,
-  filter: RootFilter = ALL_ROOTS
+  filter: RootFilter = ALL_ROOTS,
 ): AnalysisViewModel {
   if ('roots' in analysis && Array.isArray(analysis.roots)) {
     const multi = analysis;
@@ -137,7 +137,7 @@ export function buildAnalysisViewModel(
         diagnostics: entries,
       }))
       .sort(
-        (a, b) => b.diagnostics.length - a.diagnostics.length || a.ruleId.localeCompare(b.ruleId)
+        (a, b) => b.diagnostics.length - a.diagnostics.length || a.ruleId.localeCompare(b.ruleId),
       );
 
     return {
@@ -229,7 +229,7 @@ export function buildAnalysisViewModel(
       diagnostics: entries,
     }))
     .sort(
-      (a, b) => b.diagnostics.length - a.diagnostics.length || a.ruleId.localeCompare(b.ruleId)
+      (a, b) => b.diagnostics.length - a.diagnostics.length || a.ruleId.localeCompare(b.ruleId),
     );
 
   return {

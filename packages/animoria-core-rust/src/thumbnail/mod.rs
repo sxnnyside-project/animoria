@@ -34,7 +34,7 @@ pub fn resolve_thumbnail(workspace_root: &Path, asset: &Asset) -> Option<String>
     }
 
     if needs_generated_thumbnail(asset.format) {
-        let thumb_dir = workspace_root.join(".animoria").join("thumbnails");
+        let thumb_dir = workspace_root.join(".animoria/thumbnails");
         if fs::create_dir_all(&thumb_dir).is_err() {
             return None;
         }
@@ -75,7 +75,7 @@ fn should_downscale_raster(asset: &Asset) -> bool {
 }
 
 fn downscale_raster_thumbnail(workspace_root: &Path, asset: &Asset) -> Option<String> {
-    let thumb_dir = workspace_root.join(".animoria").join("thumbnails");
+    let thumb_dir = workspace_root.join(".animoria/thumbnails");
     if fs::create_dir_all(&thumb_dir).is_err() {
         return None;
     }

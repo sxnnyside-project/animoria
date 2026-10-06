@@ -13,6 +13,16 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.3.0] — 2026-10-06
+
+### Added
+
+- **Kotlin Deserialization Parity Fix**: Corrected `@SerialName` annotations in `JetBrainsAsset`, `StaticMetadataData`, and `MotionMetadataData` to achieve 100% field parity with Rust native contracts.
+- **Protocol v1 Integration**: Complete synchronization with native daemon Protocol v1 wire format.
+- **Protocol Parity Tests**: Added automated integration assertions verifying that live daemon scans decode timestamps, content hashes, and motion metadata with 100% field fidelity.
+
+---
+
 ## [2.2.1] — 2026-09-30
 
 ### Added
@@ -96,7 +106,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.2.1...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/sxnnyside-project/animoria/compare/v2.2.1...v2.3.0
 [2.2.1]: https://github.com/sxnnyside-project/animoria/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/sxnnyside-project/animoria/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/sxnnyside-project/animoria/compare/v2.0.0...v2.1.0

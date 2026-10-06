@@ -330,7 +330,7 @@ export class AnimoriaAssetStage extends LitElement {
         detail: { preferences: { ...this.preferences, ...patch } },
         bubbles: true,
         composed: true,
-      })
+      }),
     );
   }
 

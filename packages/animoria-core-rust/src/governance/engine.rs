@@ -1,8 +1,8 @@
 use super::context::AnalysisContext;
 use super::rule::Rule;
 use super::rules::{
-    AllowedFormatsRule, MaxFileSizeRule, NoDuplicateContentRule, NoGifRule,
-    NoUnreferencedAssetsRule,
+    AllowedFormatsRule, MaxDimensionsRule, MaxFileSizeRule, NamingConventionRule,
+    NoDuplicateContentRule, NoGifRule, NoUnreferencedAssetsRule, SvgSanitizationRule,
 };
 use crate::contracts::analysis::{
     CategoryScore, DiagnosticSeverity, HealthScoreReport, RuleDiagnostic,
@@ -24,6 +24,9 @@ impl GovernanceEngine {
             Box::new(NoUnreferencedAssetsRule),
             Box::new(NoDuplicateContentRule),
             Box::new(MaxFileSizeRule),
+            Box::new(MaxDimensionsRule),
+            Box::new(NamingConventionRule),
+            Box::new(SvgSanitizationRule),
             Box::new(AllowedFormatsRule),
             Box::new(NoGifRule),
         ];
@@ -94,24 +97,54 @@ impl GovernanceEngine {
             "F".to_string()
         };
 
+        let unreferenced_violations = diagnostics
+            .iter()
+            .filter(|d| d.rule_id == "no-unreferenced-assets")
+            .count() as u32;
+        let duplication_violations = diagnostics
+            .iter()
+            .filter(|d| d.rule_id == "no-duplicate-content")
+            .count() as u32;
+        let policy_rule_violations = diagnostics
+            .iter()
+            .filter(|d| {
+                d.rule_id == "max-file-size-kb"
+                    || d.rule_id == "max-dimensions"
+                    || d.rule_id == "naming-convention"
+                    || d.rule_id == "svg-sanitization"
+                    || d.rule_id == "allowed-formats"
+                    || d.rule_id == "no-gif"
+            })
+            .count() as u32;
+        let policy_violations = policy_rule_violations + invalid_count as u32;
+
+        let calc_category_score = |violations: u32| -> u32 {
+            if violations == 0 {
+                100
+            } else {
+                let ratio = violations as f64 / (total_assets as f64).max(1.0);
+                (100.0 - (ratio * 100.0).min(100.0)).round() as u32
+            }
+        };
+
         let categories = vec![
             CategoryScore {
                 category: "Unreferenced Assets".to_string(),
-                score: if warning_count == 0 { 100 } else { 80 },
+                score: calc_category_score(unreferenced_violations),
                 weight: 0.35,
-                violations_count: warning_count as u32,
+                violations_count: unreferenced_violations,
             },
             CategoryScore {
                 category: "Content Duplication".to_string(),
-                score: if error_count == 0 { 100 } else { 70 },
+                score: calc_category_score(duplication_violations),
                 weight: 0.35,
-                violations_count: error_count as u32,
+                violations_count: duplication_violations,
             },
             CategoryScore {
                 category: "Format & Sizing Policy".to_string(),
-                score: if invalid_count == 0 { 100 } else { 60 },
+                score: calc_category_score(policy_violations),
                 weight: 0.30,
-                violations_count: invalid_count as u32,
+                violations_count: policy_violations,
             },
         ];
 
@@ -265,5 +298,60 @@ mod aggregate_tests {
         assert_eq!(aggregate.categories.len(), 1);
         assert_eq!(aggregate.categories[0].violations_count, 2);
         assert_eq!(aggregate.categories[0].score, 70);
+    }
+
+    #[test]
+    fn evaluates_category_scores_proportionately() {
+        use crate::contracts::asset::{Asset, AssetFormat, AssetKind};
+        use crate::governance::policy::GovernancePolicy;
+
+        let root = std::path::Path::new("/dummy");
+        let create_dummy = |id: &str, name: &str| Asset {
+            id: id.to_string(),
+            path: format!("/dummy/{name}"),
+            relative_path: name.to_string(),
+            name: name.to_string(),
+            stem: id.to_string(),
+            size_bytes: 100,
+            mtime_ms: 0,
+            kind: AssetKind::Static,
+            format: AssetFormat::Png,
+            content_hash: None,
+            dimensions: None,
+            motion: None,
+            static_meta: None,
+            thumbnail_path: None,
+            is_valid: true,
+            error: None,
+        };
+
+        let asset1 = create_dummy("a1", "logo1.png");
+        let asset2 = create_dummy("a2", "logo2.png");
+
+        let assets = vec![asset1, asset2];
+        let references = vec![]; // Neither is referenced -> 2 unreferenced violations
+        let duplicate_groups = vec![];
+        let policy = GovernancePolicy::default();
+
+        let ctx = AnalysisContext::new(root, &assets, &references, &duplicate_groups, &policy);
+        let engine = GovernanceEngine::new();
+        let (diags, report) = engine.evaluate(&ctx);
+
+        assert_eq!(diags.len(), 2);
+        let unref_cat = report
+            .categories
+            .iter()
+            .find(|c| c.category == "Unreferenced Assets")
+            .unwrap();
+        assert_eq!(unref_cat.violations_count, 2);
+        assert_eq!(unref_cat.score, 0);
+
+        let dup_cat = report
+            .categories
+            .iter()
+            .find(|c| c.category == "Content Duplication")
+            .unwrap();
+        assert_eq!(dup_cat.violations_count, 0);
+        assert_eq!(dup_cat.score, 100);
     }
 }

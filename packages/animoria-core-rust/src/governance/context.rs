@@ -43,6 +43,10 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    pub fn policy_for(&self, relative_path: &str) -> &GovernancePolicy {
+        self.policy.policy_for_path(relative_path)
+    }
+
     pub fn is_asset_referenced(&self, asset_id_or_path: &str) -> bool {
         self.referenced_asset_ids.contains(asset_id_or_path)
     }

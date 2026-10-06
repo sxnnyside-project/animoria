@@ -106,7 +106,7 @@ export class AnimoriaTrashPanel extends LitElement {
         detail: { sessionId },
         bubbles: true,
         composed: true,
-      })
+      }),
     );
   }
 
@@ -125,7 +125,7 @@ export class AnimoriaTrashPanel extends LitElement {
       return html`
         <button type="button" ?disabled=${!this.canRestore} @click=${() =>
           this.dispatchEvent(
-            new CustomEvent('request-trash-sessions', { bubbles: true, composed: true })
+            new CustomEvent('request-trash-sessions', { bubbles: true, composed: true }),
           )}>
           Show what can be restored
         </button>

@@ -16,7 +16,7 @@ describe('vscode mock harness', () => {
   it('registers and executes commands', async () => {
     const disposable = vscode.commands.registerCommand(
       'animoria.testCommand',
-      (value: number) => value * 2
+      (value: number) => value * 2,
     );
 
     const result = await vscode.commands.executeCommand<number>('animoria.testCommand', 21);

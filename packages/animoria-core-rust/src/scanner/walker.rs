@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 pub const RECOGNIZED_EXTENSIONS: &[&str] = &[
     "json", "lottie", "riv", "gif", "apng", "svg", "png", "jpg", "jpeg", "webp", "avif", "bmp",
-    "eps", "icns", "ico", "odd", "ps", "psd", "tiff", "tif",
+    "eps", "icns", "ico", "cur", "odd", "ps", "psd", "tiff", "tif",
 ];
 
 pub struct WorkspaceScanner {

@@ -139,7 +139,7 @@ function renderCleanup(model: AnalysisViewModel, deps: CleanupTabDeps) {
                 @cancel-cleanup=${() => deps.setCleanupPlans([])}
               ></animoria-cleanup-preview>
             </div>
-          `
+          `,
         )}
       </div>
     `;
@@ -147,7 +147,7 @@ function renderCleanup(model: AnalysisViewModel, deps: CleanupTabDeps) {
 
   // ── Proposal ──
   const visible = deps.proposals.filter(
-    (entry) => model.filter.kind === 'all' || model.filter.rootId === entry.rootId
+    (entry) => model.filter.kind === 'all' || model.filter.rootId === entry.rootId,
   );
 
   if (deps.proposals.length === 0) {
@@ -166,7 +166,7 @@ function renderCleanup(model: AnalysisViewModel, deps: CleanupTabDeps) {
       sum +
       (entry.proposal.totalSizeBytes ??
         entry.proposal.candidates.reduce((csum, c) => csum + (c.asset.size_bytes || 0), 0)),
-    0
+    0,
   );
 
   if (totalCandidates === 0) {
@@ -242,7 +242,7 @@ function renderCleanup(model: AnalysisViewModel, deps: CleanupTabDeps) {
             `;
           })}
         </div>
-      `
+      `,
     )}
   `;
 }

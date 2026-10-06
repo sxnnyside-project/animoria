@@ -24,7 +24,7 @@ export function buildAssetCardModel(
     referenceCount?: number;
     hasGovernanceIssue?: boolean;
     thumbnailPath?: string;
-  } = {}
+  } = {},
 ): AssetCardModel {
   return {
     name: asset.name,

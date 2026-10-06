@@ -31,7 +31,7 @@ describe('DiagnosticPublisher', () => {
           buildDiagnostic({ target_asset_path: hero.path }),
           buildDiagnostic({ target_asset_path: logo.path }),
         ],
-      })
+      }),
     );
 
     expect(collection().get({ fsPath: hero.path } as never)).toHaveLength(1);
@@ -47,7 +47,7 @@ describe('DiagnosticPublisher', () => {
           buildDiagnostic({ target_asset_path: subject.path, rule_id: 'no-unreferenced-assets' }),
           buildDiagnostic({ target_asset_path: subject.path, rule_id: 'max-file-size-kb' }),
         ],
-      })
+      }),
     );
 
     expect(collection().get({ fsPath: subject.path } as never)).toHaveLength(2);
@@ -70,7 +70,7 @@ describe('DiagnosticPublisher', () => {
             rule_id: 'no-unreferenced-assets',
           }),
         ],
-      })
+      }),
     );
 
     const diagnostics = collection().get({ fsPath: subject.path } as never);
@@ -84,7 +84,7 @@ describe('DiagnosticPublisher', () => {
       buildAnalysis({
         assets: [subject],
         diagnostics: [buildDiagnostic({ target_asset_path: subject.path })],
-      })
+      }),
     );
     expect(collection().get({ fsPath: subject.path } as never)).toHaveLength(1);
 
@@ -98,7 +98,7 @@ describe('DiagnosticPublisher', () => {
       buildAnalysis({
         assets: [subject],
         diagnostics: [buildDiagnostic({ target_asset_path: subject.path })],
-      })
+      }),
     );
     publisher.clear();
     expect(collection().get({ fsPath: subject.path } as never) ?? []).toHaveLength(0);
@@ -115,7 +115,7 @@ describe('DiagnosticPublisher', () => {
           buildDiagnostic({ target_asset_path: assetA.path }),
           buildDiagnostic({ target_asset_path: assetB.path }),
         ],
-      })
+      }),
     );
     expect(collection().get({ fsPath: assetA.path } as never)).toHaveLength(1);
     expect(collection().get({ fsPath: assetB.path } as never)).toHaveLength(1);
@@ -125,7 +125,7 @@ describe('DiagnosticPublisher', () => {
       buildAnalysis({
         assets: [assetA, assetB],
         diagnostics: [buildDiagnostic({ target_asset_path: assetB.path })],
-      })
+      }),
     );
 
     expect(collection().get({ fsPath: assetA.path } as never) ?? []).toHaveLength(0);

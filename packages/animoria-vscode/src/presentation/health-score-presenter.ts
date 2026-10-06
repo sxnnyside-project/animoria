@@ -40,7 +40,7 @@ export interface PresentedHealthScore {
 }
 
 export function presentHealthScore(
-  report: HealthScoreReport | null | undefined
+  report: HealthScoreReport | null | undefined,
 ): PresentedHealthScore {
   if (!report || report.grade === 'N/A') {
     return {
@@ -63,7 +63,7 @@ export function presentHealthScore(
     description,
     `Summary: ${report.summary}`,
     ...report.categories.map(
-      (cat) => `• ${cat.category}: ${cat.score}% (${cat.violations_count} issues)`
+      (cat) => `• ${cat.category}: ${cat.score}% (${cat.violations_count} issues)`,
     ),
   ];
 

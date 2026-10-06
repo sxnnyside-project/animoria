@@ -138,7 +138,7 @@ export class AnimoriaSnippetPanel extends LitElement {
         detail: { text: this._fullText(snippet), label: `${snippet.label} snippet` },
         bubbles: true,
         composed: true,
-      })
+      }),
     );
 
     // Confirmed on the button that was pressed, not in a toast: the developer's eyes
@@ -170,7 +170,7 @@ export class AnimoriaSnippetPanel extends LitElement {
             >
               ${candidate.label}
             </button>
-          `
+          `,
         )}
       </div>
 

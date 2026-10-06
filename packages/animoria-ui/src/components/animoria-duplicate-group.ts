@@ -156,7 +156,7 @@ export class AnimoriaDuplicateGroupView extends LitElement {
         detail: { groupId: group.id, keepPath: keepAsset?.path ?? assetId },
         bubbles: true,
         composed: true,
-      })
+      }),
     );
   }
 
@@ -167,7 +167,7 @@ export class AnimoriaDuplicateGroupView extends LitElement {
         detail: { planId: this.planId, allowPartial: false },
         bubbles: true,
         composed: true,
-      })
+      }),
     );
   }
 
@@ -199,7 +199,7 @@ export class AnimoriaDuplicateGroupView extends LitElement {
             @click=${() => {
               this._selectedKeepId = null;
               this.dispatchEvent(
-                new CustomEvent('cancel-resolution-plan', { bubbles: true, composed: true })
+                new CustomEvent('cancel-resolution-plan', { bubbles: true, composed: true }),
               );
             }}
           >

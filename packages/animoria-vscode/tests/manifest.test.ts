@@ -41,7 +41,7 @@ describe('package.json — platform citizenship (V5)', () => {
     ]);
 
     const schema = JSON.parse(
-      readFileSync(resolve(ROOT, manifest.contributes.jsonValidation[0].url), 'utf-8')
+      readFileSync(resolve(ROOT, manifest.contributes.jsonValidation[0].url), 'utf-8'),
     );
     for (const ruleId of Object.keys(schema.properties.rules.properties)) {
       expect(realIds.has(ruleId), ruleId).toBe(true);
@@ -50,7 +50,7 @@ describe('package.json — platform citizenship (V5)', () => {
 
   it('every keybinding targets a registered command', () => {
     const commandIds = new Set(
-      manifest.contributes.commands.map((c: { command: string }) => c.command)
+      manifest.contributes.commands.map((c: { command: string }) => c.command),
     );
     for (const binding of manifest.contributes.keybindings) {
       expect(commandIds.has(binding.command), binding.command).toBe(true);
@@ -79,14 +79,14 @@ describe('package.json — platform citizenship (V5)', () => {
 
   it('every command: link inside walkthrough descriptions is a real command', () => {
     const commandIds = new Set(
-      manifest.contributes.commands.map((c: { command: string }) => c.command)
+      manifest.contributes.commands.map((c: { command: string }) => c.command),
     );
     // VS Code auto-registers a `<viewId>.focus` command for every declared view —
     // it is real even though it has no entry in `contributes.commands`.
     const viewIds = new Set(
       Object.values(manifest.contributes.views).flatMap((views: unknown) =>
-        (views as { id: string }[]).map((v) => v.id)
-      )
+        (views as { id: string }[]).map((v) => v.id),
+      ),
     );
 
     const linkPattern = /\(command:([a-zA-Z0-9.]+)\)/g;
@@ -97,7 +97,7 @@ describe('package.json — platform citizenship (V5)', () => {
           commandId.endsWith('.focus') && viewIds.has(commandId.slice(0, -'.focus'.length));
         expect(
           commandIds.has(commandId) || isFocusCommand,
-          `walkthrough step "${step.id}" links to unregistered command "${commandId}"`
+          `walkthrough step "${step.id}" links to unregistered command "${commandId}"`,
         ).toBe(true);
       }
     }

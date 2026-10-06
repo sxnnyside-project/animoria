@@ -235,6 +235,12 @@ impl AssetIndex {
             }
         }
 
+        // If docs is explicitly configured to be scanned, negate the default exclusion
+        if !policy.files_ignore_docs {
+            combined_ignores.push("!docs/**".to_string());
+            combined_ignores.push("!doc/**".to_string());
+        }
+
         // 1. Filesystem crawler
         let scanner = match WorkspaceScanner::new(self.root_path.clone(), &combined_ignores) {
             Ok(s) => s,
@@ -249,8 +255,8 @@ impl AssetIndex {
             self.ingest_file(&candidate);
         }
 
-        // 2. Parallel SHA-256 binary content hashing
-        let mut asset_list: Vec<Asset> = self.assets.values().cloned().collect();
+        // 2. Parallel SHA-256 binary content hashing (drain avoids full cloning)
+        let mut asset_list: Vec<Asset> = self.assets.drain().map(|(_, a)| a).collect();
         hash_assets_in_parallel(&mut asset_list);
 
         for asset in &asset_list {
@@ -261,12 +267,13 @@ impl AssetIndex {
         self.duplicate_groups = find_duplicate_groups(&asset_list);
 
         // 4. Multi-syntax source code reference tracing
-        let detector = match AssetReferenceDetector::new_with_options(
+        let detector = match AssetReferenceDetector::new_with_all_options(
             self.root_path.clone(),
             &combined_ignores,
             &policy.tracing_include_source_extensions,
             &policy.tracing_ignore_source_extensions,
             policy.tracing_min_stem_length,
+            &policy.tracing_dynamic_collections,
         ) {
             Ok(d) => d,
             Err(e) => {
@@ -320,8 +327,10 @@ fn compute_asset_id(path: &Path) -> String {
     let mut hasher = Sha256::new();
     hasher.update(path.to_string_lossy().as_bytes());
     let hash = hasher.finalize();
-    let hex: String = hash[..8].iter().map(|b| format!("{:02x}", b)).collect();
-    format!("asset-{}", hex)
+    format!(
+        "asset-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7]
+    )
 }
 
 #[cfg(test)]

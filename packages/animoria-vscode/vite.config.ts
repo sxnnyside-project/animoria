@@ -20,11 +20,11 @@ export default defineConfig({
     alias: {
       '@animoria/ui/bridge': new URL(
         '../../packages/animoria-ui/src/bridge/index.ts',
-        import.meta.url
+        import.meta.url,
       ).pathname,
       '@animoria/contracts': new URL(
         '../../packages/animoria-contracts/src/index.ts',
-        import.meta.url
+        import.meta.url,
       ).pathname,
     },
   },

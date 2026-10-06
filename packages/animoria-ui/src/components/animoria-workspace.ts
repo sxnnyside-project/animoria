@@ -5,9 +5,9 @@ import type {
   UsageReference,
   WorkspaceAnalysis,
 } from '@animoria/contracts';
-import type { MultiRootAnalysis, RestoreResult, SessionManifest } from '../bridge/types.js';
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import type { MultiRootAnalysis, RestoreResult, SessionManifest } from '../bridge/types.js';
 import type {
   AnimationPreview,
   GeneratedSnippet,
@@ -434,7 +434,7 @@ export class AnimoriaWorkspace extends LitElement {
           if (
             this._rootFilter.kind === 'root' &&
             !message.roots.some(
-              (root) => root.id === (this._rootFilter as { rootId: string }).rootId
+              (root) => root.id === (this._rootFilter as { rootId: string }).rootId,
             )
           ) {
             this._rootFilter = ALL_ROOTS;
@@ -644,7 +644,7 @@ export class AnimoriaWorkspace extends LitElement {
       ? model.assets.filter(
           (entry) =>
             entry.asset.stem.toLowerCase().includes(query) ||
-            entry.asset.format.toLowerCase().includes(query)
+            entry.asset.format.toLowerCase().includes(query),
         )
       : model.assets;
 
@@ -675,7 +675,7 @@ export class AnimoriaWorkspace extends LitElement {
               @select-asset=${(e: CustomEvent<{ assetPath: string; rootId: string }>) =>
                 this._selectAsset(e.detail.assetPath, e.detail.rootId)}
             ></animoria-asset-card>
-          `
+          `,
         )}
       </div>
     `;
@@ -693,7 +693,7 @@ export class AnimoriaWorkspace extends LitElement {
     model: AnalysisViewModel,
     asset: Asset,
     rootId: string,
-    rootName: string
+    rootName: string,
   ) {
     return html`
       <animoria-asset-inspector
@@ -921,7 +921,7 @@ export class AnimoriaWorkspace extends LitElement {
               >
                 ${label}
               </button>
-            `
+            `,
           )}
         </nav>
         ${

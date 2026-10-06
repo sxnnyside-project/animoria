@@ -163,7 +163,7 @@ export class AnimoriaAssetCard extends LitElement {
         detail: { assetPath: this.asset.path, rootId: this.rootId },
         bubbles: true,
         composed: true,
-      })
+      }),
     );
   }
 

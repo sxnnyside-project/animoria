@@ -100,7 +100,7 @@ export class AnimoriaRootSelector extends LitElement {
 
   private _select(filter: RootFilter): void {
     this.dispatchEvent(
-      new CustomEvent('root-filter-change', { detail: filter, bubbles: true, composed: true })
+      new CustomEvent('root-filter-change', { detail: filter, bubbles: true, composed: true }),
     );
   }
 
@@ -140,7 +140,7 @@ export class AnimoriaRootSelector extends LitElement {
               <span class="name">${summary.rootName}</span>
               <span class="count">${this._countFor(summary)}</span>
             </button>
-          `
+          `,
         )}
       </nav>
     `;

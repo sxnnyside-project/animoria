@@ -2,8 +2,8 @@ import { promises as fs, existsSync } from 'node:fs';
 import { extname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
-import { RustDaemonClient } from './src/host/rust-daemon-client.js';
 import { resolveWithinRoot } from './src/bridge/path-containment.js';
+import { RustDaemonClient } from './src/host/rust-daemon-client.js';
 
 const MIME_TYPES: Record<string, string> = {
   '.png': 'image/png',
@@ -42,16 +42,16 @@ export default defineConfig({
   resolve: {
     alias: {
       '@animoria/ui/tokens.css': fileURLToPath(
-        new URL('../../packages/animoria-ui/src/styles/tokens.css', import.meta.url)
+        new URL('../../packages/animoria-ui/src/styles/tokens.css', import.meta.url),
       ),
       '@animoria/ui/bridge': fileURLToPath(
-        new URL('../../packages/animoria-ui/src/bridge/index.ts', import.meta.url)
+        new URL('../../packages/animoria-ui/src/bridge/index.ts', import.meta.url),
       ),
       '@animoria/ui': fileURLToPath(
-        new URL('../../packages/animoria-ui/src/index.ts', import.meta.url)
+        new URL('../../packages/animoria-ui/src/index.ts', import.meta.url),
       ),
       '@animoria/contracts': fileURLToPath(
-        new URL('../../packages/animoria-contracts/src/index.ts', import.meta.url)
+        new URL('../../packages/animoria-contracts/src/index.ts', import.meta.url),
       ),
     },
   },
@@ -73,7 +73,7 @@ export default defineConfig({
         const workspacePath = resolveWorkspacePath();
         if (!existsSync(workspacePath)) {
           server.config.logger.warn(
-            `[Animoria Bridge] Workspace not found: ${workspacePath}\n  Set ANIMORIA_SANDBOX_WORKSPACE to point the harness at an existing directory.`
+            `[Animoria Bridge] Workspace not found: ${workspacePath}\n  Set ANIMORIA_SANDBOX_WORKSPACE to point the harness at an existing directory.`,
           );
         }
 
@@ -82,14 +82,14 @@ export default defineConfig({
           .start()
           .then(() => {
             server.config.logger.info(
-              `[Animoria Bridge] Connected to the native daemon for ${workspacePath}`
+              `[Animoria Bridge] Connected to the native daemon for ${workspacePath}`,
             );
           })
           .catch((err) => {
             server.config.logger.error(
               `[Animoria Bridge] Failed to start the native daemon: ${
                 err instanceof Error ? err.message : String(err)
-              }`
+              }`,
             );
           });
 
@@ -156,7 +156,7 @@ export default defineConfig({
                   duplicateGroups: result.duplicate_groups,
                   referenceCounts: refCounts,
                   readiness: { referencesResolved: true },
-                })
+                }),
               );
             } catch (err) {
               const message = err instanceof Error ? err.message : String(err);
@@ -186,7 +186,7 @@ export default defineConfig({
               const assetPath = url.searchParams.get('assetPath') ?? '';
               const response = await daemon.request<{ results: unknown[]; error?: string | null }>(
                 'generateSnippet',
-                { assetPath, workspace_path: workspacePath }
+                { assetPath, workspace_path: workspacePath },
               );
               res.setHeader('Content-Type', 'application/json');
               res.end(JSON.stringify(response.results ?? []));

@@ -34,7 +34,7 @@ const sourceBin = existsSync(rustReleaseBin)
 
 if (!sourceBin) {
   console.warn(
-    `Native binary not found at ${rustReleaseBin}. Build with 'cargo build --release -p animoria-core-rust' first.`
+    `Native binary not found at ${rustReleaseBin}. Build with 'cargo build --release -p animoria-core-rust' first.`,
   );
   process.exit(0);
 }
@@ -47,7 +47,7 @@ cpSync(sourceBin, join(vscodeBinDir, binName));
 const jetbrainsTargetDir = join(
   repoRoot,
   'packages/animoria-jetbrains/src/main/resources/native',
-  platformArchDir
+  platformArchDir,
 );
 rmSync(jetbrainsTargetDir, { recursive: true, force: true });
 mkdirSync(jetbrainsTargetDir, { recursive: true });

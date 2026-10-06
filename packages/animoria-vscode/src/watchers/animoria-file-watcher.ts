@@ -83,7 +83,7 @@ export class AnimoriaFileWatcher implements vscode.Disposable {
 
   constructor(
     private readonly _onChange: () => void,
-    private readonly _debounceMs: number = 400
+    private readonly _debounceMs: number = 400,
   ) {
     const pattern = `**/*.{${WATCHED_EXTENSIONS.join(',')}}`;
     this._watcher = vscode.workspace.createFileSystemWatcher(pattern);
@@ -91,7 +91,7 @@ export class AnimoriaFileWatcher implements vscode.Disposable {
     this._disposables.push(
       this._watcher.onDidCreate(() => this._scheduleChange()),
       this._watcher.onDidChange(() => this._scheduleChange()),
-      this._watcher.onDidDelete(() => this._scheduleChange())
+      this._watcher.onDidDelete(() => this._scheduleChange()),
     );
   }
 

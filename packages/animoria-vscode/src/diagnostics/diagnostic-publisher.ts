@@ -63,7 +63,7 @@ export class DiagnosticPublisher implements vscode.Disposable {
 
   private _toVsCodeDiagnostic(
     diagnostic: RuleDiagnostic,
-    range: vscode.Range = new vscode.Range(0, 0, 0, 0)
+    range: vscode.Range = new vscode.Range(0, 0, 0, 0),
   ): vscode.Diagnostic {
     const message = [
       diagnostic.message,
@@ -77,7 +77,7 @@ export class DiagnosticPublisher implements vscode.Disposable {
       message,
       diagnostic.severity === 'error'
         ? vscode.DiagnosticSeverity.Error
-        : vscode.DiagnosticSeverity.Warning
+        : vscode.DiagnosticSeverity.Warning,
     );
 
     result.source = 'Animoria';

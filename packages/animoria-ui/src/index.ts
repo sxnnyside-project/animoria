@@ -84,7 +84,7 @@ export function mount(
    * their own view — because a capability is not a tab. `all` is the combined view,
    * used by the sandbox, where seeing every screen at once is the point.
    */
-  surface: AnimoriaWorkspace['surface'] = 'all'
+  surface: AnimoriaWorkspace['surface'] = 'all',
 ): AnimoriaWorkspace {
   const workspace = document.createElement('animoria-workspace');
   workspace.bridge = bridge;

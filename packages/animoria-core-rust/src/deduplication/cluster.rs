@@ -11,11 +11,11 @@ use std::collections::HashMap;
 /// be proven identical to anything, so it should not be flagged as a
 /// duplicate of one.
 pub fn find_duplicate_groups(assets: &[Asset]) -> Vec<DuplicateGroup> {
-    let mut hash_buckets: HashMap<String, Vec<&Asset>> = HashMap::new();
+    let mut hash_buckets: HashMap<&str, Vec<&Asset>> = HashMap::new();
 
     for asset in assets {
         if let Some(ref hash) = asset.content_hash {
-            hash_buckets.entry(hash.clone()).or_default().push(asset);
+            hash_buckets.entry(hash.as_str()).or_default().push(asset);
         }
     }
 
@@ -33,9 +33,9 @@ pub fn find_duplicate_groups(assets: &[Asset]) -> Vec<DuplicateGroup> {
             // `clean` both depend on for stable output.
             let mut sorted = bucket;
             sorted.sort_by(|a, b| {
-                a.relative_path
-                    .len()
-                    .cmp(&b.relative_path.len())
+                b.is_valid
+                    .cmp(&a.is_valid)
+                    .then_with(|| a.relative_path.len().cmp(&b.relative_path.len()))
                     .then_with(|| a.relative_path.cmp(&b.relative_path))
             });
 
@@ -46,7 +46,7 @@ pub fn find_duplicate_groups(assets: &[Asset]) -> Vec<DuplicateGroup> {
 
             duplicate_groups.push(DuplicateGroup {
                 id: format!("dup-group-{}", group_idx),
-                content_hash: hash,
+                content_hash: hash.to_string(),
                 canonical_asset_id,
                 asset_ids,
                 wasted_bytes,

@@ -97,6 +97,11 @@ There is no separate class hierarchy per format — every asset, animated or sta
 
 Scans workspace source files for references to discovered assets, producing `UsageReference` contracts consumed by the `no-unreferenced-assets` governance rule and by the "Usage References" panel in each host UI.
 
+> [!NOTE]
+> **Reference Tracing Scope (Static Literals & Dynamic Interpolations):**
+> The reference engine combines high-speed literal pattern matching via an Aho-Corasick automaton (exact filenames and stems) with heuristic dynamic template evaluation in `tracing::patterns`/`detector`. It traces JavaScript/TypeScript template literals (e.g. `` `${c.id}.webp` ``, `` `/characters/${id}.webp` ``), Swift/Kotlin string interpolations, and dynamic concatenations, preventing false-positive orphan diagnostics. Projects can also explicitly declare `tracing.dynamicCollections` in `.animoriarc.json` for deterministic grouping.
+
+
 ### D. Deduplication (`deduplication/`)
 
 Computes SHA-256 content hashes per asset and groups byte-identical assets into `DuplicateGroup` contracts, each carrying a `canonical_asset_id` used both by the `no-duplicate-content` rule and by duplicate-resolution plans.

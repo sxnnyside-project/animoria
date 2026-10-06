@@ -123,7 +123,7 @@ export class AnimoriaFinding extends LitElement {
         detail: { assetPath: this.diagnostic.target_asset_path, rootId: this.rootId },
         bubbles: true,
         composed: true,
-      })
+      }),
     );
   }
 

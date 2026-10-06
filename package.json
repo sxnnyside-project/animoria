@@ -1,5 +1,13 @@
 {
   "name": "animoria",
+  "version": "2.3.0",
+  "description": "Ultra-fast cross-IDE asset intelligence, motion analytics, and automated deduplication engine",
+  "license": "MIT",
+  "author": "Sxnnyside",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sxnnyside-project/animoria.git"
+  },
   "private": true,
   "packageManager": "pnpm@11.5.2",
   "engines": {
@@ -26,11 +34,11 @@
     "verify:packaged-daemon": "node scripts/verify-packaged-daemon.mjs"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
-    "@commitlint/cli": "^21.2.3",
-    "@commitlint/config-conventional": "^21.2.3",
-    "husky": "^9.1.7",
-    "turbo": "latest",
-    "typescript": "^5.9.3"
+    "@biomejs/biome": "1.9.4",
+    "@commitlint/cli": "21.2.3",
+    "@commitlint/config-conventional": "21.2.3",
+    "husky": "9.1.7",
+    "turbo": "2.11.4",
+    "typescript": "5.9.3"
   }
 }

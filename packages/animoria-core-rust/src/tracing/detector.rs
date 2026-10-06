@@ -1,13 +1,13 @@
 use aho_corasick::{AhoCorasickBuilder, MatchKind};
 use ignore::WalkBuilder;
 use rayon::prelude::*;
-use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
 use super::patterns::{
-    asset_matches_path_token, extract_path_token, extract_quoted_tokens, is_line_comment_or_url,
-    is_source_file_extension, is_valid_exact_filename_reference, is_valid_stem_reference,
+    asset_matches_dynamic_pattern, asset_matches_path_token, extract_dynamic_patterns,
+    extract_path_token, extract_quoted_tokens, is_line_comment_or_url, is_source_file_extension,
+    is_valid_exact_filename_reference, is_valid_stem_reference,
 };
 use crate::contracts::asset::Asset;
 use crate::contracts::usage::UsageReference;
@@ -27,6 +27,7 @@ pub struct AssetReferenceDetector {
     included_source_extensions: Vec<String>,
     ignored_source_extensions: Vec<String>,
     min_stem_length: usize,
+    dynamic_collections: Vec<String>,
 }
 
 impl AssetReferenceDetector {
@@ -41,6 +42,24 @@ impl AssetReferenceDetector {
         ignored_source_extensions: &[String],
         min_stem_length: Option<usize>,
     ) -> anyhow::Result<Self> {
+        Self::new_with_all_options(
+            root_path,
+            custom_ignore_patterns,
+            included_source_extensions,
+            ignored_source_extensions,
+            min_stem_length,
+            &[],
+        )
+    }
+
+    pub fn new_with_all_options(
+        root_path: PathBuf,
+        custom_ignore_patterns: &[String],
+        included_source_extensions: &[String],
+        ignored_source_extensions: &[String],
+        min_stem_length: Option<usize>,
+        dynamic_collections: &[String],
+    ) -> anyhow::Result<Self> {
         let ignore_rules = IgnoreRules::new(custom_ignore_patterns)?;
         Ok(Self {
             root_path,
@@ -54,6 +73,7 @@ impl AssetReferenceDetector {
                 .map(|e| e.trim_start_matches('.').to_lowercase())
                 .collect(),
             min_stem_length: min_stem_length.unwrap_or(3),
+            dynamic_collections: dynamic_collections.to_vec(),
         })
     }
 
@@ -119,21 +139,19 @@ impl AssetReferenceDetector {
             return Vec::new();
         }
 
-        // Build mapping: pattern string -> (AssetPath, is_exact_filename)
+        // Build mapping: pattern string -> (&Asset, is_exact_filename)
         let mut patterns = Vec::new();
-        let mut pattern_to_asset: HashMap<usize, (String, String, bool)> = HashMap::new();
+        let mut pattern_to_asset: Vec<(&Asset, bool)> = Vec::new();
 
         for asset in assets {
             // Pattern 1: Exact filename (e.g. "hero.json", "logo.webp")
-            let idx1 = patterns.len();
             patterns.push(asset.name.clone());
-            pattern_to_asset.insert(idx1, (asset.path.clone(), asset.stem.clone(), true));
+            pattern_to_asset.push((asset, true));
 
             // Pattern 2: Stem (e.g. "hero", "logo") if stem length >= min_stem_length
             if asset.stem.len() >= self.min_stem_length && asset.stem != asset.name {
-                let idx2 = patterns.len();
                 patterns.push(asset.stem.clone());
-                pattern_to_asset.insert(idx2, (asset.path.clone(), asset.stem.clone(), false));
+                pattern_to_asset.push((asset, false));
             }
         }
 
@@ -151,7 +169,7 @@ impl AssetReferenceDetector {
             assets.iter().map(|a| a.path.clone()).collect();
 
         // Scan files in parallel using Rayon
-        let references: Vec<UsageReference> = source_files
+        let mut references: Vec<UsageReference> = source_files
             .par_iter()
             .filter(|p| !asset_paths.contains(&p.to_string_lossy().to_string()))
             .flat_map(|source_path| {
@@ -207,87 +225,151 @@ impl AssetReferenceDetector {
 
                     // Aho-Corasick linear scan on line
                     for mat in ac.find_overlapping_iter(line) {
-                        if let Some((asset_path, stem, is_exact_filename)) =
-                            pattern_to_asset.get(&mat.pattern().as_usize())
+                        let pat_idx = mat.pattern().as_usize();
+                        let (asset, is_exact_filename) = pattern_to_asset[pat_idx];
+
+                        if !matched_assets_on_line.insert(asset.path.clone()) {
+                            continue;
+                        }
+
+                        // An asset file cannot reference itself
+                        let pat = &patterns[pat_idx];
+                        let source_str = source_path.to_string_lossy();
+                        let is_self = (source_str.ends_with(pat)
+                            && (source_str.len() == pat.len()
+                                || source_str.as_bytes()[source_str.len() - pat.len() - 1]
+                                    == b'/'))
+                            || source_str == asset.path;
+                        if is_self {
+                            continue;
+                        }
+
+                        // Check negative filters: ignore remote URLs like http:// or https://
+                        let match_start = mat.start();
+                        let prefix = &line[..match_start];
+                        if prefix.ends_with("http://")
+                            || prefix.ends_with("https://")
+                            || prefix.ends_with("//cdn.")
                         {
-                            if !matched_assets_on_line.insert(asset_path.clone()) {
-                                continue;
-                            }
+                            continue;
+                        }
 
-                            // An asset file cannot reference itself
-                            let source_str = source_path.to_string_lossy();
-                            if source_str
-                                .ends_with(&format!("/{}", patterns[mat.pattern().as_usize()]))
-                                || source_str == *asset_path
-                            {
-                                continue;
-                            }
-
-                            // Check negative filters: ignore remote URLs like http:// or https://
-                            let match_start = mat.start();
-                            let prefix = &line[..match_start];
-                            if prefix.ends_with("http://")
-                                || prefix.ends_with("https://")
-                                || prefix.ends_with("//cdn.")
-                            {
-                                continue;
-                            }
-
-                            // Multi-asset disambiguation: if the line contains explicit path specifiers with '/',
-                            // the candidate asset MUST match at least one of those paths.
-                            if !path_tokens_on_line.is_empty() {
-                                let matches_any_path = path_tokens_on_line.iter().any(|token| {
-                                    asset_matches_path_token(asset_path, source_path, token)
-                                });
-                                if !matches_any_path {
-                                    continue;
-                                }
-                            }
-
-                            // Disambiguation for tokens enclosing the match
-                            if let Some(token) = extract_path_token(line, match_start, mat.end()) {
-                                if token.contains('/')
-                                    && !asset_matches_path_token(asset_path, source_path, token)
-                                {
-                                    continue;
-                                }
-                            }
-
-                            let line_lower = line.to_lowercase();
-
-                            if *is_exact_filename {
-                                let filename_lower =
-                                    patterns[mat.pattern().as_usize()].to_lowercase();
-                                if !is_valid_exact_filename_reference(&line_lower, &filename_lower)
-                                {
-                                    continue;
-                                }
-                            } else {
-                                let stem_lower = stem.to_lowercase();
-                                if !is_valid_stem_reference(&line_lower, &stem_lower) {
-                                    continue;
-                                }
-                            }
-
-                            // Documentation files (.md, .mdx) get low confidence so documentation mentions
-                            // do not mask assets that are orphaned in production code
-                            let confidence = if syntax_type == "md" || syntax_type == "mdx" {
-                                "low"
-                            } else if *is_exact_filename {
-                                "high"
-                            } else {
-                                "medium"
-                            };
-
-                            file_refs.push(UsageReference {
-                                asset_id: asset_path.clone(),
-                                file_path: source_path.to_string_lossy().to_string(),
-                                relative_file_path: relative_source.clone(),
-                                line_number,
-                                line_content: line.trim().to_string(),
-                                syntax_type: syntax_type.clone(),
-                                confidence: confidence.to_string(),
+                        // Multi-asset disambiguation: if the line contains explicit path specifiers with '/',
+                        // the candidate asset MUST match at least one of those paths.
+                        if !path_tokens_on_line.is_empty() {
+                            let matches_any_path = path_tokens_on_line.iter().any(|token| {
+                                asset_matches_path_token(&asset.path, source_path, token)
                             });
+                            if !matches_any_path {
+                                continue;
+                            }
+                        }
+
+                        // Disambiguation for tokens enclosing the match
+                        if let Some(token) = extract_path_token(line, match_start, mat.end()) {
+                            if token.contains('/')
+                                && !asset_matches_path_token(&asset.path, source_path, token)
+                            {
+                                continue;
+                            }
+                        }
+
+                        let line_lower = line.to_lowercase();
+
+                        if is_exact_filename {
+                            let filename_lower = pat.to_lowercase();
+                            if !is_valid_exact_filename_reference(&line_lower, &filename_lower) {
+                                continue;
+                            }
+                        } else {
+                            let stem_lower = asset.stem.to_lowercase();
+                            if !is_valid_stem_reference(&line_lower, &stem_lower) {
+                                continue;
+                            }
+                        }
+
+                        // Documentation files (.md, .mdx) get low confidence so documentation mentions
+                        // do not mask assets that are orphaned in production code
+                        let confidence = if syntax_type == "md" || syntax_type == "mdx" {
+                            "low"
+                        } else if is_exact_filename {
+                            "high"
+                        } else {
+                            "medium"
+                        };
+
+                        file_refs.push(UsageReference {
+                            asset_id: asset.path.clone(),
+                            file_path: source_path.to_string_lossy().to_string(),
+                            relative_file_path: relative_source.clone(),
+                            line_number,
+                            line_content: line.trim().to_string(),
+                            syntax_type: syntax_type.clone(),
+                            confidence: confidence.to_string(),
+                        });
+                    }
+
+                    // Dynamic template string and interpolation scan on line
+                    let has_dynamic_candidate = line.contains("${")
+                        || line.contains('`')
+                        || line.contains("\\(")
+                        || line.contains("{$")
+                        || line.contains("#{")
+                        || (line.contains('+')
+                            && (line.contains("'.")
+                                || line.contains("\".")
+                                || line.contains("`.")));
+
+                    if has_dynamic_candidate {
+                        let dynamic_patterns = extract_dynamic_patterns(line);
+                        for dyn_pattern in &dynamic_patterns {
+                            for asset in assets {
+                                if !asset_matches_dynamic_pattern(
+                                    &asset.name,
+                                    &asset.stem,
+                                    &asset.relative_path,
+                                    &asset.path,
+                                    source_path,
+                                    dyn_pattern,
+                                ) {
+                                    continue;
+                                }
+
+                                if !matched_assets_on_line.insert(asset.path.clone()) {
+                                    continue;
+                                }
+
+                                let source_str = source_path.to_string_lossy();
+                                let is_self = (source_str.ends_with(&asset.name)
+                                    && (source_str.len() == asset.name.len()
+                                        || source_str.as_bytes()
+                                            [source_str.len() - asset.name.len() - 1]
+                                            == b'/'))
+                                    || source_str == asset.path;
+                                if is_self {
+                                    continue;
+                                }
+
+                                let confidence = if syntax_type == "md" || syntax_type == "mdx" {
+                                    "low"
+                                } else if dyn_pattern.dir_prefix.is_some()
+                                    || dyn_pattern.stem_prefix.is_some()
+                                {
+                                    "medium"
+                                } else {
+                                    "low"
+                                };
+
+                                file_refs.push(UsageReference {
+                                    asset_id: asset.path.clone(),
+                                    file_path: source_path.to_string_lossy().to_string(),
+                                    relative_file_path: relative_source.clone(),
+                                    line_number,
+                                    line_content: line.trim().to_string(),
+                                    syntax_type: syntax_type.clone(),
+                                    confidence: confidence.to_string(),
+                                });
+                            }
                         }
                     }
                 }
@@ -295,6 +377,35 @@ impl AssetReferenceDetector {
                 file_refs
             })
             .collect();
+
+        if !self.dynamic_collections.is_empty() {
+            for asset in assets {
+                if crate::governance::asset_matcher::matches_any_pattern(
+                    &asset.relative_path,
+                    &self.dynamic_collections,
+                ) && !references
+                    .iter()
+                    .any(|r| r.asset_id == asset.path || r.asset_id == asset.id)
+                {
+                    references.push(UsageReference {
+                        asset_id: asset.path.clone(),
+                        file_path: self
+                            .root_path
+                            .join(".animoriarc.json")
+                            .to_string_lossy()
+                            .to_string(),
+                        relative_file_path: ".animoriarc.json".to_string(),
+                        line_number: 1,
+                        line_content: format!(
+                            "dynamicCollections matched '{}'",
+                            asset.relative_path
+                        ),
+                        syntax_type: "json".to_string(),
+                        confidence: "high".to_string(),
+                    });
+                }
+            }
+        }
 
         references
     }
@@ -480,5 +591,104 @@ mod tests {
         let refs = detector.detect_references(&[asset]);
         assert_eq!(refs.len(), 1);
         assert_eq!(refs[0].syntax_type, "myframework");
+    }
+
+    #[test]
+    fn test_dynamic_template_literal_reference_with_directory() {
+        let dir = tempdir().unwrap();
+        let ws_root = dir.path();
+
+        let char_rel = "public/characters/alchemist.webp";
+        let char_abs = ws_root.join(char_rel);
+        fs::create_dir_all(char_abs.parent().unwrap()).unwrap();
+        fs::write(&char_abs, b"fake webp").unwrap();
+
+        let src_file = ws_root.join("src/components/Card.tsx");
+        fs::create_dir_all(src_file.parent().unwrap()).unwrap();
+        fs::write(&src_file, "const avatar = `/characters/${c.id}.webp`;\n").unwrap();
+
+        let asset = make_test_asset(
+            &char_abs.to_string_lossy(),
+            &char_abs.to_string_lossy(),
+            char_rel,
+            "alchemist.webp",
+            "alchemist",
+        );
+
+        let detector = AssetReferenceDetector::new(ws_root.to_path_buf(), &[]).unwrap();
+        let refs = detector.detect_references(&[asset]);
+
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].asset_id, char_abs.to_string_lossy().to_string());
+        assert_eq!(refs[0].confidence, "medium");
+        assert_eq!(refs[0].line_number, 1);
+        assert!(refs[0].line_content.contains("/characters/${c.id}.webp"));
+    }
+
+    #[test]
+    fn test_dynamic_template_literal_bare_interpolation() {
+        let dir = tempdir().unwrap();
+        let ws_root = dir.path();
+
+        let char_rel = "public/characters/warrior.webp";
+        let char_abs = ws_root.join(char_rel);
+        fs::create_dir_all(char_abs.parent().unwrap()).unwrap();
+        fs::write(&char_abs, b"fake webp").unwrap();
+
+        let src_file = ws_root.join("src/components/Card.tsx");
+        fs::create_dir_all(src_file.parent().unwrap()).unwrap();
+        fs::write(&src_file, "const avatar = `${c.id}.webp`;\n").unwrap();
+
+        let asset = make_test_asset(
+            &char_abs.to_string_lossy(),
+            &char_abs.to_string_lossy(),
+            char_rel,
+            "warrior.webp",
+            "warrior",
+        );
+
+        let detector = AssetReferenceDetector::new(ws_root.to_path_buf(), &[]).unwrap();
+        let refs = detector.detect_references(&[asset]);
+
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].asset_id, char_abs.to_string_lossy().to_string());
+        assert_eq!(refs[0].confidence, "low");
+        assert_eq!(refs[0].line_number, 1);
+    }
+
+    #[test]
+    fn test_dynamic_collections_configuration() {
+        let dir = tempdir().unwrap();
+        let ws_root = dir.path();
+
+        let char_rel = "public/characters/mage.webp";
+        let char_abs = ws_root.join(char_rel);
+        fs::create_dir_all(char_abs.parent().unwrap()).unwrap();
+        fs::write(&char_abs, b"fake webp").unwrap();
+
+        let asset = make_test_asset(
+            &char_abs.to_string_lossy(),
+            &char_abs.to_string_lossy(),
+            char_rel,
+            "mage.webp",
+            "mage",
+        );
+
+        let detector = AssetReferenceDetector::new_with_all_options(
+            ws_root.to_path_buf(),
+            &[],
+            &[],
+            &[],
+            None,
+            &["public/characters/**".to_string()],
+        )
+        .unwrap();
+
+        let refs = detector.detect_references(&[asset]);
+
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].asset_id, char_abs.to_string_lossy().to_string());
+        assert_eq!(refs[0].confidence, "high");
+        assert!(refs[0].line_content.contains("dynamicCollections matched"));
     }
 }

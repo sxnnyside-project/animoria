@@ -6,9 +6,20 @@ use std::io::Read;
 use std::path::Path;
 
 pub fn parse_raster(path: &Path, asset: &mut Asset) -> Result<(), String> {
-    let mut file = File::open(path).map_err(|e| format!("Cannot open raster file: {e}"))?;
+    let file = File::open(path).map_err(|e| format!("Cannot open raster file: {e}"))?;
+
+    // Bound the maximum read size depending on format to prevent memory exhaustion
+    // on massive files (e.g. 100MB-500MB TIFFs or PSDs) during parallel analysis.
+    // Static raster headers are always contained within the first 512KB.
+    // GIFs may contain frame descriptors throughout the file, so allow up to 16MB.
+    let max_read_bytes = match asset.format {
+        AssetFormat::Gif => 16 * 1024 * 1024, // 16 MB
+        _ => 512 * 1024,                      // 512 KB
+    };
+
     let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer)
+    file.take(max_read_bytes as u64)
+        .read_to_end(&mut buffer)
         .map_err(|e| format!("Cannot read raster file: {e}"))?;
 
     if buffer.is_empty() {

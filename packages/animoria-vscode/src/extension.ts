@@ -113,8 +113,8 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.workspace.registerTextDocumentContentProvider(
       GOVERNANCE_REPORT_SCHEME,
-      governanceReportContentProvider
-    )
+      governanceReportContentProvider,
+    ),
   );
 
   const initialWorkspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
@@ -142,7 +142,7 @@ export async function activate(context: vscode.ExtensionContext) {
         tab: 'assets',
         assetPath: asset.path,
       });
-    }
+    },
   );
 
   const openWorkspaceCommand = vscode.commands.registerCommand('animoria.openWorkspace', () => {
@@ -158,7 +158,7 @@ export async function activate(context: vscode.ExtensionContext) {
       if (!path) return;
       const uri = vscode.Uri.file(path);
       await vscode.commands.executeCommand('revealInExplorer', uri);
-    }
+    },
   );
 
   const searchCommand = vscode.commands.registerCommand('animoria.search', () => {
@@ -196,7 +196,7 @@ export async function activate(context: vscode.ExtensionContext) {
   });
 
   const viewReportCommand = vscode.commands.registerCommand('animoria.viewGovernanceReport', () =>
-    viewGovernanceReport()
+    viewGovernanceReport(),
   );
 
   const generateSnippetCommand = vscode.commands.registerCommand(
@@ -204,14 +204,14 @@ export async function activate(context: vscode.ExtensionContext) {
     (arg: Asset | { asset: Asset }) => {
       const asset = arg && 'asset' in arg ? arg.asset : arg;
       if (asset) generateSnippet(asset);
-    }
+    },
   );
 
   const toggleViewModeCommand = vscode.commands.registerCommand('animoria.toggleViewMode', () => {
     const mode = treeProvider.toggleViewMode();
     vscode.window.setStatusBarMessage(
       `Animoria: ${mode === 'tree' ? 'Directory Tree' : 'Flat'} view`,
-      3000
+      3000,
     );
   });
 
@@ -247,13 +247,13 @@ export async function activate(context: vscode.ExtensionContext) {
           `**Total Findings:** ${lastAnalysis.diagnostics.length}`,
           '',
           ...lastAnalysis.diagnostics.map(
-            (d) => `- [${d.severity}] ${d.rule_id}: ${d.message} (\`${d.target_asset_path}\`)`
+            (d) => `- [${d.severity}] ${d.rule_id}: ${d.message} (\`${d.target_asset_path}\`)`,
           ),
         ].join('\n');
         await vscode.workspace.fs.writeFile(uri, Buffer.from(content, 'utf8'));
         vscode.window.showInformationMessage(`Animoria: Report exported to ${uri.fsPath}`);
       }
-    }
+    },
   );
 
   const deleteAssetCommand = vscode.commands.registerCommand(
@@ -274,7 +274,7 @@ export async function activate(context: vscode.ExtensionContext) {
       const confirm = await vscode.window.showWarningMessage(
         `Move asset "${path.split(/[/\\]/).pop()}" to trash?`,
         { modal: true },
-        'Move to Trash'
+        'Move to Trash',
       );
       if (confirm !== 'Move to Trash') return;
 
@@ -302,7 +302,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const msg = err instanceof Error ? err.message : String(err);
         vscode.window.showErrorMessage(`Failed to delete asset: ${msg}`);
       }
-    }
+    },
   );
 
   const startCleanupReviewCommand = vscode.commands.registerCommand(
@@ -311,7 +311,7 @@ export async function activate(context: vscode.ExtensionContext) {
       AnimoriaWorkspacePanel.show(context, createSessionAdapter, () => daemonClient, 'cleanup', {
         tab: 'cleanup',
       });
-    }
+    },
   );
 
   const restoreCleanupCommand = vscode.commands.registerCommand('animoria.restoreCleanup', () => {
@@ -326,7 +326,7 @@ export async function activate(context: vscode.ExtensionContext) {
       AnimoriaWorkspacePanel.show(context, createSessionAdapter, () => daemonClient, 'duplicates', {
         tab: 'duplicates',
       });
-    }
+    },
   );
 
   context.subscriptions.push(
@@ -346,13 +346,13 @@ export async function activate(context: vscode.ExtensionContext) {
     restoreCleanupCommand,
     resolveDuplicatesCommand,
     generateSnippetCommand,
-    toggleViewModeCommand
+    toggleViewModeCommand,
   );
 
   // Setup hover provider
   hoverRegistration = vscode.languages.registerHoverProvider(
     HOVER_LANGUAGES.map((lang) => ({ language: lang })),
-    new AnimoriaHoverProvider(() => lastAnalysis ?? null, treeProvider)
+    new AnimoriaHoverProvider(() => lastAnalysis ?? null, treeProvider),
   );
   context.subscriptions.push(hoverRegistration);
 
@@ -362,7 +362,7 @@ export async function activate(context: vscode.ExtensionContext) {
     new AnimoriaCodeActionProvider(),
     {
       providedCodeActionKinds: AnimoriaCodeActionProvider.providedCodeActionKinds,
-    }
+    },
   );
   context.subscriptions.push(codeActionRegistration);
 
@@ -457,7 +457,7 @@ async function performScanWorkspace(): Promise<void> {
           scannedRoots.map((r) => ({
             report: r.health_score,
             asset_count: r.assets.length,
-          }))
+          })),
         );
       } catch {
         // Fallback to first root score
@@ -500,7 +500,7 @@ async function performScanWorkspace(): Promise<void> {
       scannedRoots.length > 1 ? ` across ${scannedRoots.length} workspace folders` : '';
     vscode.window.setStatusBarMessage(
       `Animoria: ${combinedAnalysis.assets.length} assets indexed${rootSummary} (Health: ${combinedAnalysis.health_score?.score ?? 100}%)`,
-      4000
+      4000,
     );
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -512,7 +512,7 @@ async function performScanWorkspace(): Promise<void> {
 async function viewGovernanceReport(): Promise<void> {
   if (!lastAnalysis) {
     vscode.window.showWarningMessage(
-      'Animoria: No governance report available yet. Run a scan first.'
+      'Animoria: No governance report available yet. Run a scan first.',
     );
     return;
   }
@@ -568,7 +568,7 @@ async function generateSnippet(asset: Asset): Promise<void> {
 
   if (snippets.length === 0) {
     vscode.window.showWarningMessage(
-      `Animoria: No snippet generator supports ${asset.format} assets.`
+      `Animoria: No snippet generator supports ${asset.format} assets.`,
     );
     return;
   }

@@ -139,7 +139,7 @@ export class SandboxEventConsole extends LitElement {
                     ${entry.detail ? html`<span class="detail">— ${entry.detail}</span>` : null}</span
                   >
                 </li>
-              `
+              `,
             )}
           </ul>`
       }

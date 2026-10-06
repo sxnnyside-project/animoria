@@ -33,11 +33,13 @@ data class DimensionsData(
 
 @Serializable
 data class MotionMetadataData(
-    @SerialName("frame_count") val frameCount: Int = 0,
+    @SerialName("total_frames") val totalFrames: Int? = null,
     val fps: Double = 0.0,
     @SerialName("duration_secs") val durationSecs: Double = 0.0,
     @SerialName("is_animated") val isAnimated: Boolean = false,
-    @SerialName("layers_count") val layersCount: Int? = null,
+    @SerialName("layer_count") val layerCount: Int? = null,
+    @SerialName("frame_count") val frameCount: Int = totalFrames ?: 0,
+    @SerialName("layers_count") val layersCount: Int? = layerCount,
     @SerialName("assets_count") val assetsCount: Int? = null,
 )
 
@@ -46,6 +48,7 @@ data class StaticMetadataData(
     val format: String = "",
     @SerialName("has_alpha") val hasAlpha: Boolean = false,
     @SerialName("color_space") val colorSpace: String? = null,
+    @SerialName("color_depth") val colorDepth: Int? = null,
 )
 
 @Serializable
@@ -59,15 +62,17 @@ data class JetBrainsAsset(
     val format: String = "",
     val kind: String = "static",
     @SerialName("size_bytes") val sizeBytes: Long = 0,
-    @SerialName("modified_timestamp") val modifiedTimestamp: Long = 0,
+    @SerialName("mtime_ms") val mtimeMs: Long = 0,
     @SerialName("is_valid") val isValid: Boolean = true,
     val dimensions: DimensionsData? = null,
-    @SerialName("static_metadata") val staticMetadata: StaticMetadataData? = null,
-    @SerialName("motion_metadata") val motionMetadata: MotionMetadataData? = null,
-    val sha256: String? = null,
+    @SerialName("static_meta") val staticMetadata: StaticMetadataData? = null,
+    @SerialName("motion") val motionMetadata: MotionMetadataData? = null,
+    @SerialName("content_hash") val contentHash: String? = null,
     val metadata: JsonElement? = null,
-    val thumbnailPath: String? = null,
-    val mtime: Double = modifiedTimestamp.toDouble(),
+    @SerialName("thumbnail_path") val thumbnailPath: String? = null,
+    val modifiedTimestamp: Long = mtimeMs,
+    val mtime: Double = if (mtimeMs != 0L) mtimeMs.toDouble() else modifiedTimestamp.toDouble(),
+    val sha256: String? = contentHash,
     val status: String = if (isValid) "parsed" else "error",
     val error: String? = if (isValid) null else "Invalid asset",
 )

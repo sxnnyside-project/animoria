@@ -67,7 +67,7 @@ export class SandboxHost {
   // so persisting it doesn't violate the read-only guarantee.
   private _preferences: UiPreferences = readStored(
     'animoria.sandbox.preferences',
-    DEFAULT_PREFERENCES
+    DEFAULT_PREFERENCES,
   );
   private _dismissed = new Set<string>(readStored<string[]>('animoria.sandbox.dismissed', []));
 
@@ -207,7 +207,7 @@ export class SandboxHost {
       case 'request-cleanup-proposal': {
         const dismissed = [...this._dismissed].join('\n');
         const proposals = await this._get<RootCleanupProposal[]>(
-          `/api/cleanup-proposal?dismissed=${encodeURIComponent(dismissed)}`
+          `/api/cleanup-proposal?dismissed=${encodeURIComponent(dismissed)}`,
         );
         if (proposals) this._emit({ type: 'cleanup-proposal', roots: proposals });
         return;
@@ -215,7 +215,7 @@ export class SandboxHost {
 
       case 'request-cleanup-plan': {
         const plans = await this._get<RootCleanupPlan[]>(
-          `/api/cleanup-plan?paths=${encodeURIComponent(message.assetPaths.join('\n'))}`
+          `/api/cleanup-plan?paths=${encodeURIComponent(message.assetPaths.join('\n'))}`,
         );
         if (plans) this._emit({ type: 'cleanup-plan', plans });
         return;
@@ -229,8 +229,8 @@ export class SandboxHost {
           rootName: string;
         }>(
           `/api/resolution-plan?groupId=${encodeURIComponent(
-            message.groupId
-          )}&keepPath=${encodeURIComponent(message.keepPath)}`
+            message.groupId,
+          )}&keepPath=${encodeURIComponent(message.keepPath)}`,
         );
         if (response) {
           this._emit({

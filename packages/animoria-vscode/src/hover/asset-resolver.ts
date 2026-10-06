@@ -10,7 +10,7 @@ export function lineMatchesAsset(line: string, name: string, stem: string): bool
 export function findTokenRange(
   line: string,
   token: string,
-  charPos: number
+  charPos: number,
 ): [number, number] | null {
   if (!token || token.length < 2) return null;
   const lowerLine = line.toLowerCase();
@@ -30,7 +30,7 @@ export class AssetResolver {
   static resolveFromPosition(
     document: vscode.TextDocument,
     position: vscode.Position,
-    snapshot: WorkspaceAnalysis
+    snapshot: WorkspaceAnalysis,
   ): Asset | null {
     const line = document.lineAt(position.line).text;
     const charPos = position.character;
@@ -57,7 +57,7 @@ export class AssetResolver {
   static resolveStaticFromPosition(
     document: vscode.TextDocument,
     position: vscode.Position,
-    staticAssets: readonly StaticAssetHoverInfo[]
+    staticAssets: readonly StaticAssetHoverInfo[],
   ): StaticAssetHoverInfo | null {
     const line = document.lineAt(position.line).text;
     const charPos = position.character;
@@ -80,7 +80,7 @@ export class AssetResolver {
   static resolveHoverRange(
     document: vscode.TextDocument,
     position: vscode.Position,
-    asset: Pick<Asset, 'name' | 'stem'>
+    asset: Pick<Asset, 'name' | 'stem'>,
   ): vscode.Range {
     const line = document.lineAt(position.line).text;
     const charPos = position.character;
@@ -89,7 +89,7 @@ export class AssetResolver {
     if (exactRange) {
       return new vscode.Range(
         new vscode.Position(position.line, exactRange[0]),
-        new vscode.Position(position.line, exactRange[1])
+        new vscode.Position(position.line, exactRange[1]),
       );
     }
 
@@ -98,7 +98,7 @@ export class AssetResolver {
       if (stemRange) {
         return new vscode.Range(
           new vscode.Position(position.line, stemRange[0]),
-          new vscode.Position(position.line, stemRange[1])
+          new vscode.Position(position.line, stemRange[1]),
         );
       }
     }

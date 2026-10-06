@@ -132,7 +132,7 @@ function validate<T>(
   raw: unknown,
   known: readonly string[],
   shape: Readonly<Record<string, readonly [string, (v: unknown) => boolean][]>>,
-  direction: string
+  direction: string,
 ): ValidationResult<T> {
   if (!isRecord(raw)) return { ok: false, reason: `${direction} message is not an object` };
   if (!isString(raw.type)) {

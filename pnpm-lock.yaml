@@ -15,22 +15,22 @@ importers:
   .:
     devDependencies:
       '@biomejs/biome':
-        specifier: ^1.9.4
+        specifier: 1.9.4
         version: 1.9.4
       '@commitlint/cli':
-        specifier: ^21.2.3
+        specifier: 21.2.3
         version: 21.2.3(@types/node@26.6.2)(conventional-commits-parser@7.1.2)(typescript@5.9.3)
       '@commitlint/config-conventional':
-        specifier: ^21.2.3
+        specifier: 21.2.3
         version: 21.2.3
       husky:
-        specifier: ^9.1.7
+        specifier: 9.1.7
         version: 9.1.7
       turbo:
-        specifier: latest
+        specifier: 2.11.4
         version: 2.11.4
       typescript:
-        specifier: ^5.9.3
+        specifier: 5.9.3
         version: 5.9.3
 
   apps/animoria-sandbox:

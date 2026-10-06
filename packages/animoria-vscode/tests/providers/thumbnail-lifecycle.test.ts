@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { AnimoriaTreeProvider } from '../../src/providers/animoria-tree-provider.js';
-import { buildAnalysis, buildAsset } from '../support/fakes.js';
 import { resetTestWorkspace } from '../harness.js';
+import { buildAnalysis, buildAsset } from '../support/fakes.js';
 
 const A = buildAsset({ path: '/workspace/assets/a.json', name: 'a.json', stem: 'a' });
 const B = buildAsset({ path: '/workspace/assets/b.json', name: 'b.json', stem: 'b' });

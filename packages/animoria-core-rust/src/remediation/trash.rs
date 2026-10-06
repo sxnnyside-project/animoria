@@ -11,7 +11,7 @@ pub struct TrashManager {
 
 impl TrashManager {
     pub fn new(workspace_root: &Path) -> Self {
-        let trash_root = workspace_root.join(".animoria").join("trash");
+        let trash_root = workspace_root.join(".animoria/trash");
         Self {
             workspace_root: workspace_root.to_path_buf(),
             trash_root,
@@ -58,8 +58,31 @@ impl TrashManager {
         let dest_dir = self.trash_root.join(format!("session_{}", now_ms));
         fs::create_dir_all(&dest_dir)?;
 
-        let dest_path = dest_dir.join(file_name);
-        fs::rename(&file_path, &dest_path)?;
+        // Collision avoidance: if a file with the same name already exists in this session,
+        // assign an incremented unique filename so homonymous assets never overwrite each other.
+        let mut dest_path = dest_dir.join(file_name);
+        if dest_path.exists() {
+            let stem = file_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("asset");
+            let ext = file_path.extension().and_then(|e| e.to_str());
+            let mut counter = 1;
+            loop {
+                let unique_name = match ext {
+                    Some(e) => format!("{}_{}.{}", stem, counter, e),
+                    None => format!("{}_{}", stem, counter),
+                };
+                let candidate_path = dest_dir.join(unique_name);
+                if !candidate_path.exists() {
+                    dest_path = candidate_path;
+                    break;
+                }
+                counter += 1;
+            }
+        }
+
+        move_file_safe(&file_path, &dest_path)?;
 
         Ok(TrashItem {
             asset_id: asset_id.to_string(),
@@ -102,7 +125,71 @@ impl TrashManager {
             );
         }
 
-        fs::rename(trashed, original)?;
+        move_file_safe(trashed, original)?;
         Ok(())
+    }
+}
+
+/// Atomically renames `src` to `dst`, with automatic fallback to copy-and-delete
+/// when crossing filesystem boundaries (`EXDEV` / `CrossesDevices`).
+fn move_file_safe(src: &Path, dst: &Path) -> anyhow::Result<()> {
+    match fs::rename(src, dst) {
+        Ok(()) => Ok(()),
+        Err(err) => {
+            #[cfg(unix)]
+            let is_cross_device = err.raw_os_error() == Some(18); // EXDEV
+            #[cfg(not(unix))]
+            let is_cross_device = false;
+
+            if is_cross_device || err.kind() == std::io::ErrorKind::CrossesDevices {
+                fs::copy(src, dst)?;
+                fs::remove_file(src)?;
+                Ok(())
+            } else {
+                Err(err.into())
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_stage_to_trash_avoids_homonymous_collision() {
+        let dir = tempdir().unwrap();
+        let ws_root = dir.path();
+        let manager = TrashManager::new(ws_root);
+
+        let file1 = ws_root.join("app1_icon.png");
+        let file2 = ws_root.join("app2_icon.png");
+        fs::write(&file1, b"content1").unwrap();
+        fs::write(&file2, b"content2").unwrap();
+
+        // Simulate two files that share the same base file name when moved to trash
+        let dir1 = ws_root.join("apps/web");
+        let dir2 = ws_root.join("packages/ui");
+        fs::create_dir_all(&dir1).unwrap();
+        fs::create_dir_all(&dir2).unwrap();
+        let path1 = dir1.join("icon.png");
+        let path2 = dir2.join("icon.png");
+        fs::write(&path1, b"content1").unwrap();
+        fs::write(&path2, b"content2").unwrap();
+
+        let item1 = manager.stage_to_trash("asset-1", &path1).unwrap();
+        let item2 = manager.stage_to_trash("asset-2", &path2).unwrap();
+
+        // Both items must have distinct trashed paths and their contents must be preserved
+        assert_ne!(item1.trashed_path, item2.trashed_path);
+        assert_eq!(fs::read(&item1.trashed_path).unwrap(), b"content1");
+        assert_eq!(fs::read(&item2.trashed_path).unwrap(), b"content2");
+
+        // Restoring both must restore original contents to respective locations
+        manager.restore_from_trash(&item1).unwrap();
+        manager.restore_from_trash(&item2).unwrap();
+        assert_eq!(fs::read(&path1).unwrap(), b"content1");
+        assert_eq!(fs::read(&path2).unwrap(), b"content2");
     }
 }

@@ -10,7 +10,7 @@ export class AnimoriaCodeActionProvider implements vscode.CodeActionProvider {
     document: vscode.TextDocument,
     range: vscode.Range | vscode.Selection,
     context: vscode.CodeActionContext,
-    _token: vscode.CancellationToken
+    _token: vscode.CancellationToken,
   ): vscode.CodeAction[] {
     const actions: vscode.CodeAction[] = [];
 
@@ -22,7 +22,7 @@ export class AnimoriaCodeActionProvider implements vscode.CodeActionProvider {
       if (ruleId === 'no-duplicate-content') {
         const resolveAction = new vscode.CodeAction(
           'Animoria: Resolve Duplicates...',
-          vscode.CodeActionKind.QuickFix
+          vscode.CodeActionKind.QuickFix,
         );
         resolveAction.command = {
           command: 'animoria.resolveDuplicates',
@@ -35,7 +35,7 @@ export class AnimoriaCodeActionProvider implements vscode.CodeActionProvider {
 
       const reviewAction = new vscode.CodeAction(
         'Animoria: Review Cleanup Opportunities...',
-        vscode.CodeActionKind.QuickFix
+        vscode.CodeActionKind.QuickFix,
       );
       reviewAction.command = {
         command: 'animoria.startCleanupReview',
@@ -46,7 +46,7 @@ export class AnimoriaCodeActionProvider implements vscode.CodeActionProvider {
 
       const refreshAction = new vscode.CodeAction(
         'Animoria: Run Governance Analysis',
-        vscode.CodeActionKind.QuickFix
+        vscode.CodeActionKind.QuickFix,
       );
       refreshAction.command = {
         command: 'animoria.runGovernance',

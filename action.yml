@@ -1,0 +1,199 @@
+name: 'Animoria Asset Governance'
+description: 'High-performance visual asset discovery, deduplication, format verification, and governance quality gate.'
+author: 'Sxnnyside Project'
+branding:
+  icon: 'eye'
+  color: 'blue'
+
+inputs:
+  version:
+    description: 'Version of Animoria native CLI to use (defaults to 2.3.0)'
+    required: false
+    default: '2.3.0'
+  path:
+    description: 'Workspace directory path to analyze (defaults to .)'
+    required: false
+    default: '.'
+  strict:
+    description: 'Treat governance warnings as failures (exit code 2)'
+    required: false
+    default: 'false'
+  format:
+    description: 'Output format: text, json, sarif, or compact (default: text)'
+    required: false
+    default: 'text'
+  sarif-file:
+    description: 'Path where SARIF report should be saved'
+    required: false
+    default: 'animoria-results.sarif'
+  upload-sarif:
+    description: 'Upload generated SARIF report to GitHub Code Scanning'
+    required: false
+    default: 'true'
+  min-score:
+    description: 'Minimum required health score (0-100). Fails if below.'
+    required: false
+    default: ''
+  max-warnings:
+    description: 'Maximum permitted warnings count. Fails if exceeded.'
+    required: false
+    default: ''
+  github-token:
+    description: 'GitHub token for SARIF upload to Code Scanning'
+    required: false
+    default: ''
+
+outputs:
+  exit-code:
+    description: 'Exit code returned by animoria check (0 = clean, 1 = errors/quality gate, 2 = warnings)'
+    value: ${{ steps.run-check.outputs.exit-code }}
+  sarif-path:
+    description: 'Path of the generated SARIF report file (if generated)'
+    value: ${{ steps.run-check.outputs.sarif-path }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Resolve Platform and Target Architecture
+      id: platform-setup
+      shell: bash
+      run: |
+        set -euo pipefail
+        OS_NAME="$(uname -s)"
+        ARCH_NAME="$(uname -m)"
+
+        case "$OS_NAME" in
+          Linux*)
+            case "$ARCH_NAME" in
+              x86_64) TARGET="linux-x64" ;;
+              aarch64|arm64) TARGET="linux-arm64" ;;
+              *) echo "::error::Unsupported architecture: $ARCH_NAME on Linux"; exit 1 ;;
+            esac
+            BINARY_NAME="animoria"
+            ;;
+          Darwin*)
+            case "$ARCH_NAME" in
+              arm64) TARGET="darwin-arm64" ;;
+              x86_64) TARGET="darwin-arm64" ;; # Rosetta supported
+              *) echo "::error::Unsupported architecture: $ARCH_NAME on macOS"; exit 1 ;;
+            esac
+            BINARY_NAME="animoria"
+            ;;
+          MINGW*|MSYS*|CYGWIN*|Windows_NT)
+            TARGET="win32-x64"
+            BINARY_NAME="animoria.exe"
+            ;;
+          *)
+            echo "::error::Unsupported OS: $OS_NAME"; exit 1 ;;
+        esac
+
+        echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+        echo "binary-name=$BINARY_NAME" >> "$GITHUB_OUTPUT"
+
+    - name: Download & Cache Animoria Native Binary
+      id: install-binary
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        TARGET: ${{ steps.platform-setup.outputs.target }}
+        BINARY_NAME: ${{ steps.platform-setup.outputs.binary-name }}
+      run: |
+        set -euo pipefail
+        INSTALL_DIR="$RUNNER_TEMP/animoria-bin"
+        mkdir -p "$INSTALL_DIR"
+
+        RELEASE_URL="https://github.com/sxnnyside-project/animoria/releases/download/v${VERSION}/animoria-${VERSION}-${TARGET}.vsix"
+        echo "Fetching Animoria binary from release artifact: $RELEASE_URL"
+
+        # Download extension package containing the precompiled signed native binary
+        VSIX_TMP="$RUNNER_TEMP/animoria-${VERSION}.zip"
+        if curl -sSL -f "$RELEASE_URL" -o "$VSIX_TMP"; then
+          unzip -q "$VSIX_TMP" "extension/bin/$BINARY_NAME" -d "$RUNNER_TEMP/unpacked" || \
+          unzip -q "$VSIX_TMP" "bin/$BINARY_NAME" -d "$RUNNER_TEMP/unpacked" || true
+
+          FOUND_BIN=$(find "$RUNNER_TEMP/unpacked" -type f -name "$BINARY_NAME" | head -n 1)
+          if [ -n "$FOUND_BIN" ]; then
+            cp "$FOUND_BIN" "$INSTALL_DIR/$BINARY_NAME"
+            chmod +x "$INSTALL_DIR/$BINARY_NAME"
+            echo "$INSTALL_DIR" >> "$GITHUB_PATH"
+            echo "Animoria v${VERSION} installed successfully."
+            exit 0
+          fi
+        fi
+
+        echo "Warning: Direct binary download unavailable. Falling back to local build or system path..."
+        if ! command -v animoria &> /dev/null; then
+          echo "Animoria binary not found on PATH. If running in the Animoria monorepo, cargo will compile it."
+          if [ -f "packages/animoria-core-rust/Cargo.toml" ]; then
+            cargo build --release --manifest-path packages/animoria-core-rust/Cargo.toml
+            cp "packages/animoria-core-rust/target/release/$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
+            chmod +x "$INSTALL_DIR/$BINARY_NAME"
+            echo "$INSTALL_DIR" >> "$GITHUB_PATH"
+          else
+            echo "::error::Unable to find or download Animoria native binary."
+            exit 1
+          fi
+        fi
+
+    - name: Execute Animoria Governance Audit
+      id: run-check
+      shell: bash
+      env:
+        TARGET_PATH: ${{ inputs.path }}
+        STRICT: ${{ inputs.strict }}
+        FORMAT: ${{ inputs.format }}
+        SARIF_FILE: ${{ inputs.sarif-file }}
+        UPLOAD_SARIF: ${{ inputs.upload-sarif }}
+        MIN_SCORE: ${{ inputs.min-score }}
+        MAX_WARNINGS: ${{ inputs.max-warnings }}
+      run: |
+        set +e
+        ARGS=()
+        ARGS+=("${TARGET_PATH}")
+
+        if [ "$STRICT" = "true" ]; then
+          ARGS+=("--strict")
+        fi
+
+        if [ -n "$MIN_SCORE" ]; then
+          ARGS+=("--min-score" "$MIN_SCORE")
+        fi
+
+        if [ -n "$MAX_WARNINGS" ]; then
+          ARGS+=("--max-warnings" "$MAX_WARNINGS")
+        fi
+
+        # Generate SARIF report if requested
+        if [ "$UPLOAD_SARIF" = "true" ] || [ "$FORMAT" = "sarif" ]; then
+          echo "Generating SARIF report at $SARIF_FILE..."
+          animoria check "${TARGET_PATH}" --sarif > "$SARIF_FILE"
+          echo "sarif-path=$SARIF_FILE" >> "$GITHUB_OUTPUT"
+        else
+          echo "sarif-path=" >> "$GITHUB_OUTPUT"
+        fi
+
+        # Run configured format for stdout console inspection
+        if [ "$FORMAT" = "sarif" ]; then
+          EXIT_CODE=$?
+        else
+          if [ "$FORMAT" = "compact" ]; then
+            ARGS+=("--format=compact")
+          elif [ "$FORMAT" = "json" ]; then
+            ARGS+=("--json")
+          fi
+
+          animoria check "${ARGS[@]}"
+          EXIT_CODE=$?
+        fi
+
+        echo "exit-code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+        set -e
+        exit "$EXIT_CODE"
+
+    - name: Upload SARIF to GitHub Code Scanning
+      if: ${{ inputs.upload-sarif == 'true' && hashFiles(inputs.sarif-file) != '' && !cancelled() }}
+      uses: github/codeql-action/upload-sarif@f35333b910470a5408cb081b68f0701254a7d27b # v3.28.18
+      with:
+        sarif_file: ${{ inputs.sarif-file }}
+        category: 'animoria-governance'
+        token: ${{ inputs.github-token != '' && inputs.github-token || github.token }}

@@ -65,7 +65,7 @@ export class AnimoriaWorkspacePanel {
     session: () => WorkspaceSession | undefined,
     daemon: () => VsCodeDaemonClient | undefined,
     private readonly _surface: PanelSurface,
-    focus?: PanelFocus
+    focus?: PanelFocus,
   ) {
     this._panel = panel;
     this._pendingFocus = focus ?? null;
@@ -88,7 +88,7 @@ export class AnimoriaWorkspacePanel {
     this._disposables.push(
       this._panel.webview.onDidReceiveMessage((raw) => {
         void this._bridge.handle(raw);
-      })
+      }),
     );
 
     this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
@@ -100,7 +100,7 @@ export class AnimoriaWorkspacePanel {
     session: () => WorkspaceSession | undefined,
     daemon: () => VsCodeDaemonClient | undefined,
     surface: PanelSurface,
-    focus?: PanelFocus
+    focus?: PanelFocus,
   ): AnimoriaWorkspacePanel {
     const definition = SURFACES[surface];
     const column = definition.column(vscode.window.activeTextEditor?.viewColumn);
@@ -125,7 +125,7 @@ export class AnimoriaWorkspacePanel {
         enableScripts: true,
         retainContextWhenHidden: true,
         localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')],
-      }
+      },
     );
 
     const created = new AnimoriaWorkspacePanel(panel, context, session, daemon, surface, focus);
@@ -178,10 +178,10 @@ export class AnimoriaWorkspacePanel {
     const webview = this._panel.webview;
     const nonce = createNonce();
     const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(context.extensionUri, 'media', 'animoria-ui.global.js')
+      vscode.Uri.joinPath(context.extensionUri, 'media', 'animoria-ui.global.js'),
     );
     const tokensUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(context.extensionUri, 'media', 'tokens.css')
+      vscode.Uri.joinPath(context.extensionUri, 'media', 'tokens.css'),
     );
 
     return `<!DOCTYPE html>

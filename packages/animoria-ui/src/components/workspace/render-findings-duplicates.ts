@@ -37,13 +37,13 @@ export function renderFindings(model: AnalysisViewModel, deps: FindingsDeps) {
                 @open-asset=${(e: CustomEvent<{ assetPath: string; rootId: string }>) =>
                   deps.onSelectAsset(e.detail.assetPath, e.detail.rootId)}
                 @open-reference=${(
-                  e: CustomEvent<{ file: string; line: number; rootId: string }>
+                  e: CustomEvent<{ file: string; line: number; rootId: string }>,
                 ) => deps.onOpenReference(e.detail)}
               ></animoria-finding>
-            `
+            `,
           )}
         </div>
-      `
+      `,
     )}
   `;
 }
@@ -68,7 +68,7 @@ export interface DuplicatesDeps {
  */
 export function rootNamesFor(
   model: AnalysisViewModel,
-  group: DuplicateGroup
+  group: DuplicateGroup,
 ): ReadonlyMap<string, string> {
   const names = new Map<string, string>();
   const nameById = new Map(model.roots.map((summary) => [summary.rootId, summary.rootName]));
@@ -107,7 +107,7 @@ export function renderDuplicates(model: AnalysisViewModel, deps: DuplicatesDeps)
               deps.onApplyResolutionPlan(e.detail)}
             @cancel-resolution-plan=${() => deps.onCancelResolutionPlan()}
           ></animoria-duplicate-group>
-        `
+        `,
       )}
     </div>
   `;

@@ -62,7 +62,7 @@ export enum ViewColumn {
 export class ThemeIcon {
   constructor(
     public readonly id: string,
-    public readonly color?: ThemeColor
+    public readonly color?: ThemeColor,
   ) {}
   static readonly File = new ThemeIcon('file');
   static readonly Folder = new ThemeIcon('folder');
@@ -84,7 +84,7 @@ export class TreeItem {
 
   constructor(
     label: string,
-    collapsibleState: TreeItemCollapsibleState = TreeItemCollapsibleState.None
+    collapsibleState: TreeItemCollapsibleState = TreeItemCollapsibleState.None,
   ) {
     this.label = label;
     this.collapsibleState = collapsibleState;
@@ -94,7 +94,7 @@ export class TreeItem {
 export class Position {
   constructor(
     public readonly line: number,
-    public readonly character: number
+    public readonly character: number,
   ) {}
 }
 
@@ -106,7 +106,7 @@ export class Position {
 export class Selection {
   constructor(
     public readonly anchor: Position,
-    public readonly active: Position
+    public readonly active: Position,
   ) {}
 
   get start(): Position {
@@ -157,14 +157,14 @@ export enum DiagnosticSeverity {
 export class Location {
   constructor(
     public readonly uri: Uri,
-    public readonly range: Range | Position
+    public readonly range: Range | Position,
   ) {}
 }
 
 export class DiagnosticRelatedInformation {
   constructor(
     public readonly location: Location,
-    public readonly message: string
+    public readonly message: string,
   ) {}
 }
 
@@ -176,7 +176,7 @@ export class Diagnostic {
   constructor(
     public readonly range: Range,
     public readonly message: string,
-    public readonly severity: DiagnosticSeverity = DiagnosticSeverity.Error
+    public readonly severity: DiagnosticSeverity = DiagnosticSeverity.Error,
   ) {}
 }
 
@@ -215,7 +215,7 @@ export class FakeDiagnosticCollection {
 export class Hover {
   constructor(
     public readonly contents: MarkdownString | MarkdownString[],
-    public readonly range?: Range
+    public readonly range?: Range,
   ) {}
 }
 
@@ -243,7 +243,7 @@ export class MarkdownString {
 export class RelativePattern {
   constructor(
     public readonly base: string,
-    public readonly pattern: string
+    public readonly pattern: string,
   ) {}
 }
 
@@ -251,7 +251,7 @@ export class Uri {
   private constructor(
     public readonly scheme: string,
     public readonly fsPath: string,
-    public readonly path: string
+    public readonly path: string,
   ) {}
 
   static file(fsPath: string): Uri {
@@ -293,14 +293,14 @@ export class WorkspaceEdit {
   renameFile(
     from: Uri,
     to: Uri,
-    _options?: { overwrite?: boolean; ignoreIfExists?: boolean }
+    _options?: { overwrite?: boolean; ignoreIfExists?: boolean },
   ): void {
     this.fileRenames.push({ from, to });
   }
 
   createFile(
     uri: Uri,
-    options?: { overwrite?: boolean; ignoreIfExists?: boolean; contents?: Uint8Array }
+    options?: { overwrite?: boolean; ignoreIfExists?: boolean; contents?: Uint8Array },
   ): void {
     this.fileCreations.push({ uri, contents: options?.contents });
   }
@@ -390,7 +390,7 @@ class FakeWebviewPanel {
 
   constructor(
     public readonly viewType: string,
-    public title: string
+    public title: string,
   ) {}
 
   onDidDispose(listener: () => unknown): Disposable {
@@ -557,7 +557,7 @@ export const window = {
   },
   withProgress: async <T>(
     _options: unknown,
-    task: (progress: { report(value: { message?: string }): void }) => Thenable<T>
+    task: (progress: { report(value: { message?: string }): void }) => Thenable<T>,
   ): Promise<T> => task({ report: () => {} }),
   get activeTextEditor() {
     return __mockState.activeTextEditor;
@@ -592,7 +592,7 @@ export const languages = {
   registerCodeActionsProvider(
     _selector: unknown,
     _provider: unknown,
-    _metadata?: unknown
+    _metadata?: unknown,
   ): Disposable {
     return new Disposable(() => {});
   },
@@ -626,7 +626,7 @@ class FakeWorkspaceConfiguration {
 export const workspace = {
   registerTextDocumentContentProvider(
     _scheme: string,
-    _provider: TextDocumentContentProvider
+    _provider: TextDocumentContentProvider,
   ): Disposable {
     return new Disposable(() => {});
   },
@@ -649,7 +649,7 @@ export const workspace = {
   // untitled document, `openTextDocument(uri)` opens a file. The host bridge uses
   // the second when it navigates to a reference.
   openTextDocument: async (
-    optionsOrUri: { content: string; language?: string } | Uri
+    optionsOrUri: { content: string; language?: string } | Uri,
   ): Promise<{ uri: Uri; getText(): string }> => {
     if (optionsOrUri instanceof Uri) {
       const content = __mockState.fileSystem.get(optionsOrUri.fsPath) ?? '';

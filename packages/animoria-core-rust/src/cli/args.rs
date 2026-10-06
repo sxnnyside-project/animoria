@@ -54,9 +54,33 @@ pub enum Commands {
         #[arg(long)]
         json: bool,
 
+        /// Output results as standard SARIF JSON (v2.1.0)
+        #[arg(long)]
+        sarif: bool,
+
+        /// Output format (text, json, sarif, compact)
+        #[arg(long, value_name = "FORMAT")]
+        format: Option<String>,
+
+        /// Emit single-line compact output optimized for AI agents and fast terminal parsing
+        #[arg(long)]
+        compact: bool,
+
+        /// Output only violations and diagnostics, omitting full asset lists in JSON/compact modes
+        #[arg(long)]
+        only_violations: bool,
+
         /// Treat warnings as failures (exit code 2)
         #[arg(long)]
         strict: bool,
+
+        /// Minimum acceptable health score (0-100). Fails with exit code 1 if score is lower.
+        #[arg(long, value_name = "SCORE")]
+        min_score: Option<u32>,
+
+        /// Maximum allowed warnings before failing with exit code 2.
+        #[arg(long, value_name = "COUNT")]
+        max_warnings: Option<usize>,
     },
 
     /// Generate an in-depth visual asset health score and audit report
@@ -82,6 +106,10 @@ pub enum Commands {
         /// Actually move files. Without this flag, clean only previews what would move.
         #[arg(long)]
         apply: bool,
+
+        /// Explicitly run in preview/dry-run mode without modifying any files (default behavior)
+        #[arg(long)]
+        dry_run: bool,
     },
 
     /// List or restore a trash session recorded by `clean --apply`
@@ -115,6 +143,15 @@ pub enum Commands {
         /// Overwrite existing configuration files
         #[arg(long)]
         force: bool,
+    },
+
+    /// Explain governance rules, rationales, and recommended remediation configurations
+    #[command(
+        after_help = "EXAMPLES:\n    animoria explain                           List all available governance rules\n    animoria explain no-duplicate-content      Detailed explanation and fix guide for one rule"
+    )]
+    Explain {
+        /// Rule ID to explain (e.g. no-duplicate-content, max-file-size, naming-convention)
+        rule_id: Option<String>,
     },
 
     /// Start Protocol v1 NDJSON server over standard I/O (for IDE hosts)

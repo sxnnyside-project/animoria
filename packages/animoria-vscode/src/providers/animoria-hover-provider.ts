@@ -20,13 +20,13 @@ export const HOVER_LANGUAGES = [
 export class AnimoriaHoverProvider implements vscode.HoverProvider {
   constructor(
     private readonly _getAnalysis: () => WorkspaceAnalysis | null,
-    private readonly _treeProvider: AnimoriaTreeProvider
+    private readonly _treeProvider: AnimoriaTreeProvider,
   ) {}
 
   provideHover(
     document: vscode.TextDocument,
     position: vscode.Position,
-    _token: vscode.CancellationToken
+    _token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.Hover> {
     const snapshot = this._getAnalysis();
     if (!snapshot) return null;

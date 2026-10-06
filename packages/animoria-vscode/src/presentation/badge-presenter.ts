@@ -29,7 +29,7 @@ export function presentAssetBadges(badges: readonly AssetBadge[]): PresentedBadg
 }
 
 export function presentBadgeIconColor(
-  badges: readonly AssetBadge[]
+  badges: readonly AssetBadge[],
 ): vscode.ThemeColor | undefined {
   if (badges.some((b) => b.severity === 'error')) {
     return new vscode.ThemeColor('problemsErrorIcon.foreground');

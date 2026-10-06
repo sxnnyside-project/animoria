@@ -10,19 +10,20 @@ impl Rule for MaxFileSizeRule {
     }
 
     fn evaluate(&self, ctx: &AnalysisContext) -> Vec<RuleDiagnostic> {
-        let max_kb = match ctx.policy.max_file_size_kb {
-            Some(kb) => kb,
-            None => return Vec::new(),
-        };
-
-        let max_bytes = max_kb * 1024;
         let mut diagnostics = Vec::new();
 
         for asset in ctx.assets {
+            let policy = ctx.policy_for(&asset.relative_path);
+            let max_kb = match policy.max_file_size_kb {
+                Some(kb) => kb,
+                None => continue,
+            };
+
+            let max_bytes = max_kb * 1024;
             if asset.size_bytes > max_bytes {
                 diagnostics.push(RuleDiagnostic {
                     rule_id: self.id().to_string(),
-                    severity: ctx.policy.max_file_size_severity,
+                    severity: policy.max_file_size_severity,
                     message: format!(
                         "Asset '{}' ({:.1} KB) exceeds maximum configured size threshold of {} KB.",
                         asset.relative_path,

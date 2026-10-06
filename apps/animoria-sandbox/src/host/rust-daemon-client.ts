@@ -57,7 +57,7 @@ export class RustDaemonClient {
       for (let i = 0; i < 8; i++) {
         candidates.push(
           resolve(dir, 'packages/animoria-core-rust/target/release', binaryName),
-          resolve(dir, 'packages/animoria-core-rust/target/debug', binaryName)
+          resolve(dir, 'packages/animoria-core-rust/target/debug', binaryName),
         );
         const parent = resolve(dir, '..');
         if (parent === dir) break;
@@ -67,7 +67,7 @@ export class RustDaemonClient {
     candidates.push(
       join(home, '.cargo/bin', binaryName),
       `/opt/homebrew/bin/${binaryName}`,
-      `/usr/local/bin/${binaryName}`
+      `/usr/local/bin/${binaryName}`,
     );
 
     for (const cand of candidates) {
@@ -82,7 +82,7 @@ export class RustDaemonClient {
     const bin = this.binaryPath;
     if (bin !== 'animoria' && bin !== 'animoria.exe' && !existsSync(bin)) {
       throw new Error(
-        `Animoria native binary not found at "${bin}". Build with 'cargo build -p animoria-core-rust' or set ANIMORIA_BINARY_PATH.`
+        `Animoria native binary not found at "${bin}". Build with 'cargo build -p animoria-core-rust' or set ANIMORIA_BINARY_PATH.`,
       );
     }
 

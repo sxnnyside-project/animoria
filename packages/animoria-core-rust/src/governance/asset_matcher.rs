@@ -7,20 +7,24 @@ pub fn is_app_icon(asset_rel_path: &str, asset_name: &str) -> bool {
     let path_lower = asset_rel_path.to_lowercase().replace('\\', "/");
     let name_lower = asset_name.to_lowercase();
 
-    // 1. Directory hints for platform asset catalogs and density buckets
+    // 1. Directory hints for platform asset catalogs, IDE plugins, and density buckets
     if path_lower.contains(".appiconset/")
         || path_lower.contains("/mipmap-")
         || path_lower.contains("/drawable-")
         || path_lower.contains("android/app/src/main/res/")
         || path_lower.contains("ios/runner/assets.xcassets/")
         || path_lower.contains("/res/mipmap")
+        || path_lower.contains("resources/icons/")
+        || path_lower.contains("meta-inf/icons/")
     {
         return true;
     }
 
-    // 2. Specific icon naming conventions
+    // 2. Specific icon naming conventions (mobile, web, IDE plugins)
     if name_lower.starts_with("ic_launcher")
         || name_lower.starts_with("appicon")
+        || name_lower.starts_with("pluginicon")
+        || name_lower.starts_with("plugin_icon")
         || name_lower.starts_with("apple-touch-icon")
         || name_lower.starts_with("favicon")
         || name_lower.starts_with("maskable_icon")
@@ -38,6 +42,20 @@ pub fn is_app_icon(asset_rel_path: &str, asset_name: &str) -> bool {
         .any(|pattern| name_lower.contains(pattern));
 
         if is_size_variant {
+            return true;
+        }
+
+        // Standard extension/app root icon (e.g. assets/icon.png, assets/icon.svg, public/icon.png)
+        if (name_lower == "icon.png"
+            || name_lower == "icon.svg"
+            || name_lower == "icon.ico"
+            || name_lower == "icon.icns")
+            && (path_lower.contains("/assets/")
+                || path_lower.contains("/icons/")
+                || path_lower.contains("/public/")
+                || path_lower.contains("/res/")
+                || !path_lower.contains('/'))
+        {
             return true;
         }
     }

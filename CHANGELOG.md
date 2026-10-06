@@ -9,7 +9,56 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-<!-- Changes staged for the next release go here. -->
+---
+
+## [2.3.0] — 2026-10-06
+
+### Added
+
+- **Governance Engine & Security Audit (Biome-Style Rules)**:
+  - Added `naming-convention` rule with configurable casing (`kebab-case`, `snake_case`, `camelCase`, `PascalCase`, `lowercase`, or custom regex `pattern`) and automatic density suffix stripping (`@2x`, `@3x`, `@1.5x`).
+  - Added `svg-sanitization` rule to protect against XSS/XXE vulnerabilities in SVG vector assets (`<script>`, `<!ENTITY`, `javascript:` URI schemes, embedded objects `<foreignObject>`, `<iframe>`, `<embed>`, and inline event handlers).
+  - Added `max-dimensions` rule to flag images exceeding max resolution thresholds (e.g. 3840x2160).
+  - Added `allowed-formats` whitelist governance rule.
+  - Added governance presets (`"extends": "recommended"` | `"strict"` | `"relaxed"`) with local rule overrides.
+  - Added monorepo folder-level `overrides` array matching glob patterns to apply custom policies per package/app without runtime allocations.
+- **SARIF v2.1.0 & CI Quality Gates**:
+  - Implemented SARIF generation (`--sarif` / `--format=sarif`) for GitHub Code Scanning and security dashboards.
+  - Added CI Quality Gates: `--min-score` / `ci.minScore` and `--max-warnings` / `ci.maxWarnings` with distinct exit codes (0 = clean, 1 = errors/score drop, 2 = warning threshold exceeded).
+- **Official GitHub Action (`action.yml`)**:
+  - Added composite GitHub Action at repository root (`sxnnyside-project/animoria@v2`) supporting multi-platform binary bootstrap (Linux, macOS, Windows), automated governance checks, and direct SARIF upload to GitHub Code Scanning.
+- **CLI Ergonomics (DX & AI Agent Experience)**:
+  - Added `animoria explain [rule-id]` command displaying descriptions, rationales, remediation instructions, and `.animoriarc.json` configuration examples.
+  - Added `--format=compact` / `--compact` single-line diagnostic output (`./path:line:col: [rule] message (sev)`) optimized for fast terminal scanning and low token consumption in AI agents (LLMs).
+  - Added `--only-violations` to omit full asset inventories in JSON outputs, reducing payload size by up to 95%.
+  - Added clickable `./path:line:col` diagnostic links for modern terminals (VS Code, iTerm2, Warp, Ghostty).
+  - Added explicit `--dry-run` flag to `animoria clean`.
+- **Reproducible Performance Benchmarks**:
+  - Added formal benchmark suite (`benches/pipeline_benchmarks.rs`) measuring multi-format asset parsing, Aho-Corasick tracing, and Rayon SHA-256 deduplication throughput (>8,500 assets/sec on 1,000-asset enterprise trees).
+- **Crates.io Readiness**:
+  - Added complete package metadata (repository, documentation, keywords, categories, and bundle exclusion list) to `animoria-core` preparing it for registry publishing.
+- **Bindings & Protocol Synchronization (P0 Audit Resolution)**:
+  - **Kotlin Deserialization Drift Fix**: Corrected `@SerialName` annotations in `JetBrainsAsset`, `StaticMetadataData`, and `MotionMetadataData` to match Rust Core contracts (`mtime_ms`, `static_meta`, `motion`, `content_hash`, `thumbnail_path`, `total_frames`, `layer_count`, `color_depth`). Fixed thumbnail loading in JetBrains tree cell renderers and enabled complete metadata preservation.
+  - **Protocol Version Unification**: Synchronized `PROTOCOL_VERSION = 1` in `@animoria/contracts/src/index.ts` matching native daemon Protocol v1 wire specification, maintaining `PROTOCOL_VERSION_SEMVER = '1.0.0'`.
+  - **Stale Bindings Deprecation**: Removed obsolete leftover `packages/animoria-core-rust/bindings/` directory (19 outdated `.ts` files using `bigint`).
+  - **CI Drift Prevention**: Added `verify:bindings` script to `@animoria/contracts/package.json` to prevent uncommitted contract drift in CI.
+  - **Kotlin Parity Test Enhancement**: Added explicit assertions in `ProtocolParityTest.kt` asserting that live daemon scans decode timestamps, content hashes, and motion metadata with 100% field fidelity.
+- **Daemon Architecture & Protocol v1 Robustness (P1 Audit Resolution)**:
+  - **Internal Panic Trapping**: Wrapped request dispatch in `DaemonServer::run` with `std::panic::catch_unwind(AssertUnwindSafe(...))`. Unexpected panics in parsers or Rayon worker pools are safely caught and surfaced as structured `error: { "code": "internal-panic" }` JSON responses without crashing the persistent daemon process.
+  - **Canonical Wire Contracts**: Migrated `DaemonRequest`, `DaemonResponse`, `DaemonEvent`, `DaemonErrorPayload`, `HelloResultPayload`, and `DaemonScanResult` into `src/contracts/protocol.rs` with automated TypeScript bindings derivation via `ts-rs`.
+  - **Asynchronous Push Event Support in VS Code**: Enhanced `VsCodeDaemonClient` to parse and broadcast unsolicited daemon push events (`event`, `sequence`, `payload`) via new `onEvent` listener API, and adopted generated wire contracts directly from `@animoria/contracts`.
+  - **Real OS Pipe Integration Test**: Added `tests/daemon_subprocess_test.rs` to spawn the compiled `animoria daemon` binary over real OS stdin/stdout pipes, testing the entire protocol lifecycle including handshake, ping, scan, malformed request resilience, and graceful shutdown.
+- **Advanced Testing & Property Fuzzing (P2 Audit Resolution)**:
+  - **Property-Based Fuzzing for Reference Rewriter**: Added `tests/reference_rewrite_fuzz_test.rs` with `proptest!` validating that arbitrary Unicode, unbalanced quotes, control characters, and exotic punctuation never panic `propose_reference_rewrites` or `apply_reference_rewrite`, while enforcing that mismatched lines are strictly refused without file corruption.
+- **Sxnnyside Developer Experience (DX v3.0.0 Fleet Compliance)**:
+  - **Text Normalization**: Added `.editorconfig` and `.gitattributes` to enforce consistent LF line endings, UTF-8 charset, and binary asset handling across all environments.
+  - **Shared Domain Glossary**: Established `docs/glossary.md` standardizing ubiquitous domain terminology across Rust, TypeScript, and Kotlin.
+  - **Boundary Architecture Documentation**: Authored `CLAUDE.md` at repository root and across all language boundaries (`packages/animoria-core-rust`, `packages/animoria-vscode`, `packages/animoria-jetbrains`).
+  - **Task Runner Standardization**: Standardized `Justfile` recipe surface with non-mutating `check`, explicit `format-check`, and aligned CI workflow execution.
+  - **Naming & Placement Alignment**: Renamed `governance/helpers.rs` to intent-driven `governance/asset_matcher.rs` adhering to RFC 430 and placement standards.
+  - **ICO Parser Robustness**: Wrapped PNG-encoded web favicons with standard ICO headers, achieving 100% (Grade A) health score on workspace governance.
+  - **IDE Diagnostics & Type Rigor**: Resolved all import ordering and strict index-access type diagnostics across test suites and contract models.
+  - **Score Elevation**: Raised fleet scorer score from 69.5 (Blocked) to 97.8 (Target Fleet Pass).
 
 ---
 
@@ -161,7 +210,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.2.1...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/sxnnyside-project/animoria/compare/v2.2.1...v2.3.0
 [2.2.1]: https://github.com/sxnnyside-project/animoria/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/sxnnyside-project/animoria/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/sxnnyside-project/animoria/compare/v2.0.0...v2.1.0

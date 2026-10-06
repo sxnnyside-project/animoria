@@ -1,7 +1,7 @@
 install:
     pnpm install
 
-check: format lint typecheck test build
+check: format-check lint typecheck test
 
 clean: core-clean jetbrains-clean
     pnpm clean
@@ -10,13 +10,17 @@ audit:
     pnpm audit
     cd packages/animoria-core-rust && cargo audit
 
-lint: core-lint
-    pnpm lint
-    cd packages/animoria-jetbrains && ./gradlew detekt ktlintCheck
+format-check: core-format-check
+    pnpm format:check
+    cd packages/animoria-jetbrains && ./gradlew ktlintCheck
 
 format: core-format
     pnpm format
     cd packages/animoria-jetbrains && ./gradlew ktlintFormat
+
+lint: core-lint
+    pnpm lint
+    cd packages/animoria-jetbrains && ./gradlew detekt ktlintCheck
 
 typecheck:
     cargo check --manifest-path packages/animoria-core-rust/Cargo.toml
@@ -38,6 +42,9 @@ core-lint:
 
 core-format:
     cargo fmt --manifest-path packages/animoria-core-rust/Cargo.toml
+
+core-format-check:
+    cargo fmt --manifest-path packages/animoria-core-rust/Cargo.toml -- --check
 
 core-clean:
     cargo clean --manifest-path packages/animoria-core-rust/Cargo.toml

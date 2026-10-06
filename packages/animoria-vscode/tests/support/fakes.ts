@@ -1,8 +1,8 @@
 import type {
   Asset,
+  HealthScoreReport,
   RuleDiagnostic,
   WorkspaceAnalysis,
-  HealthScoreReport,
 } from '@animoria/contracts';
 
 export function buildAsset(overrides: Partial<Asset> = {}): Asset {
@@ -12,16 +12,17 @@ export function buildAsset(overrides: Partial<Asset> = {}): Asset {
     relative_path: 'assets/hero.json',
     name: 'hero.json',
     stem: 'hero',
-    kind: 'Motion',
-    format: 'Lottie',
+    kind: 'motion',
+    format: 'lottie',
     size_bytes: 2048,
     is_valid: true,
     dimensions: { width: 500, height: 500 },
     motion: {
       duration_secs: 2.5,
       fps: 60,
-      frame_count: 150,
+      total_frames: 150,
       layer_count: 12,
+      is_animated: true,
     },
     ...overrides,
   };
@@ -30,7 +31,7 @@ export function buildAsset(overrides: Partial<Asset> = {}): Asset {
 export function buildDiagnostic(overrides: Partial<RuleDiagnostic> = {}): RuleDiagnostic {
   return {
     rule_id: 'no-unreferenced-assets',
-    severity: 'Warning',
+    severity: 'warning',
     message: 'hero.json is not referenced by any scanned file.',
     target_asset_path: '/workspace/assets/hero.json',
     ...overrides,
@@ -53,9 +54,10 @@ export function buildHealthScore(overrides: Partial<HealthScoreReport> = {}): He
 
 export function buildAnalysis(overrides: Partial<WorkspaceAnalysis> = {}): WorkspaceAnalysis {
   return {
-    workspace_id: 'ws-1',
+    root_id: 'ws-1',
     root_path: '/workspace',
-    timestamp: '2026-01-01T00:00:00.000Z',
+    state: 'ready',
+    indexed_at_ms: 1767225600000,
     assets: [],
     diagnostics: [],
     health_score: buildHealthScore(),

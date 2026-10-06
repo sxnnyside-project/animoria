@@ -13,6 +13,20 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.3.0] — 2026-10-06
+
+### Added
+
+- **Daemon Push Events**: Integrated unsolicited daemon push event subscription for real-time indexing status and governance change alerts.
+- **Canonical Protocol v1 Contracts**: Direct integration with `@animoria/contracts` derived from Rust native core via `ts-rs`.
+- **Extended Governance & Presets**: Full UI and diagnostics support for Biome-style rules (`naming-convention`, `svg-sanitization`, `max-dimensions`, `allowed-formats`) and `.animoriarc.json` configuration presets.
+
+### Fixed
+
+- **Strict Indexed Access & Contract Parity**: Eliminated undefined access diagnostics in tests and aligned all test fakes with lowercase protocol contract enums.
+
+---
+
 ## [2.2.1] — 2026-09-30
 
 ### Added
@@ -126,7 +140,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.2.1...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/sxnnyside-project/animoria/compare/v2.2.1...v2.3.0
 [2.2.1]: https://github.com/sxnnyside-project/animoria/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/sxnnyside-project/animoria/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/sxnnyside-project/animoria/compare/v2.0.0...v2.1.0

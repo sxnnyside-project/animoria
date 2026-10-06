@@ -1,4 +1,5 @@
-import type { HostInbound } from '@animoria/ui/bridge';
+import type { WorkspaceAnalysis } from '@animoria/contracts';
+import type { HostInbound, MultiRootAnalysis } from '@animoria/ui/bridge';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type * as vscode from 'vscode';
 import { VsCodeHostBridge } from '../../src/panels/vscode-host-bridge.js';
@@ -34,7 +35,7 @@ function analysisStub(overrides: Partial<WorkspaceAnalysis> = {}): WorkspaceAnal
     freshness: 'current',
     failure: null,
     ...overrides,
-  } as WorkspaceAnalysis;
+  } as unknown as WorkspaceAnalysis;
 }
 
 const ROOT = { id: 'r1', name: 'workspace', path: '/workspace' };
@@ -129,7 +130,7 @@ describe('VS Code host — a dismissed confirmation settles the operation', () =
     // Even an unknown id must answer: the UI is disabled either way.
     expect(
       posted.length,
-      'an apply that goes nowhere still has to release the UI that is waiting on it'
+      'an apply that goes nowhere still has to release the UI that is waiting on it',
     ).toBeGreaterThan(0);
   });
 
@@ -247,7 +248,7 @@ describe('VS Code host — the session is never captured', () => {
 
     const analysis = posted.find((message) => message.type === 'analysis');
     expect(analysis!.type === 'analysis' && analysis!.analysis.roots[0]?.analysis.generation).toBe(
-      2
+      2,
     );
   });
 });
@@ -303,7 +304,7 @@ describe('VS Code host — cleanup dismissal', () => {
     });
 
     expect(memento.get<string[]>('animoria.dismissedCleanupPaths', [])).toContain(
-      '/workspace/keep-me.json'
+      '/workspace/keep-me.json',
     );
     // Rebuilt rather than patched: the developer sees the list Core would produce
     // now, not the previous one with a row hidden.

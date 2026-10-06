@@ -1,5 +1,6 @@
+import type { WorkspaceAnalysis } from '@animoria/contracts';
+import type { HostInbound, MultiRootAnalysis } from '@animoria/ui/bridge';
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { HostInbound } from '@animoria/ui/bridge';
 import { VsCodeHostBridge } from '../../src/panels/vscode-host-bridge.js';
 import { mockVscodeState, resetTestWorkspace, vscodeMock } from '../harness.js';
 
@@ -37,7 +38,7 @@ function analysisStub(overrides: Partial<WorkspaceAnalysis> = {}): WorkspaceAnal
     freshness: 'current',
     failure: null,
     ...overrides,
-  } as WorkspaceAnalysis;
+  } as unknown as WorkspaceAnalysis;
 }
 
 function multiRootStub(perRootAnalysis = analysisStub()): MultiRootAnalysis {

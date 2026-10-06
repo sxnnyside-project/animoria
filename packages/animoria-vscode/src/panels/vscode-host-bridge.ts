@@ -52,7 +52,7 @@ const logWarn = (category: string, source: string, message: string, details?: un
 // Matches the longest root path so a nested root attributes to the more specific one; null (never cwd()) if none matches.
 function rootForPath(
   roots: readonly { readonly id: string; readonly name: string; readonly path: string }[],
-  path: string
+  path: string,
 ): { readonly id: string; readonly name: string; readonly path: string } | null {
   let best: (typeof roots)[number] | null = null;
   for (const root of roots) {
@@ -81,7 +81,7 @@ type CleanupCandidate = ReviewableCleanupProposal['candidates'][number];
 // Assembles candidates from Core's existing no-unreferenced-assets diagnostics; invents no new eligibility logic.
 function buildCleanupCandidates(
   analysis: WorkspaceAnalysis,
-  opts?: { dismissedPaths: ReadonlySet<string> }
+  opts?: { dismissedPaths: ReadonlySet<string> },
 ): CleanupCandidate[] {
   const dismissed = opts?.dismissedPaths ?? new Set<string>();
   const assetsByPath = new Map(analysis.assets.map((a) => [a.path, a]));
@@ -108,7 +108,7 @@ function buildCleanupCandidates(
 
 async function buildReviewableProposal(
   candidates: CleanupCandidate[],
-  _analysis?: WorkspaceAnalysis
+  _analysis?: WorkspaceAnalysis,
 ): Promise<ReviewableCleanupProposal> {
   return {
     candidates,
@@ -123,10 +123,10 @@ function confidenceFor(severity: string | undefined): string {
 
 function buildCleanupPlan(
   proposal: ReviewableCleanupProposal,
-  assetPaths: readonly string[] = []
+  assetPaths: readonly string[] = [],
 ): CleanupPlan {
   const wanted = new Set(
-    assetPaths.length > 0 ? assetPaths : proposal.candidates.map((c) => c.asset.path)
+    assetPaths.length > 0 ? assetPaths : proposal.candidates.map((c) => c.asset.path),
   );
   const byPath = new Map(proposal.candidates.map((c) => [c.asset.path, c]));
 
@@ -164,7 +164,7 @@ interface TrashedItem {
 // Stops at the first failed entry unless allowPartial is set — partial application is refused unless opted into.
 async function executeCleanupPlan(
   plan: CleanupPlan,
-  opts: { daemon: VsCodeDaemonClient; workspacePath: string; allowPartial?: boolean }
+  opts: { daemon: VsCodeDaemonClient; workspacePath: string; allowPartial?: boolean },
 ): Promise<CleanupExecutionResult & { trashedItems: TrashedItem[] }> {
   if (plan.refusals.length > 0 && !opts.allowPartial) {
     return {
@@ -187,7 +187,7 @@ async function executeCleanupPlan(
       const item = await opts.daemon.trashAsset(
         opts.workspacePath,
         entry.asset.id,
-        entry.asset.path
+        entry.asset.path,
       );
       trashedItems.push({ item, sizeBytes: entry.sizeBytes });
       removedAssetPaths.push(entry.asset.path);
@@ -230,7 +230,7 @@ async function executeResolutionPlan(
     workspacePath: string;
     assetsById: ReadonlyMap<string, Asset>;
     allowPartial?: boolean;
-  }
+  },
 ): Promise<ResolutionResult & { trashedItems: TrashedItem[] }> {
   const removedAssetPaths: string[] = [];
   const trashedItems: TrashedItem[] = [];
@@ -317,7 +317,7 @@ function installCommand(pkgManager: PackageManager, packageName: string): string
 export function generateSnippetsForAsset(
   asset: Asset,
   importPath: string,
-  workspacePath?: string
+  workspacePath?: string,
 ): SnippetOption[] {
   const varName = toCamelCase(asset.stem);
   const compName = toPascalCase(asset.stem);
@@ -527,7 +527,7 @@ export function generateSnippetsForAsset(
 }
 
 async function readLottieDocument(
-  path: string
+  path: string,
 ): Promise<{ animation: Record<string, unknown>; totalFrames: number; frameRate: number } | null> {
   try {
     const raw = await fs.readFile(path, 'utf8');
@@ -657,7 +657,7 @@ export class VsCodeHostBridge {
       duplicatesResolved?: boolean;
       complete?: boolean;
     },
-    message: string
+    message: string,
   ): void {
     this._post({
       type: 'analysis-progress',
@@ -727,7 +727,7 @@ export class VsCodeHostBridge {
           editor.selection = new vscode.Selection(position, position);
           editor.revealRange(
             new vscode.Range(position, position),
-            vscode.TextEditorRevealType.InCenter
+            vscode.TextEditorRevealType.InCenter,
           );
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -811,7 +811,7 @@ export class VsCodeHostBridge {
           const analysis = indexer.getAnalysis();
           const proposal = await buildReviewableProposal(
             buildCleanupCandidates(analysis, { dismissedPaths: this._dismissed() }),
-            analysis
+            analysis,
           );
           proposals.push({ rootId: root.id, rootName: root.name, proposal });
         }
@@ -838,7 +838,7 @@ export class VsCodeHostBridge {
           const analysis = indexer.getAnalysis();
           const proposal = await buildReviewableProposal(
             buildCleanupCandidates(analysis, { dismissedPaths: this._dismissed() }),
-            analysis
+            analysis,
           );
           const plan = buildCleanupPlan(proposal, assetPaths);
           this._cleanupPlans.set(plan.planId, {
@@ -887,7 +887,7 @@ export class VsCodeHostBridge {
 
         if (result.status === 'applied' || result.status === 'partial') {
           void vscode.window.showInformationMessage(
-            `Animoria moved ${result.removedAssetPaths.length} asset(s) to trash.`
+            `Animoria moved ${result.removedAssetPaths.length} asset(s) to trash.`,
           );
           this.publishAnalysis(session.getAnalysis());
         }
@@ -898,7 +898,7 @@ export class VsCodeHostBridge {
         const multiRootAnalysis = session.getAnalysis();
         const group = multiRootAnalysis.duplicateGroups.find((g) => g.id === message.groupId);
         const canonical = multiRootAnalysis.assets.find(
-          (a: Asset) => a.path === message.keepPath || a.id === message.keepPath
+          (a: Asset) => a.path === message.keepPath || a.id === message.keepPath,
         );
         if (!group || !canonical) {
           this._post({
@@ -962,7 +962,7 @@ export class VsCodeHostBridge {
         const confirmed = await vscode.window.showWarningMessage(
           `Keep selected asset and move ${plan.target_assets_to_delete.length} duplicate(s) to trash?`,
           { modal: true },
-          'Resolve'
+          'Resolve',
         );
         if (confirmed !== 'Resolve') {
           this._post({
@@ -1008,13 +1008,13 @@ export class VsCodeHostBridge {
 
         if (result.status === 'applied') {
           void vscode.window.showInformationMessage(
-            `Animoria resolved duplicates and moved ${result.removedAssetPaths.length} original(s) to trash.`
+            `Animoria resolved duplicates and moved ${result.removedAssetPaths.length} original(s) to trash.`,
           );
           this.publishAnalysis(session.getAnalysis());
           void this._reviewReferenceRewrites(
             daemon,
             stored.workspacePath,
-            plan.proposed_reference_rewrites
+            plan.proposed_reference_rewrites,
           );
         }
         return;
@@ -1237,7 +1237,7 @@ export class VsCodeHostBridge {
   private async _reviewReferenceRewrites(
     daemon: VsCodeDaemonClient,
     workspacePath: string,
-    proposals: readonly ReferenceRewriteProposal[]
+    proposals: readonly ReferenceRewriteProposal[],
   ): Promise<void> {
     if (proposals.length === 0) return;
 
@@ -1247,7 +1247,7 @@ export class VsCodeHostBridge {
         `${fileName}:${proposal.line_number}\n- ${proposal.original_line.trim()}\n+ ${proposal.proposed_line.trim()}`,
         { modal: true, detail: 'Update this reference to point at the kept asset?' },
         'Apply',
-        'Skip'
+        'Skip',
       );
       if (choice !== 'Apply') continue;
 
@@ -1264,7 +1264,7 @@ export class VsCodeHostBridge {
     if (!this._memento) return;
     await this._memento.update(
       TRASH_SESSIONS_KEY,
-      this._trashSessions().filter((s) => s.id !== sessionId)
+      this._trashSessions().filter((s) => s.id !== sessionId),
     );
   }
 

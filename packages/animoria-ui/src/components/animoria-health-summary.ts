@@ -166,7 +166,7 @@ export class AnimoriaHealthSummary extends LitElement {
                       <span class="cat-chip">
                         ${cat.category}: ${Math.round(cat.score)}/100
                       </span>
-                    `
+                    `,
                   )}
                 </div>
               `

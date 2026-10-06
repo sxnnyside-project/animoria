@@ -340,7 +340,7 @@ export class AnimoriaAssetInspector extends LitElement {
               <span class="reference-where">${fileName(reference.file_path)}:${reference.line_number}</span>
               <span class="reference-line">${reference.line_content}</span>
             </button>
-          `
+          `,
         )}
       </div>
     `;
@@ -360,11 +360,11 @@ export class AnimoriaAssetInspector extends LitElement {
                   (fact) => html`
                     <dt title=${fact.detail ?? ''}>${fact.label}</dt>
                     <dd title=${fact.detail ?? ''}>${fact.value}</dd>
-                  `
+                  `,
                 )}
               </dl>
             </section>
-          `
+          `,
         )}
         <section>
           <h3>Governance</h3>

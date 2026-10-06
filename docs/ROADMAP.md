@@ -44,6 +44,7 @@ The original "Milestone 2: v1.2.0 — Static Asset Full Implementation" was writ
 | S5 — Raster downscaling & thumbnails | ❌ **Not done.** `thumbnail/mod.rs` only generates a placeholder SVG; there is no actual raster downscale/cache path yet. |
 | S6 — Static boilerplate snippets | 🟡 **Partial.** `integration/snippets.rs` already generates React/Next `<img>`, React Native `Image`, HTML/Astro, and Vue 3 snippets for static formats — but SwiftUI/Flutter/Jetpack Compose snippets exist only for Lottie, not for static assets. |
 | S7 — CI check command integration for static assets | ✅ **Done.** `check`/`report` are format-agnostic already. |
+| S8 — Dynamic reference tracing (`${c.id}.webp`, dynamic collections) | ✅ **Done.** Implemented heuristic template literal and dynamic expression scanner in `tracing::patterns` / `tracing::detector` alongside declarative `dynamicCollections` in `.animoriarc.json`. Eliminates false positive orphan alerts for assets consumed via runtime interpolation. |
 
 **Remaining real work from this milestone**: S5 (raster downscaling) in full, and S6's missing native-mobile static snippets.
 
@@ -58,7 +59,7 @@ The original "Milestone 2: v1.2.0 — Static Asset Full Implementation" was writ
 │   v2.1.0 History & Governance   →   v2.2.0 Static Finish ✅ →   v2.3.0 Automation │
 │   • Asset Timeline ✅            • Raster downscaling ✅      • Quick-Fix Actions│
 │   • Change Event Audits ✅        • Native static snippets ✅  • Auto Compression │
-│   • Custom AST Linter            • Interactive Rive ✅        • central Registry │
+│   • Custom AST Linter            • Interactive Rive ✅        • Central Registry │
 │   • Reference Rewriting ✅ (propose-diff)                                        │
 └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -84,16 +85,22 @@ The original "Milestone 2: v1.2.0 — Static Asset Full Implementation" was writ
 
 ---
 
-### Milestone 3: v2.3.0 — Automated Asset Optimization & IDE Actions
+### Milestone 3: v2.3.0 — Automated Asset Optimization, Governance Ecosystem & Docs
 
-**Objective:** Deliver direct, automated optimization pipelines and closer IDE integrations to streamline developer workflows. Not started.
+**Objective:** Deliver direct, automated optimization pipelines, external registry integrations, and documentation infrastructure.
 
-- **IDE Lightbulb Quick-Fixes (`CodeActionProvider`):**
-  Provide standard IDE lightbulb quick-fixes to automatically resolve lint errors, consolidate duplicate import strings, or strip orphaned references directly from active source code editors.
+- **Online Rule Documentation & Terminal Hyperlinks (Pending Website Sync):**
+  - Host dedicated online documentation pages for every rule (`https://animoria.dev/rules/<rule-id>`) outlining rationale, real-world examples, and remediation.
+  - Integrate terminal hyperlinks (OSC-8 or explicit URL references) in CLI diagnostics directing developers directly to web documentation once the website team publishes the route structure.
+- **Auto-Fix Remediations via Code Actions & CLI (`--fix`):**
+  - Provide automated renaming for `naming-convention` violations and automated safe-stripping of forbidden elements (`<script>`, inline handlers) in `svg-sanitization`.
+  - Provide standard IDE lightbulb quick-fixes (`CodeActionProvider`) to resolve lint errors, consolidate duplicate import strings, or strip orphaned references directly from active source code editors.
 - **Automated Compression Pipeline:**
-  Integrate 1-click lossless compression directly in the IDE:
-  - SVG optimization using `svgo`.
-  - Lottie JSON minification and compression.
-  - Image web optimization (PNG/WebP optimization).
+  - Integrate 1-click lossless compression directly in the IDE:
+    - SVG optimization using `svgo`.
+    - Lottie JSON minification and compression.
+    - Image web optimization (PNG/WebP optimization).
 - **Design Registry Integration:**
-  Connect local workspace scanning and duplicates metadata to external team registries (Figma APIs, central CDN assets, or enterprise design system servers) to ensure local codebases stay in sync with remote designs.
+  - Connect local workspace scanning and duplicates metadata to external team registries (Figma APIs, central CDN assets, or enterprise design system servers) to ensure local codebases stay in sync with remote designs.
+
+

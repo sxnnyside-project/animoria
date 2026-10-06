@@ -24,7 +24,7 @@ describe('sandbox daemon bridge — real Vite server, real daemon, real fixtures
     child = spawn(
       'node',
       [resolve(appRoot, 'node_modules/vite/bin/vite.js'), '--port', String(port), '--strictPort'],
-      { cwd: appRoot, env, stdio: ['ignore', 'pipe', 'pipe'] }
+      { cwd: appRoot, env, stdio: ['ignore', 'pipe', 'pipe'] },
     );
 
     let stderr = '';
@@ -35,7 +35,7 @@ describe('sandbox daemon bridge — real Vite server, real daemon, real fixtures
     await new Promise<void>((res, reject) => {
       const timeout = setTimeout(
         () => reject(new Error(`Vite dev server did not become ready in time.\n${stderr}`)),
-        30_000
+        30_000,
       );
 
       const tryConnect = async () => {

@@ -222,7 +222,7 @@ export class AnimoriaCleanupPreview extends LitElement {
         detail: { planId: plan.planId, allowPartial: plan.safety === 'partial' },
         bubbles: true,
         composed: true,
-      })
+      }),
     );
   }
 
@@ -276,7 +276,7 @@ export class AnimoriaCleanupPreview extends LitElement {
                         <span class="reasons">
                           ${entry.reasons.map(
                             (reason: string | CleanupReason) =>
-                              html`<span class="reason">${cleanupReasonLabel(reason)}</span>`
+                              html`<span class="reason">${cleanupReasonLabel(reason)}</span>`,
                           )}
                         </span>
                       </span>
@@ -287,7 +287,7 @@ export class AnimoriaCleanupPreview extends LitElement {
                         ${formatBytes(entry.sizeBytes)}
                       </span>
                     </li>
-                  `
+                  `,
                 )}
               </ul>
             `
@@ -306,7 +306,7 @@ export class AnimoriaCleanupPreview extends LitElement {
                         <span class="refusal-why">${refusal.explanation}</span>
                       </span>
                     </li>
-                  `
+                  `,
                 )}
               </ul>
             `

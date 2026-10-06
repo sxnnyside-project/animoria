@@ -1,6 +1,6 @@
 {
   "name": "@animoria/contracts",
-  "version": "2.2.1",
+  "version": "2.3.0",
   "description": "Shared canonical data types, protocol definitions, and UI contracts for Animoria.",
   "type": "module",
   "main": "./dist/index.js",
@@ -15,6 +15,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
+    "verify:bindings": "git diff --exit-code src/generated",
     "clean": "rm -rf dist"
   },
   "devDependencies": {

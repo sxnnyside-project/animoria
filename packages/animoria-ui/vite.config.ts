@@ -17,7 +17,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@animoria/contracts': fileURLToPath(
-        new URL('../animoria-contracts/src/index.ts', import.meta.url)
+        new URL('../animoria-contracts/src/index.ts', import.meta.url),
       ),
     },
   },

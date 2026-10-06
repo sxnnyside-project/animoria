@@ -36,28 +36,39 @@ fn is_path_char(c: char) -> bool {
 /// it's wrapped in `"`, `'`, `` ` ``, or an unquoted CSS `url(...)`— those
 /// delimiters aren't path characters, so they naturally bound the token.
 fn extract_path_token(line: &str, needle: &str) -> Option<(usize, usize)> {
-    let needle_start = line.find(needle)?;
-    let needle_end = needle_start + needle.len();
+    for (needle_start, _) in line.match_indices(needle) {
+        let needle_end = needle_start + needle.len();
 
-    let mut start = needle_start;
-    while start > 0 {
-        let prev_char = line[..start].chars().next_back()?;
-        if !is_path_char(prev_char) {
-            break;
+        let mut start = needle_start;
+        while start > 0 {
+            let prev_char = match line[..start].chars().next_back() {
+                Some(c) => c,
+                None => break,
+            };
+            if !is_path_char(prev_char) {
+                break;
+            }
+            start -= prev_char.len_utf8();
         }
-        start -= prev_char.len_utf8();
+
+        let mut end = needle_end;
+        while end < line.len() {
+            let next_char = match line[end..].chars().next() {
+                Some(c) => c,
+                None => break,
+            };
+            if !is_path_char(next_char) {
+                break;
+            }
+            end += next_char.len_utf8();
+        }
+
+        if start < end {
+            return Some((start, end));
+        }
     }
 
-    let mut end = needle_end;
-    while end < line.len() {
-        let next_char = line[end..].chars().next()?;
-        if !is_path_char(next_char) {
-            break;
-        }
-        end += next_char.len_utf8();
-    }
-
-    Some((start, end))
+    None
 }
 
 /// Computes a real relative path from `from_file_path`'s directory to

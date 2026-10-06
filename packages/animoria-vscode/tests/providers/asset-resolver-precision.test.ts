@@ -36,7 +36,7 @@ describe('AssetResolver precision', () => {
     const resolved = AssetResolver.resolveFromPosition(
       fakeDoc,
       { line: 0, character: 5 } as never,
-      snapshot
+      snapshot,
     );
     expect(resolved).toBeNull();
   });
@@ -50,7 +50,7 @@ describe('AssetResolver precision', () => {
     const resolvedHero = AssetResolver.resolveFromPosition(
       fakeDoc,
       { line: 0, character: 12 } as never,
-      snapshot
+      snapshot,
     );
     expect(resolvedHero?.id).toBe('asset-hero');
 
@@ -58,7 +58,7 @@ describe('AssetResolver precision', () => {
     const resolvedLogo = AssetResolver.resolveFromPosition(
       fakeDoc,
       { line: 0, character: 35 } as never,
-      snapshot
+      snapshot,
     );
     expect(resolvedLogo?.id).toBe('asset-logo');
   });

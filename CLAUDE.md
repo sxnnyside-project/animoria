@@ -1,28 +1,49 @@
 # Animoria — CLAUDE.md
 
 ## Repository Overview
-Animoria is a polyglot monorepo (Rust, TypeScript, Kotlin) using `pnpm` workspaces.
+Animoria is a polyglot monorepo (Rust, TypeScript, Kotlin) using `pnpm` workspaces, a native Rust engine, and multi-IDE extensions.
 
 ---
 
 ## 1. Repository Purpose & Architecture
 
-Animoria is the visual asset discovery, exploration, and governance engine for IDEs (VS Code and JetBrains). It eliminates silent asset bloat, traces multi-syntax code references, detects SHA-256 duplicate groups, and executes safe, plan-based remediation.
+Animoria is the visual asset discovery, exploration, and governance engine for modern IDEs (VS Code and JetBrains). It eliminates silent asset bloat, traces multi-syntax code references, detects duplicate groups, and executes safe, plan-based remediation.
 
 ### Package & Module Map
 
 | Package / Module | Language & Profile | Responsibility | Dependencies |
 | :--- | :--- | :--- | :--- |
-| [`packages/animoria-core-rust`](file:///Users/ti/Downloads/animoria/animoria/packages/animoria-core-rust) | **Rust** (Cargo, Edition 2021) | **Single Source of Truth**: Asset scanning, deep format parsers, usage reference tracing, duplicate detection, health scoring, and immutable remediation plans. Emits native `animoria` daemon binary. | None (pure native engine) |
-| [`packages/animoria-contracts`](file:///Users/ti/Downloads/animoria/animoria/packages/animoria-contracts) | **TypeScript** (`strict: true`) | Canonical type definitions exported automatically from Rust structs via `ts-rs`. Pure types; zero runtime logic. | Generated from `core-rust` |
-| [`packages/animoria-ui`](file:///Users/ti/Downloads/animoria/animoria/packages/animoria-ui) | **TypeScript** (Lit 3.x, Pure DOM) | Reusable visual dashboard components. Renders `WorkspaceAnalysis` and emits user intent through `HostBridge`. Zero host APIs, zero governance computation. | `@animoria/contracts`, `lit`, `lottie-web` |
-| [`packages/animoria-vscode`](file:///Users/ti/Downloads/animoria/animoria/packages/animoria-vscode) | **TypeScript** (VS Code Ext SDK) | VS Code platform integration: Activity Bar, TreeView, problems/diagnostics, hover tooltips, and webview mounting `@animoria/ui`. | `@animoria/contracts`, `@animoria/ui` |
-| [`packages/animoria-jetbrains`](file:///Users/ti/Downloads/animoria/animoria/packages/animoria-jetbrains) | **Kotlin** (IntelliJ Platform SDK) | JetBrains platform integration: ToolWindow, action bar, JCEF embedded `@animoria/ui`, and fallback degraded mode. | Embeds `@animoria/ui` & `animoria` binary |
-| [`apps/animoria-sandbox`](file:///Users/ti/Downloads/animoria/animoria/apps/animoria-sandbox) | **TypeScript** (Vite App) | Browser harness for testing and developing `@animoria/ui` against read-only fixture workspaces. | `@animoria/contracts`, `@animoria/ui` |
+| `packages/animoria-core-rust` | **Rust** (Cargo, Edition 2021) | **Single Source of Truth**: Asset scanning, deep format parsers, usage reference tracing, duplicate detection, health scoring, and immutable remediation plans. Emits native `animoria` daemon binary. | None (pure native engine) |
+| `packages/animoria-contracts` | **TypeScript** (`strict: true`) | Canonical type definitions exported automatically from Rust structs via `ts-rs`. Pure types; zero runtime logic. | Generated from `core-rust` |
+| `packages/animoria-ui` | **TypeScript** (Lit 3.x, Pure DOM) | Reusable visual dashboard components. Renders `WorkspaceAnalysis` and emits user intent through `HostBridge`. Zero host APIs, zero governance computation. | `@animoria/contracts`, `lit`, `lottie-web` |
+| `packages/animoria-vscode` | **TypeScript** (VS Code Ext SDK) | VS Code platform integration: Activity Bar, TreeView, problems/diagnostics, hover tooltips, and webview mounting `@animoria/ui`. | `@animoria/contracts`, `@animoria/ui` |
+| `packages/animoria-jetbrains` | **Kotlin** (IntelliJ Platform SDK) | JetBrains platform integration: ToolWindow, action bar, JCEF embedded `@animoria/ui`, and fallback degraded mode. | Embeds `@animoria/ui` & `animoria` binary |
+| `apps/animoria-sandbox` | **TypeScript** (Vite App) | Browser harness for testing and developing `@animoria/ui` against read-only fixture workspaces. | `@animoria/contracts`, `@animoria/ui` |
 
 ---
 
-## 2. Stack Profiles & Tooling
+## 2. Where things go
+
+| Kind | Location | Naming |
+| :--- | :--- | :--- |
+| **Rust Core, CLI & Daemon** | `packages/animoria-core-rust/src/` | `snake_case.rs` (no `helpers` or `utils`) |
+| **Rust Unit Tests** | In-file (`#[cfg(test)] mod tests`) | N/A (per Rust idiom) |
+| **Rust Integration & Fuzz Tests** | `packages/animoria-core-rust/tests/` | `snake_case_test.rs` |
+| **IPC Protocol & Contracts** | `packages/animoria-core-rust/src/contracts/`, `packages/animoria-contracts/src/` | `snake_case.rs` (Rust), `PascalCase.ts` (TS generated) |
+| **Web UI Components** | `packages/animoria-ui/src/components/` | `animoria-kebab-case.ts` |
+| **VS Code Extension Features** | `packages/animoria-vscode/src/<feature>/` | `kebab-case.ts` |
+| **JetBrains Plugin Code** | `packages/animoria-jetbrains/src/main/kotlin/` | `PascalCase.kt` |
+| **TypeScript Tests** | `packages/<pkg>/tests/<mirror of src>/` | `<name>.test.ts` |
+| **Automation Scripts** | `scripts/` | `kebab-case.mjs` |
+| **Domain Glossary** | `docs/glossary.md` | Markdown English terms |
+| **Documentation & ADRs** | `docs/`, `docs/adr/`, `docs/ROADMAP.md` | `kebab-case.md` |
+| **CI/CD Workflows** | `.github/workflows/` | `kebab-case.yml` with SHA-pinned actions |
+
+> **Domain Glossary**: Before introducing or modifying domain concepts, consult and update [docs/glossary.md](file:///Users/houjousxnnyside/Documents/repos/sxnnyside-project/animoria/docs/glossary.md).
+
+---
+
+## 3. Stack Profiles & Tooling
 
 ### Rust Profile (`packages/animoria-core-rust`)
 - **Runtime / Build**: `cargo build --release` (produces native `animoria` binary)
@@ -45,25 +66,26 @@ Animoria is the visual asset discovery, exploration, and governance engine for I
 
 ---
 
-## 3. Task Runner Abstraction Layer (`just`)
+## 4. Task Runner Abstraction Layer (`just`)
 
-All routine developer workflows are invoked through the root `justfile`:
+All routine developer workflows are invoked through the root `Justfile`:
 
 ```bash
-just install     # Bootstrap dependencies (pnpm install)
-just dev         # Launch local UI sandbox harness (animoria-sandbox)
-just build       # Build all packages (Rust core, Contracts, UI, VS Code, Sandbox, JetBrains)
-just test        # Run all test suites across Rust, TypeScript, and Kotlin
-just typecheck   # Run compiler typechecks (cargo check + pnpm typecheck)
-just lint        # Run all static linters (clippy -D warnings, Biome, detekt, ktlint)
-just format      # Run all formatters (cargo fmt, Biome format, ktlintFormat)
-just check       # Run complete CI quality gate (format, lint, typecheck, test, build)
-just clean       # Clean all build outputs, targets, and caches
+just install       # Bootstrap dependencies (pnpm install)
+just dev           # Launch local UI sandbox harness (animoria-sandbox)
+just build         # Build all packages (Rust core, Contracts, UI, VS Code, Sandbox, JetBrains)
+just test          # Run all test suites across Rust, TypeScript, and Kotlin
+just typecheck     # Run compiler typechecks (cargo check + pnpm typecheck)
+just lint          # Run all static linters (clippy -D warnings, Biome, detekt, ktlint)
+just format-check  # Verify formatting idempotently (cargo fmt --check, Biome format, ktlintCheck)
+just format        # Run all formatters mutating files (cargo fmt, Biome format, ktlintFormat)
+just check         # Run complete CI quality gate (format-check, lint, typecheck, test)
+just clean         # Clean all build outputs, targets, and caches
 ```
 
 ---
 
-## 4. Core Architectural Invariants
+## 5. Core Architectural Invariants
 
 1. **Single Source of Truth**: The Rust engine (`animoria-core-rust`) authoritatively owns all asset discovery, format parsing, duplicate detection, health grading, and remediation plans.
 2. **Zero Client-Side Calculation**: Host extensions (VS Code, JetBrains) and the Shared UI are pure presentation layers. They never compute health scores, invent confidence metrics, or mutate the filesystem outside an immutable plan.

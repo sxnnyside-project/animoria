@@ -35,7 +35,7 @@ export class AnimoriaUsageItem extends vscode.TreeItem {
         {
           selection: new vscode.Range(
             new vscode.Position(Math.max(0, ref.line_number - 1), 0),
-            new vscode.Position(Math.max(0, ref.line_number - 1), 0)
+            new vscode.Position(Math.max(0, ref.line_number - 1), 0),
           ),
         },
       ],
@@ -53,13 +53,13 @@ export class AnimoriaTreeItem extends vscode.TreeItem {
     asset: Asset,
     thumbnailPath: string | undefined,
     badges: readonly AssetBadge[] = [],
-    hasReferences = false
+    hasReferences = false,
   ) {
     super(
       asset.stem,
       hasReferences
         ? vscode.TreeItemCollapsibleState.Collapsed
-        : vscode.TreeItemCollapsibleState.None
+        : vscode.TreeItemCollapsibleState.None,
     );
 
     this.asset = asset;
@@ -85,7 +85,7 @@ export class AnimoriaTreeItem extends vscode.TreeItem {
       } else {
         this.iconPath = new vscode.ThemeIcon(
           asset.kind === 'motion' ? 'play-circle' : 'file-media',
-          presentBadgeIconColor(badges)
+          presentBadgeIconColor(badges),
         );
       }
     } else {
@@ -109,7 +109,7 @@ export class AnimoriaFolderItem extends vscode.TreeItem {
   constructor(
     public readonly folderName: string,
     public readonly relativePath: string,
-    public readonly assets: readonly Asset[]
+    public readonly assets: readonly Asset[],
   ) {
     super(folderName, vscode.TreeItemCollapsibleState.Expanded);
     this.description = `${assets.length}`;
@@ -138,7 +138,7 @@ export class AnimoriaGovernanceSectionItem extends vscode.TreeItem {
     label: string,
     count: number,
     public readonly category: string,
-    collapsibleState: vscode.TreeItemCollapsibleState
+    collapsibleState: vscode.TreeItemCollapsibleState,
   ) {
     super(`${label} (${count})`, collapsibleState);
 
@@ -171,7 +171,7 @@ export class AnimoriaGovernanceIssueItem extends vscode.TreeItem {
         diagnostic.message,
         '',
         diagnostic.target_asset_path,
-      ].join('\n')
+      ].join('\n'),
     );
 
     this.contextValue =
@@ -191,7 +191,7 @@ export class AnimoriaSectionItem extends vscode.TreeItem {
     public readonly kind: 'motion' | 'static' | 'duplicates',
     count: number,
     label: string,
-    icon: string
+    icon: string,
   ) {
     super(`${label} (${count})`, vscode.TreeItemCollapsibleState.Expanded);
     this.iconPath = new vscode.ThemeIcon(icon);
@@ -275,7 +275,7 @@ export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElem
           r.asset_id === element.asset.path ||
           r.asset_id === element.asset.id ||
           r.asset_id === element.asset.stem ||
-          r.asset_id === element.asset.name
+          r.asset_id === element.asset.name,
       );
       return refs.map((r) => new AnimoriaUsageItem(r));
     }
@@ -288,7 +288,7 @@ export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElem
       ? targetAssets.filter(
           (a) =>
             a.name.toLowerCase().includes(this._query.toLowerCase()) ||
-            a.stem.toLowerCase().includes(this._query.toLowerCase())
+            a.stem.toLowerCase().includes(this._query.toLowerCase()),
         )
       : targetAssets;
 
@@ -312,7 +312,7 @@ export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElem
       }
 
       const folderItems = Array.from(folders.entries()).map(
-        ([segName, { fullDir, assets }]) => new AnimoriaFolderItem(segName, fullDir, assets)
+        ([segName, { fullDir, assets }]) => new AnimoriaFolderItem(segName, fullDir, assets),
       );
       const fileItems = rootAssets.map((a) => this._createTreeItem(a));
       return [...folderItems, ...fileItems];
@@ -324,13 +324,13 @@ export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElem
   private _createTreeItem(a: Asset): AnimoriaTreeItem {
     const badges: AssetBadge[] = [];
     const hasUnref = this._diagnostics.some(
-      (d) => d.rule_id === 'no-unreferenced-assets' && d.target_asset_path === a.path
+      (d) => d.rule_id === 'no-unreferenced-assets' && d.target_asset_path === a.path,
     );
     if (hasUnref) {
       badges.push({ kind: 'unreferenced', severity: 'warning', message: 'Unreferenced asset' });
     }
     const hasDup = this._diagnostics.some(
-      (d) => d.rule_id === 'no-duplicate-content' && d.target_asset_path === a.path
+      (d) => d.rule_id === 'no-duplicate-content' && d.target_asset_path === a.path,
     );
     if (hasDup) {
       badges.push({ kind: 'duplicate', severity: 'error', message: 'Duplicate content' });
@@ -341,13 +341,13 @@ export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElem
         r.asset_id === a.path ||
         r.asset_id === a.id ||
         r.asset_id === a.stem ||
-        r.asset_id === a.name
+        r.asset_id === a.name,
     );
     return new AnimoriaTreeItem(
       a,
       a.thumbnail_path ?? this._thumbnails.get(a.path),
       badges,
-      hasReferences
+      hasReferences,
     );
   }
 
@@ -360,7 +360,7 @@ export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElem
     const sections: AnyTreeElement[] = [];
     if (motionCount > 0) {
       sections.push(
-        new AnimoriaSectionItem('motion', motionCount, 'Animated Assets', 'play-circle')
+        new AnimoriaSectionItem('motion', motionCount, 'Animated Assets', 'play-circle'),
       );
     }
     if (staticCount > 0) {
@@ -378,8 +378,8 @@ export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElem
           ruleId.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
           count,
           ruleId,
-          vscode.TreeItemCollapsibleState.Collapsed
-        )
+          vscode.TreeItemCollapsibleState.Collapsed,
+        ),
     );
 
     return [...healthItem, ...sections, ...governanceSections];
@@ -388,7 +388,7 @@ export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElem
   updateAnalysis(
     analysis: WorkspaceAnalysis,
     references: UsageReference[] = [],
-    duplicateGroups: DuplicateGroup[] = []
+    duplicateGroups: DuplicateGroup[] = [],
   ): void {
     this._assets = analysis.assets;
     this._diagnostics = analysis.diagnostics;

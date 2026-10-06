@@ -27,7 +27,7 @@ describe('resolveWithinRoot', () => {
 
     it('accepts a traversal that stays inside the root', () => {
       expect(resolveWithinRoot(root, 'assets/../assets/logo.json')).toBe(
-        join(root, 'assets/logo.json')
+        join(root, 'assets/logo.json'),
       );
     });
   });

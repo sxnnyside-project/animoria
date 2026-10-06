@@ -41,28 +41,32 @@ fn read_header(path: &Path, max_bytes: usize) -> std::io::Result<Vec<u8>> {
 }
 
 fn detect_lottie_json(path: &Path) -> Option<Result<AssetFormat, String>> {
-    let bytes = match read_header(path, 8192) {
+    // Read up to 64KB because embedded base64 assets or large metadata
+    // can push the "layers" array past 8KB.
+    let bytes = match read_header(path, 65536) {
         Ok(b) if !b.is_empty() => b,
         _ => return None,
     };
 
-    let text = match std::str::from_utf8(&bytes) {
-        Ok(t) => t,
-        Err(_) => return None,
-    };
-
-    // Lottie JSON files must contain specific keys like "v", "fr", "layers", "op", "ip"
-    // and must look like a JSON object starting with '{'
+    let text = String::from_utf8_lossy(&bytes);
     let trimmed = text.trim_start();
     if !trimmed.starts_with('{') {
         return None;
     }
 
-    let has_lottie_keys = (trimmed.contains("\"v\"") || trimmed.contains("'v'"))
-        && (trimmed.contains("\"fr\"") || trimmed.contains("'fr'"))
-        && (trimmed.contains("\"layers\"") || trimmed.contains("'layers'"));
+    // Lottie JSON files declare version "v", frame rate "fr", frame bounds "ip"/"op",
+    // layers "layers", and optional asset manifests "assets".
+    let has_version = trimmed.contains("\"v\"") || trimmed.contains("'v'");
+    let has_layers = trimmed.contains("\"layers\"") || trimmed.contains("'layers'");
+    let has_fr = trimmed.contains("\"fr\"") || trimmed.contains("'fr'");
+    let has_in_out = (trimmed.contains("\"ip\"") || trimmed.contains("'ip'"))
+        && (trimmed.contains("\"op\"") || trimmed.contains("'op'"));
+    let has_assets = trimmed.contains("\"assets\"") || trimmed.contains("'assets'");
 
-    if has_lottie_keys {
+    let is_lottie = (has_version && (has_layers || has_fr || has_in_out || has_assets))
+        || (has_layers && (has_fr || has_in_out));
+
+    if is_lottie {
         Some(Ok(AssetFormat::Lottie))
     } else {
         None
@@ -115,8 +119,9 @@ fn detect_gif(path: &Path) -> Option<Result<AssetFormat, String>> {
 }
 
 fn detect_png_or_apng(path: &Path) -> Option<Result<AssetFormat, String>> {
-    // Read up to 2048 bytes to search for acTL chunk (Animated PNG indicator)
-    let bytes = match read_header(path, 2048) {
+    // Read up to 8192 bytes to search for acTL chunk (Animated PNG indicator)
+    // even if preceded by large ICC profile or text chunks.
+    let bytes = match read_header(path, 8192) {
         Ok(b) => b,
         Err(e) => return Some(Err(format!("Cannot read .png file: {e}"))),
     };
@@ -136,16 +141,15 @@ fn detect_png_or_apng(path: &Path) -> Option<Result<AssetFormat, String>> {
 }
 
 fn detect_svg(path: &Path) -> Option<Result<AssetFormat, String>> {
-    let bytes = match read_header(path, 8192) {
+    // Read up to 16KB for XML preamble, doctype, and svg root
+    let bytes = match read_header(path, 16384) {
         Ok(b) if !b.is_empty() => b,
         Err(e) => return Some(Err(format!("Cannot read .svg file: {e}"))),
         _ => return None,
     };
 
-    let text = match std::str::from_utf8(&bytes) {
-        Ok(t) => t.to_lowercase(),
-        Err(_) => return Some(Err("Invalid UTF-8 in SVG file".to_string())),
-    };
+    // Use lossy conversion to prevent boundary UTF-8 character splitting errors
+    let text = String::from_utf8_lossy(&bytes).to_lowercase();
 
     if !text.contains("<svg") {
         return Some(Err("Missing <svg> root element".to_string()));
@@ -309,5 +313,42 @@ fn detect_tiff(path: &Path) -> Option<Result<AssetFormat, String>> {
         Some(Ok(AssetFormat::Tiff))
     } else {
         Some(Err("Invalid TIFF byte order indicator".to_string()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_detect_lottie_with_large_metadata() {
+        let mut file = NamedTempFile::new().unwrap();
+        // Construct JSON with version and large dummy padding > 10KB before layers
+        let padding = "a".repeat(12000);
+        let content = format!(
+            r#"{{"v":"5.5.7","fr":60,"ip":0,"op":60,"assets":[],"meta":"{}","layers":[]}}"#,
+            padding
+        );
+        file.write_all(content.as_bytes()).unwrap();
+
+        let detected = detect_lottie_json(file.path());
+        assert_eq!(detected, Some(Ok(AssetFormat::Lottie)));
+    }
+
+    #[test]
+    fn test_detect_svg_with_multibyte_utf8() {
+        let mut file = NamedTempFile::new().unwrap();
+        // SVG with multibyte UTF-8 characters (emojis, accents)
+        let svg = r#"<?xml version="1.0" encoding="UTF-8"?>
+<!-- 🎨 Über-Designer & 日本語コメント -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <circle cx="50" cy="50" r="40" stroke="green" stroke-width="4" fill="yellow" />
+</svg>"#;
+        file.write_all(svg.as_bytes()).unwrap();
+
+        let detected = detect_svg(file.path());
+        assert_eq!(detected, Some(Ok(AssetFormat::Svg)));
     }
 }

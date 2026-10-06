@@ -13,7 +13,7 @@ export interface IntegrationContext {
 export function buildIntegrationContext(
   asset: Asset,
   workspacePath: string,
-  activeEditorTracker: ActiveEditorTracker | undefined
+  activeEditorTracker: ActiveEditorTracker | undefined,
 ): IntegrationContext {
   const activeFilePath = activeEditorTracker?.getLastActiveFilePath();
 

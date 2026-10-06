@@ -120,10 +120,10 @@ describe('host bridge — capabilities', () => {
     const readOnly: HostCapabilities = { ...FULL, canMutate: false, canRestore: false };
 
     expect(
-      isPermitted({ type: 'apply-cleanup-plan', planId: 'p', allowPartial: false }, readOnly)
+      isPermitted({ type: 'apply-cleanup-plan', planId: 'p', allowPartial: false }, readOnly),
     ).toBe(false);
     expect(
-      isPermitted({ type: 'apply-resolution-plan', planId: 'p', allowPartial: false }, readOnly)
+      isPermitted({ type: 'apply-resolution-plan', planId: 'p', allowPartial: false }, readOnly),
     ).toBe(false);
     expect(isPermitted({ type: 'restore-session', sessionId: 's' }, readOnly)).toBe(false);
 
@@ -131,7 +131,7 @@ describe('host bridge — capabilities', () => {
     // what lets the harness exercise the real screens.
     expect(isPermitted({ type: 'run-analysis' }, readOnly)).toBe(true);
     expect(
-      isPermitted({ type: 'open-asset', assetPath: '/w/a.json', rootId: 'r1' }, readOnly)
+      isPermitted({ type: 'open-asset', assetPath: '/w/a.json', rootId: 'r1' }, readOnly),
     ).toBe(true);
   });
 

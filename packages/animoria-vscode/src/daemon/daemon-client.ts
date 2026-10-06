@@ -3,46 +3,26 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { type Interface, createInterface } from 'node:readline';
-import type {
-  DuplicateGroup,
-  ReferenceRewriteProposal,
-  ResolutionPlan,
-  TrashItem,
-  UsageReference,
-  WorkspaceAnalysis,
+import {
+  type DaemonErrorPayload,
+  type DaemonEvent,
+  type DaemonRequest,
+  type DaemonResponse,
+  type DaemonScanResult,
+  type DuplicateGroup,
+  type HelloResultPayload,
+  PROTOCOL_VERSION,
+  type ReferenceRewriteProposal,
+  type ResolutionPlan,
+  type TrashItem,
+  type UsageReference,
+  type WorkspaceAnalysis,
 } from '@animoria/contracts';
 
-export interface DaemonRequestEnvelope {
-  protocol: number;
-  id: string;
-  method: string;
-  params: Record<string, unknown>;
-}
-
-export interface DaemonResponseEnvelope {
-  protocol: number;
-  id: string;
-  result?: unknown;
-  error?: {
-    code: string;
-    message: string;
-    detail?: string;
-  };
-}
-
-export interface HelloResult {
-  engine: string;
-  version: string;
-  protocol_version: number;
-  supported_formats: string[];
-  capabilities: string[];
-}
-
-export interface DaemonScanResult {
-  analysis: WorkspaceAnalysis;
-  references: UsageReference[];
-  duplicate_groups: DuplicateGroup[];
-}
+export type DaemonRequestEnvelope = DaemonRequest;
+export type DaemonResponseEnvelope = DaemonResponse;
+export type HelloResult = HelloResultPayload;
+export type { DaemonEvent, DaemonScanResult };
 
 /**
  * Client for communicating with the Animoria native daemon process over Protocol v1 (NDJSON).
@@ -55,6 +35,7 @@ export class VsCodeDaemonClient {
     string,
     { resolve: (val: unknown) => void; reject: (err: Error) => void }
   >();
+  private readonly eventListeners: ((event: DaemonEvent) => void)[] = [];
   private readonly binaryPath?: string;
 
   constructor(binaryPath?: string, extensionPath?: string) {
@@ -112,7 +93,7 @@ export class VsCodeDaemonClient {
     const bin = this.binaryPath!;
     if (bin !== 'animoria' && bin !== 'animoria.exe' && !existsSync(bin)) {
       throw new Error(
-        `Animoria native binary not found at "${bin}". Build with 'cargo build --release -p animoria-core-rust' or configure ANIMORIA_BINARY_PATH.`
+        `Animoria native binary not found at "${bin}". Build with 'cargo build --release -p animoria-core-rust' or configure ANIMORIA_BINARY_PATH.`,
       );
     }
 
@@ -145,21 +126,56 @@ export class VsCodeDaemonClient {
     });
   }
 
+  /**
+   * Registers a listener for asynchronous push events emitted by the daemon
+   * (e.g. `ready`, `analysis-started`, `analysis-completed`, `analysis-stale`).
+   */
+  public onEvent(listener: (event: DaemonEvent) => void): () => void {
+    this.eventListeners.push(listener);
+    return () => {
+      const idx = this.eventListeners.indexOf(listener);
+      if (idx !== -1) this.eventListeners.splice(idx, 1);
+    };
+  }
+
   private handleLine(line: string) {
     const trimmed = line.trim();
     if (!trimmed || !trimmed.startsWith('{')) return;
 
     try {
-      const response = JSON.parse(trimmed) as DaemonResponseEnvelope;
-      const reqId = response.id;
-      const pending = this.pendingRequests.get(reqId);
+      const json = JSON.parse(trimmed) as Record<string, unknown>;
 
-      if (pending) {
-        this.pendingRequests.delete(reqId);
-        if (!response.error) {
-          pending.resolve(response.result);
-        } else {
-          pending.reject(new Error(`[${response.error.code}] ${response.error.message}`));
+      // Check for push events (messages containing `event` field)
+      if (typeof json.event === 'string') {
+        const daemonEvent: DaemonEvent = {
+          protocol: typeof json.protocol === 'number' ? json.protocol : PROTOCOL_VERSION,
+          event: json.event,
+          sequence: typeof json.sequence === 'number' ? json.sequence : 0,
+          payload: (json.payload as Record<string, unknown>) ?? {},
+        };
+        for (const listener of this.eventListeners) {
+          try {
+            listener(daemonEvent);
+          } catch (err) {
+            console.error('[Animoria Daemon Event Error]', err);
+          }
+        }
+        return;
+      }
+
+      // Check for request response correlation
+      const reqId = typeof json.id === 'string' ? json.id : undefined;
+      if (reqId) {
+        const response = json as unknown as DaemonResponse;
+        const pending = this.pendingRequests.get(reqId);
+
+        if (pending) {
+          this.pendingRequests.delete(reqId);
+          if (!response.error) {
+            pending.resolve(response.result);
+          } else {
+            pending.reject(new Error(`[${response.error.code}] ${response.error.message}`));
+          }
         }
       }
     } catch {
@@ -183,16 +199,16 @@ export class VsCodeDaemonClient {
     }
 
     const id = `req-${++this.requestIdCounter}`;
-    const envelope = JSON.stringify({
-      protocol: 1,
+    const envelope: DaemonRequest = {
+      protocol: PROTOCOL_VERSION,
       id,
       method,
       params,
-    });
+    };
 
     return new Promise<T>((resolve, reject) => {
       this.pendingRequests.set(id, { resolve: resolve as (val: unknown) => void, reject });
-      this.process?.stdin?.write(`${envelope}\n`);
+      this.process?.stdin?.write(`${JSON.stringify(envelope)}\n`);
     });
   }
 
@@ -208,7 +224,7 @@ export class VsCodeDaemonClient {
   public async scan(
     workspacePath: string,
     customIgnorePatterns: string[] = [],
-    enableAuditLog?: boolean
+    enableAuditLog?: boolean,
   ): Promise<DaemonScanResult> {
     const params: Record<string, unknown> = {
       workspace_path: workspacePath,
@@ -222,7 +238,7 @@ export class VsCodeDaemonClient {
 
   public async check(
     workspacePath: string,
-    customIgnorePatterns: string[] = []
+    customIgnorePatterns: string[] = [],
   ): Promise<DaemonScanResult> {
     return this.request<DaemonScanResult>('check', {
       workspace_path: workspacePath,
@@ -231,7 +247,7 @@ export class VsCodeDaemonClient {
   }
 
   public async aggregateHealthScores(
-    roots: { report: WorkspaceAnalysis['health_score']; asset_count: number }[]
+    roots: { report: WorkspaceAnalysis['health_score']; asset_count: number }[],
   ): Promise<WorkspaceAnalysis['health_score']> {
     return this.request<WorkspaceAnalysis['health_score']>('aggregateHealthScores', { roots });
   }
@@ -247,7 +263,7 @@ export class VsCodeDaemonClient {
   public async trashAsset(
     workspacePath: string,
     assetId: string,
-    filePath: string
+    filePath: string,
   ): Promise<TrashItem> {
     return this.request<TrashItem>('trash_asset', {
       workspace_path: workspacePath,
@@ -271,7 +287,7 @@ export class VsCodeDaemonClient {
    */
   public async applyReferenceRewrite(
     workspacePath: string,
-    proposal: ReferenceRewriteProposal
+    proposal: ReferenceRewriteProposal,
   ): Promise<void> {
     await this.request('applyReferenceRewrite', { workspace_path: workspacePath, proposal });
   }

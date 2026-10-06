@@ -99,6 +99,12 @@ class ProtocolParityTest {
             // in `analysis`, so a payload shape change that dropped it would leave
             // the Duplicates tab silently at zero while this assertion catches it.
             assertNotNull(decoded.duplicateGroups)
+
+            // Verify non-drift decode of synchronized asset fields
+            val sampleAsset = flattened.assets.first()
+            assertTrue(sampleAsset.mtimeMs > 0L, "mtimeMs must be decoded from daemon (got ${sampleAsset.mtimeMs})")
+            assertNotNull(sampleAsset.contentHash, "contentHash must be decoded from daemon")
+            assertNotNull(sampleAsset.motionMetadata, "Lottie asset must decode motionMetadata from daemon")
         } finally {
             proc.destroyForcibly()
         }
