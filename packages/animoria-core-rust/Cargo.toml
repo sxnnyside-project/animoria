@@ -1,5 +1,5 @@
 [package]
-name = "animoria-core"
+name = "animoria"
 version = "2.3.0"
 edition = "2021"
 authors = ["Sxnnyside Project <houjou.sxnnyside@sxnnysideproject.com>"]
@@ -7,7 +7,7 @@ description = "High-performance Rust core engine for Animoria: visual asset disc
 license = "MIT"
 repository = "https://github.com/sxnnyside-project/animoria"
 homepage = "https://animoria.dev"
-documentation = "https://docs.rs/animoria-core"
+documentation = "https://docs.rs/animoria"
 readme = "README.md"
 keywords = ["asset", "governance", "linter", "lottie", "svg"]
 categories = ["command-line-utilities", "development-tools", "multimedia::images"]
