@@ -87,7 +87,7 @@ jetbrains-run: core-build ui-build
     node scripts/copy-native-daemon.mjs
     cd packages/animoria-jetbrains && ./gradlew runIde
 
-jetbrains-test:
+jetbrains-test: ui-build
     cd packages/animoria-jetbrains && ./gradlew test
 
 jetbrains-lint:

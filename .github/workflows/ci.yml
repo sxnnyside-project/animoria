@@ -39,6 +39,8 @@ jobs:
           key: ${{ runner.os }}-cargo-gate-${{ hashFiles('packages/animoria-core-rust/Cargo.lock') }}
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Build @animoria/ui
+        run: pnpm --filter @animoria/ui build
       - name: Run quality gate
         run: just check
 
