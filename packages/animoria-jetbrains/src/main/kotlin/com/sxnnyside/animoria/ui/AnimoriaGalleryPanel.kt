@@ -9,6 +9,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
+import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -23,6 +24,7 @@ import com.sxnnyside.animoria.backend.CoreProcessManager
 import com.sxnnyside.animoria.backend.JetBrainsAsset
 import com.sxnnyside.animoria.backend.StaticAssetData
 import com.sxnnyside.animoria.logging.AnimoriaLogger
+import com.sxnnyside.animoria.snippet.GenerateSnippetAction
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -30,12 +32,17 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import java.awt.BorderLayout
+import java.awt.datatransfer.DataFlavor
+import java.awt.datatransfer.StringSelection
+import java.awt.datatransfer.Transferable
+import java.awt.datatransfer.UnsupportedFlavorException
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.io.File
 import java.util.Base64
 import javax.swing.JComponent
 import javax.swing.JPanel
+import javax.swing.TransferHandler
 import javax.swing.event.DocumentEvent
 import javax.swing.tree.DefaultMutableTreeNode
 import javax.swing.tree.TreeSelectionModel
@@ -67,6 +74,16 @@ class AnimoriaGalleryPanel(
         tree.showsRootHandles = true
         tree.cellRenderer = AnimoriaTreeCellRenderer()
         tree.selectionModel.selectionMode = TreeSelectionModel.SINGLE_TREE_SELECTION
+        tree.dragEnabled = true
+        tree.transferHandler =
+            object : TransferHandler() {
+                override fun getSourceActions(c: JComponent?): Int = COPY
+
+                override fun createTransferable(c: JComponent?): Transferable? {
+                    val asset = selectedAsset() ?: return null
+                    return AnimoriaAssetTransferable(asset)
+                }
+            }
 
         // Selection keeps the Preview tab in step, but does not steal focus.
         //
@@ -125,12 +142,58 @@ class AnimoriaGalleryPanel(
 
                     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
                 },
+                object : AnAction("Copy Relative Path", "Copy relative path to clipboard", AllIcons.Actions.Copy) {
+                    override fun actionPerformed(event: AnActionEvent) {
+                        val asset = selectedAsset() ?: return
+                        val relPath = asset.relativePath.ifEmpty { asset.name }
+                        CopyPasteManager.getInstance().setContents(StringSelection(relPath))
+                    }
+
+                    override fun update(event: AnActionEvent) {
+                        event.presentation.isEnabled = selectedAsset() != null
+                    }
+
+                    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+                },
+                object : AnAction("Copy Snippet", "Copy code integration snippet to clipboard", AllIcons.Actions.AddList) {
+                    override fun actionPerformed(event: AnActionEvent) {
+                        val asset = selectedAsset() ?: return
+                        GenerateSnippetAction.execute(project, asset)
+                    }
+
+                    override fun update(event: AnActionEvent) {
+                        event.presentation.isEnabled = selectedAsset() != null
+                    }
+
+                    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+                },
+                object : AnAction("Toggle Folder Tree", "Switch between flat list and folder tree", AllIcons.Actions.GroupBy) {
+                    override fun actionPerformed(event: AnActionEvent) {
+                        model.toggleViewMode()
+                    }
+
+                    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.EDT
+                },
+                object : AnAction("Rescan", "Rescan workspace for visual assets", AllIcons.Actions.Refresh) {
+                    override fun actionPerformed(event: AnActionEvent) {
+                        scope.launch {
+                            val manager = project.getService(CoreProcessManager::class.java)
+                            val analysis = AnimoriaAnalysisHolder.of(project).current()
+                            val root = analysis?.rootPath?.ifEmpty { null } ?: project.basePath.orEmpty()
+                            if (root.isNotEmpty()) {
+                                manager.sendCommand("analyze", buildJsonObject { put("workspace_path", root) })
+                            }
+                        }
+                    }
+
+                    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+                },
             )
 
         val toolbar = ActionManager.getInstance().createActionToolbar("AnimoriaGallery", actions, true)
         toolbar.targetComponent = tree
 
-        // The same two actions on right-click, because a developer who has just
+        // The actions on right-click, because a developer who has just
         // clicked an asset is already holding the mouse over it.
         PopupHandler.installPopupMenu(tree, actions, "AnimoriaGalleryPopup")
 
@@ -159,6 +222,7 @@ class AnimoriaGalleryPanel(
                     stem = it.stem,
                     format = it.format,
                     sizeBytes = it.sizeBytes,
+                    relativePath = it.relativePath,
                 )
             },
         )
@@ -189,6 +253,7 @@ class AnimoriaGalleryPanel(
                 format = uo.asset.format,
                 kind = "static",
                 sizeBytes = uo.asset.sizeBytes,
+                relativePath = uo.asset.relativePath,
             )
         }
         if (uo is GovernanceIssueNode) return uo.asset
@@ -298,4 +363,29 @@ class AnimoriaGalleryPanel(
 
         fun of(project: Project): AnimoriaGalleryPanel? = mounted[project.locationHash]
     }
+}
+
+/**
+ * Transferable payload allowing discovered assets to be dragged from the native tree
+ * into source editors or file trees.
+ */
+class AnimoriaAssetTransferable(
+    private val asset: JetBrainsAsset,
+) : Transferable {
+    private val flavors =
+        arrayOf(
+            DataFlavor.javaFileListFlavor,
+            DataFlavor.stringFlavor,
+        )
+
+    override fun getTransferDataFlavors(): Array<DataFlavor> = flavors
+
+    override fun isDataFlavorSupported(flavor: DataFlavor): Boolean = flavors.contains(flavor)
+
+    override fun getTransferData(flavor: DataFlavor): Any =
+        when (flavor) {
+            DataFlavor.javaFileListFlavor -> listOf(File(asset.path))
+            DataFlavor.stringFlavor -> asset.relativePath.ifEmpty { asset.name }
+            else -> throw UnsupportedFlavorException(flavor)
+        }
 }

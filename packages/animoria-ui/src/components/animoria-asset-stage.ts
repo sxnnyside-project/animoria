@@ -62,7 +62,7 @@ export class AnimoriaAssetStage extends LitElement {
   @property({ type: String }) assetPath = '';
 
   @state() private _playing = true;
-  @state() private _frame = 0;
+  private _frame = 0;
   @state() private _totalFrames = 0;
   @state() private _zoom = 1;
   /** Set when the player itself fails — distinct from a host-reported error. */
@@ -70,6 +70,8 @@ export class AnimoriaAssetStage extends LitElement {
 
   @query('.lottie-mount') private _mount!: HTMLDivElement | null;
   @query('.rive-canvas') private _riveCanvas!: HTMLCanvasElement | null;
+  @query('.scrubber') private _scrubberInput!: HTMLInputElement | null;
+  @query('.frame-readout') private _frameReadout!: HTMLElement | null;
 
   /** The `lottie-web` instance, kept untyped so the player stays a lazy import. */
   private _animation: LottieInstance | null = null;
@@ -273,7 +275,10 @@ export class AnimoriaAssetStage extends LitElement {
     if (!mount) return;
 
     try {
-      const lottie = (await import('lottie-web')).default;
+      const lottieModule = await import('lottie-web/build/player/lottie_light.js');
+      const lottie = (lottieModule.default || lottieModule) as unknown as {
+        loadAnimation(params: Record<string, unknown>): unknown;
+      };
       const animation = lottie.loadAnimation({
         container: mount,
         renderer: 'svg',
@@ -283,15 +288,17 @@ export class AnimoriaAssetStage extends LitElement {
       });
 
       this._animation = animation as unknown as LottieInstance;
-      this._totalFrames = preview.totalFrames || Math.round(animation.totalFrames) || 0;
+      this._totalFrames = preview.totalFrames || Math.round(this._animation.totalFrames) || 0;
       this._applySpeed();
 
-      // Polled rather than driven by `enterFrame`: that event fires once per rendered
-      // frame, and re-rendering a Lit component at 60 Hz to move a scrubber costs more
-      // than the scrubber is worth. Ten updates a second reads as continuous.
+      // Drives the scrubber and readout directly at 10 Hz without triggering
+      // full Lit component re-render passes.
       this._frameTimer = window.setInterval(() => {
         if (!this._animation) return;
-        this._frame = Math.round(this._animation.currentFrame);
+        const current = Math.round(this._animation.currentFrame);
+        this._frame = current;
+        if (this._scrubberInput) this._scrubberInput.value = String(current);
+        if (this._frameReadout) this._frameReadout.textContent = `${current}/${this._totalFrames}`;
       }, 100);
     } catch (error) {
       // A player that fails to load is a real state with a real cause, and the
@@ -322,6 +329,8 @@ export class AnimoriaAssetStage extends LitElement {
     this._playing = false;
     this._frame = frame;
     this._animation?.goToAndStop(frame, true);
+    if (this._scrubberInput) this._scrubberInput.value = String(frame);
+    if (this._frameReadout) this._frameReadout.textContent = `${frame}/${this._totalFrames}`;
   }
 
   private _emitPreferences(patch: Partial<UiPreferences>): void {

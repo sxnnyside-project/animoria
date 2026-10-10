@@ -1,4 +1,6 @@
 import { html, nothing } from 'lit';
+import { classMap } from 'lit/directives/class-map.js';
+import { repeat } from 'lit/directives/repeat.js';
 import type {
   HostBridge,
   HostCapabilities,
@@ -119,7 +121,9 @@ function renderCleanup(model: AnalysisViewModel, deps: CleanupTabDeps) {
           : nothing
       }
       <div class="list">
-        ${deps.cleanupPlans.map(
+        ${repeat(
+          deps.cleanupPlans,
+          (entry) => entry.plan.planId,
           (entry) => html`
             <div class="plan-block">
               ${
@@ -194,53 +198,63 @@ function renderCleanup(model: AnalysisViewModel, deps: CleanupTabDeps) {
             : html`<div class="section-title">${entry.rootName} — ${entry.proposal.candidates.length}</div>`
         }
         <div class="list">
-          ${entry.proposal.candidates.map((candidate) => {
-            const isDismissed = deps.dismissed.has(candidate.asset.path);
-            const isEligible = candidate.eligibility?.eligible ?? true;
-            return html`
-              <div class="cleanup-row ${isEligible ? '' : 'blocked'} ${isDismissed ? 'dismissed' : ''}">
-                <input
-                  type="checkbox"
-                  .checked=${deps.selectedForCleanup.has(candidate.asset.path)}
-                  ?disabled=${!isEligible || isDismissed}
-                  @change=${() => deps.onToggleSelection(candidate.asset.path)}
-                />
-                <span class="cleanup-body">
-                  <span class="cleanup-name">
-                    ${candidate.asset.name}
-                    <animoria-root-badge
-                      quiet
-                      .rootName=${entry.rootName}
-                      ?hidden=${model.isSingleRoot}
-                    ></animoria-root-badge>
-                  </span>
-                  <span class="cleanup-meta"
-                    >${candidate.asset.path} · ${formatBytes(candidate.sizeBytes ?? candidate.asset.size_bytes)} ·
-                    ${candidate.referenceCount ?? 0} reference(s)</span
-                  >
-                  ${
-                    candidate.eligibility && !candidate.eligibility.eligible
-                      ? html`<span class="blocked-why"
-                          >${candidate.eligibility.explanation ?? candidate.eligibility.reason ?? 'Blocked'}</span
-                        >`
-                      : nothing
-                  }
-                </span>
-                <button
-                  type="button"
-                  class="dismiss"
-                  title=${
-                    isDismissed
-                      ? 'Propose this asset again.'
-                      : 'Keep this asset and stop proposing it for removal.'
-                  }
-                  @click=${() => deps.onDismissCandidate(candidate.asset.path, !isDismissed)}
+          ${repeat(
+            entry.proposal.candidates,
+            (candidate) => candidate.asset.path,
+            (candidate) => {
+              const isDismissed = deps.dismissed.has(candidate.asset.path);
+              const isEligible = candidate.eligibility?.eligible ?? true;
+              return html`
+                <div
+                  class=${classMap({
+                    'cleanup-row': true,
+                    blocked: !isEligible,
+                    dismissed: isDismissed,
+                  })}
                 >
-                  ${isDismissed ? 'Undismiss' : 'Keep'}
-                </button>
-              </div>
-            `;
-          })}
+                  <input
+                    type="checkbox"
+                    .checked=${deps.selectedForCleanup.has(candidate.asset.path)}
+                    ?disabled=${!isEligible || isDismissed}
+                    @change=${() => deps.onToggleSelection(candidate.asset.path)}
+                  />
+                  <span class="cleanup-body">
+                    <span class="cleanup-name">
+                      ${candidate.asset.name}
+                      <animoria-root-badge
+                        quiet
+                        .rootName=${entry.rootName}
+                        ?hidden=${model.isSingleRoot}
+                      ></animoria-root-badge>
+                    </span>
+                    <span class="cleanup-meta"
+                      >${candidate.asset.path} · ${formatBytes(candidate.sizeBytes ?? candidate.asset.size_bytes)} ·
+                      ${candidate.referenceCount ?? 0} reference(s)</span
+                    >
+                    ${
+                      candidate.eligibility && !candidate.eligibility.eligible
+                        ? html`<span class="blocked-why"
+                            >${candidate.eligibility.explanation ?? candidate.eligibility.reason ?? 'Blocked'}</span
+                          >`
+                        : nothing
+                    }
+                  </span>
+                  <button
+                    type="button"
+                    class="dismiss"
+                    title=${
+                      isDismissed
+                        ? 'Propose this asset again.'
+                        : 'Keep this asset and stop proposing it for removal.'
+                    }
+                    @click=${() => deps.onDismissCandidate(candidate.asset.path, !isDismissed)}
+                  >
+                    ${isDismissed ? 'Undismiss' : 'Keep'}
+                  </button>
+                </div>
+              `;
+            },
+          )}
         </div>
       `,
     )}

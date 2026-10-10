@@ -1,6 +1,9 @@
 export type Confidence = 'certain' | 'high' | 'moderate' | 'low';
+
 import { LitElement, css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { classMap } from 'lit/directives/class-map.js';
+import { styleMap } from 'lit/directives/style-map.js';
 import { confidenceLabel } from '../view-model/analysis-view-model.js';
 
 @customElement('animoria-confidence-badge')
@@ -59,8 +62,8 @@ export class AnimoriaConfidenceBadge extends LitElement {
 
     return html`
       <span
-        class="badge ${this.compact ? 'compact' : ''}"
-        style="--level-color: ${color}"
+        class=${classMap({ badge: true, compact: this.compact })}
+        style=${styleMap({ '--level-color': color })}
         title=${label}
       >
         <span class="dot"></span>

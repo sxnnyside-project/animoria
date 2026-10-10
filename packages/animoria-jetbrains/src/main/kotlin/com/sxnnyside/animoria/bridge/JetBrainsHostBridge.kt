@@ -33,6 +33,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import java.awt.datatransfer.StringSelection
 import java.io.File
+import kotlin.coroutines.resume
 
 /**
  * JetBrains implementation of the shared `@animoria/ui` HostBridge contract.
@@ -639,9 +640,9 @@ class JetBrainsHostBridge(
                 detail =
                     "- ${proposal.originalLine.trim()}\n+ ${proposal.proposedLine.trim()}\n\n" +
                         "Update this reference to point at the kept asset?",
-                onCancelled = { cont.resume(false) { _, _, _ -> } },
+                onCancelled = { cont.resume(false) },
             ) {
-                cont.resume(true) { _, _, _ -> }
+                cont.resume(true)
             }
         }
 

@@ -43,7 +43,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         // No code splitting: see the note above.
-        inlineDynamicImports: true,
+        codeSplitting: false,
         assetFileNames: 'animoria-ui.[ext]',
       },
     },

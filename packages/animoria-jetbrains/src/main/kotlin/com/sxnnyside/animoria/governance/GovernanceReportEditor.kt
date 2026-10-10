@@ -12,7 +12,6 @@ import com.sxnnyside.animoria.backend.GovernanceReportExportData
 import com.sxnnyside.animoria.logging.AnimoriaLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.put
@@ -56,7 +55,9 @@ object GovernanceReportEditor {
                         "exportReport",
                         buildJsonObject { put("format", "markdown") },
                     )
-                val result = Json.decodeFromJsonElement<GovernanceReportExportData>(response)
+                val result =
+                    com.sxnnyside.animoria.backend.animoriaJson
+                        .decodeFromJsonElement<GovernanceReportExportData>(response)
 
                 ApplicationManager.getApplication().invokeLater {
                     if (result.error != null) {

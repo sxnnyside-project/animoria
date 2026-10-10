@@ -442,9 +442,9 @@ export class AnimoriaAssetInspector extends LitElement {
           type="button"
           ?disabled=${!capabilities?.canCopyToClipboard}
           title=${capabilities?.canCopyToClipboard ? '' : 'This host has no clipboard.'}
-          @click=${() => this._emit('copy-to-clipboard', { text: asset.path, label: 'Asset path' })}
+          @click=${() => this._emit('copy-to-clipboard', { text: asset.relative_path || asset.path, label: 'Relative asset path' })}
         >
-          Copy path
+          Copy relative path
         </button>
 
         <button

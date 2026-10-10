@@ -2,11 +2,16 @@ package com.sxnnyside.animoria.inspections
 
 import com.intellij.codeInspection.InspectionManager
 import com.intellij.codeInspection.LocalInspectionTool
+import com.intellij.codeInspection.LocalQuickFix
 import com.intellij.codeInspection.ProblemDescriptor
 import com.intellij.codeInspection.ProblemHighlightType
+import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiFile
+import com.sxnnyside.animoria.actions.AnimoriaActionHost
 import com.sxnnyside.animoria.backend.AnimoriaAnalysisHolder
 import com.sxnnyside.animoria.backend.RuleDiagnosticData
+import com.sxnnyside.animoria.ui.AnimoriaSharedUiPanel
+import com.sxnnyside.animoria.ui.AnimoriaToolWindows
 
 // Surfaces Animoria's governance findings in the IDE's Problems view, attached to the asset file itself
 // (not a referencing line, since findings are about the asset). Reads AnimoriaAnalysisHolder verbatim — no
@@ -33,17 +38,35 @@ class AnimoriaGovernanceInspection : LocalInspectionTool() {
                     file,
                     describe(diagnostic),
                     isOnTheFly,
-                    // No quick fixes are offered here on purpose. Every remediation
-                    // Animoria knows for these findings is destructive (remove the
-                    // asset, resolve a duplicate group), and a destructive action
-                    // must go through the review-and-confirm flow with its preview
-                    // and its trash session — not a one-keystroke intention that
-                    // skips both. The remediation text tells the developer what to
-                    // do; the tool window is where they do it.
-                    emptyArray(),
+                    quickFixesFor(diagnostic, path),
                     highlightFor(diagnostic),
                 )
             }.toTypedArray()
+    }
+
+    /**
+     * Non-destructive quick fixes that guide the developer into the safe confirmation flow
+     * rather than performing silent destructive modifications directly.
+     */
+    private fun quickFixesFor(
+        diagnostic: RuleDiagnosticData,
+        assetPath: String,
+    ): Array<LocalQuickFix> {
+        val fixes = mutableListOf<LocalQuickFix>()
+        when (diagnostic.ruleId) {
+            "no-unreferenced-assets" -> {
+                fixes.add(AnimoriaReviewCleanupQuickFix())
+                fixes.add(AnimoriaShowInGalleryQuickFix(assetPath))
+            }
+            "no-duplicate-assets" -> {
+                fixes.add(AnimoriaResolveDuplicatesQuickFix(assetPath))
+                fixes.add(AnimoriaShowInGalleryQuickFix(assetPath))
+            }
+            else -> {
+                fixes.add(AnimoriaShowInGalleryQuickFix(assetPath))
+            }
+        }
+        return fixes.toTypedArray()
     }
 
     /**
@@ -82,8 +105,68 @@ class AnimoriaGovernanceInspection : LocalInspectionTool() {
 
     /** Core owns severity; this maps it, and never reinterprets it. */
     private fun highlightFor(diagnostic: RuleDiagnosticData): ProblemHighlightType =
-        when (diagnostic.severity) {
-            "error" -> ProblemHighlightType.GENERIC_ERROR
+        when {
+            diagnostic.ruleId == "no-unreferenced-assets" -> ProblemHighlightType.LIKE_UNUSED_SYMBOL
+            diagnostic.severity == "error" -> ProblemHighlightType.GENERIC_ERROR
             else -> ProblemHighlightType.GENERIC_ERROR_OR_WARNING
         }
+}
+
+/**
+ * Safe navigation quick fix that opens Animoria's Cleanup review tab for unreferenced assets.
+ * Preserves the review-and-confirm flow with preview and trash session safeguards.
+ */
+class AnimoriaReviewCleanupQuickFix : LocalQuickFix {
+    override fun getName(): String = "Review Safe Cleanup in Animoria…"
+
+    override fun getFamilyName(): String = "Animoria Governance"
+
+    override fun applyFix(
+        project: Project,
+        descriptor: ProblemDescriptor,
+    ) {
+        AnimoriaActionHost.of(project).reviewCleanup()
+    }
+}
+
+/**
+ * Safe navigation quick fix that focuses the duplicate resolution interface for duplicate assets.
+ */
+class AnimoriaResolveDuplicatesQuickFix(
+    private val assetPath: String,
+) : LocalQuickFix {
+    override fun getName(): String = "Resolve Duplicates in Animoria…"
+
+    override fun getFamilyName(): String = "Animoria Governance"
+
+    override fun applyFix(
+        project: Project,
+        descriptor: ProblemDescriptor,
+    ) {
+        AnimoriaToolWindows.show(project, "Duplicates")
+        AnimoriaSharedUiPanel.of(project, "duplicates")?.focus(
+            AnimoriaSharedUiPanel.Focus(tab = "duplicates", assetPath = assetPath),
+        )
+    }
+}
+
+/**
+ * Safe navigation quick fix that reveals the asset inside the Animoria Gallery & Inspector preview.
+ */
+class AnimoriaShowInGalleryQuickFix(
+    private val assetPath: String,
+) : LocalQuickFix {
+    override fun getName(): String = "Show in Animoria Gallery"
+
+    override fun getFamilyName(): String = "Animoria Governance"
+
+    override fun applyFix(
+        project: Project,
+        descriptor: ProblemDescriptor,
+    ) {
+        AnimoriaToolWindows.show(project, "Preview")
+        AnimoriaSharedUiPanel.of(project, "inspector")?.focus(
+            AnimoriaSharedUiPanel.Focus(tab = "assets", assetPath = assetPath),
+        )
+    }
 }

@@ -336,7 +336,7 @@ jobs:
         run: |
           set -euo pipefail
           # verifyPlugin doesn't catch a missing bundle (blank panel, no log); assert it here.
-          JAR=$(find packages/animoria-jetbrains/build/libs -maxdepth 1 -name 'instrumented-*.jar' | head -1)
+          JAR=$(find packages/animoria-jetbrains/build/libs -maxdepth 1 -name '*instrumented*.jar' | head -1)
           if [ -z "$JAR" ]; then
             echo "::error::No instrumented plugin jar was produced"
             exit 1
@@ -454,7 +454,7 @@ jobs:
       - name: Verify the plugin jar carries the shared UI bundle
         run: |
           set -euo pipefail
-          JAR=$(find packages/animoria-jetbrains/build/libs -maxdepth 1 -name 'instrumented-*.jar' | head -1)
+          JAR=$(find packages/animoria-jetbrains/build/libs -maxdepth 1 -name '*instrumented*.jar' | head -1)
           if [ -z "$JAR" ]; then
             echo "::error::No instrumented plugin jar was produced"
             exit 1

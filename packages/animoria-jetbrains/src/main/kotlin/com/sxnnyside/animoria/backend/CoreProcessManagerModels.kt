@@ -2,7 +2,20 @@ package com.sxnnyside.animoria.backend
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+
+/**
+ * Shared JSON configuration for deserializing daemon NDJSON events and responses.
+ * Sets ignoreUnknownKeys = true so additive daemon protocol changes never break the IDE.
+ */
+val animoriaJson =
+    Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        encodeDefaults = true
+        coerceInputValues = true
+    }
 
 // Wire-format DTOs CoreProcessManager decodes from the daemon's NDJSON events and requests.
 @Serializable
@@ -288,6 +301,7 @@ data class ThumbnailResultData(
 data class SnippetData(
     val label: String,
     val code: String,
+    val language: String = "",
     val imports: String? = null,
     val installHint: String? = null,
 )
@@ -325,6 +339,7 @@ data class StaticAssetData(
     val stem: String,
     val format: String,
     val sizeBytes: Long,
+    val relativePath: String = "",
 )
 
 @Serializable

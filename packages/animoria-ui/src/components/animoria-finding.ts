@@ -1,6 +1,8 @@
 import type { RuleDiagnostic } from '@animoria/contracts';
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { classMap } from 'lit/directives/class-map.js';
+import { styleMap } from 'lit/directives/style-map.js';
 import './animoria-confidence-badge.js';
 import './animoria-coverage-summary.js';
 import './animoria-evidence-panel.js';
@@ -143,8 +145,8 @@ export class AnimoriaFinding extends LitElement {
 
     return html`
       <div
-        class="finding ${this.selected ? 'selected' : ''}"
-        style="--severity-color: ${severityColor}"
+        class=${classMap({ finding: true, selected: this.selected })}
+        style=${styleMap({ '--severity-color': severityColor })}
       >
         <div class="top">
           <span

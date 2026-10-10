@@ -3,9 +3,14 @@ package com.sxnnyside.animoria.ui
 import com.intellij.icons.AllIcons
 import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.ui.SimpleTextAttributes
-import java.awt.Image
+import com.intellij.util.ui.ImageUtil
+import com.intellij.util.ui.JBImageIcon
+import java.awt.RenderingHints
+import java.awt.image.BufferedImage
 import java.io.File
-import javax.swing.ImageIcon
+import java.util.concurrent.ConcurrentHashMap
+import javax.imageio.ImageIO
+import javax.swing.Icon
 import javax.swing.JTree
 import javax.swing.tree.DefaultMutableTreeNode
 
@@ -15,6 +20,44 @@ import javax.swing.tree.DefaultMutableTreeNode
  * and colored badges driven by each finding's severity, as Core reports it.
  */
 class AnimoriaTreeCellRenderer : ColoredTreeCellRenderer() {
+    companion object {
+        private val iconCache = ConcurrentHashMap<String, Icon>()
+
+        /**
+         * Safely loads and scales a thumbnail from [path], ensuring it is an in-memory
+         * [JBImageIcon] with positive width and height (16x16). Never returns an asynchronous
+         * or unmeasured ImageIcon with dimensions -1x-1.
+         */
+        fun getSafeThumbnail(
+            path: String,
+            fallback: Icon,
+        ): Icon {
+            return iconCache.computeIfAbsent(path) { filePath ->
+                try {
+                    val file = File(filePath)
+                    if (!file.exists() || !file.isFile) return@computeIfAbsent fallback
+                    val img = ImageIO.read(file)
+                    if (img != null && img.width > 0 && img.height > 0) {
+                        val scaled = ImageUtil.createImage(16, 16, BufferedImage.TYPE_INT_ARGB)
+                        val g = scaled.createGraphics()
+                        try {
+                            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+                            g.drawImage(img, 0, 0, 16, 16, null)
+                        } finally {
+                            g.dispose()
+                        }
+                        val jbIcon = JBImageIcon(scaled)
+                        if (jbIcon.iconWidth > 0 && jbIcon.iconHeight > 0) jbIcon else fallback
+                    } else {
+                        fallback
+                    }
+                } catch (_: Throwable) {
+                    fallback
+                }
+            }
+        }
+    }
+
     override fun customizeCellRenderer(
         tree: JTree,
         value: Any?,
@@ -63,21 +106,10 @@ class AnimoriaTreeCellRenderer : ColoredTreeCellRenderer() {
                 val asset = userObject.asset
                 icon =
                     when {
-                        // `AnimatedIcon.FS` is marked `@ApiStatus.Internal`, which the
-                        // IntelliJ Plugin Verifier reports as an internal API usage —
-                        // the exact class of finding this plugin was rejected for
-                        // before. `AllIcons.Process.Step_passive` is a public icon and
-                        // reads the same way in a tree row: something is happening here.
                         userObject.thumbnailLoading -> AllIcons.Process.Step_passive
                         userObject.thumbnailFailed -> AllIcons.General.Warning
-                        userObject.thumbnailPath != null && File(userObject.thumbnailPath).exists() -> {
-                            try {
-                                val raw = ImageIcon(userObject.thumbnailPath)
-                                val scaled = raw.image.getScaledInstance(16, 16, Image.SCALE_SMOOTH)
-                                ImageIcon(scaled)
-                            } catch (e: Exception) {
-                                AllIcons.FileTypes.Json
-                            }
+                        userObject.thumbnailPath != null -> {
+                            getSafeThumbnail(userObject.thumbnailPath, AllIcons.FileTypes.Json)
                         }
                         else -> AllIcons.FileTypes.Json
                     }
@@ -91,7 +123,13 @@ class AnimoriaTreeCellRenderer : ColoredTreeCellRenderer() {
 
             is StaticAssetNode -> {
                 val asset = userObject.asset
-                icon = AllIcons.FileTypes.Image
+                val fallbackIcon = AllIcons.FileTypes.Image
+                icon =
+                    if (asset.format.lowercase() in setOf("png", "jpg", "jpeg") && File(asset.path).exists()) {
+                        getSafeThumbnail(asset.path, fallbackIcon)
+                    } else {
+                        fallbackIcon
+                    }
                 append(asset.stem)
                 val formatText = asset.format.uppercase()
                 val sizeText = formatBytesShort(asset.sizeBytes)
@@ -116,9 +154,6 @@ class AnimoriaTreeCellRenderer : ColoredTreeCellRenderer() {
 
             is GovernanceIssueNode -> {
                 val diagnostic = userObject.diagnostic
-                // Severity comes from Core, so the icon reflects the same judgement the
-                // CLI prints and the Problems panel shows — it is not re-derived from a
-                // locally-invented category.
                 icon =
                     if (diagnostic.severity == "error") {
                         AllIcons.General.Error

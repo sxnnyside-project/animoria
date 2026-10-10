@@ -1,5 +1,7 @@
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { classMap } from 'lit/directives/class-map.js';
+import { repeat } from 'lit/directives/repeat.js';
 import type { RestoreResult, SessionManifest } from '../bridge/types.js';
 import { formatBytes } from '../view-model/analysis-view-model.js';
 import './animoria-state-panel.js';
@@ -113,7 +115,7 @@ export class AnimoriaTrashPanel extends LitElement {
   private _renderOutcome(result: RestoreResult) {
     const partial = Boolean(result.error);
     return html`
-      <div class="outcome ${partial ? 'partial' : 'clean'}" role="status">
+      <div class=${classMap({ outcome: true, partial, clean: !partial })} role="status">
         <div>Restored ${result.restoredPaths.length} asset(s).</div>
         ${result.error ? html`<div class="reason">${result.error}</div>` : nothing}
       </div>
@@ -151,30 +153,34 @@ export class AnimoriaTrashPanel extends LitElement {
 
     return html`
       ${this.result ? this._renderOutcome(this.result) : nothing}
-      ${this.sessions.map((session) => {
-        const bytes = session.items.reduce((sum, item) => sum + item.sizeBytes, 0);
-        return html`
-          <div class="row">
-            <span class="body">
-              <span class="headline">
-                ${session.items.length} asset(s) — ${formatBytes(bytes)}
+      ${repeat(
+        this.sessions,
+        (session) => session.id,
+        (session) => {
+          const bytes = session.items.reduce((sum, item) => sum + item.sizeBytes, 0);
+          return html`
+            <div class="row">
+              <span class="body">
+                <span class="headline">
+                  ${session.items.length} asset(s) — ${formatBytes(bytes)}
+                </span>
+                <span class="meta">${new Date(session.timestamp).toLocaleString()}</span>
+                <span class="meta">
+                  ${session.items.map((item) => item.originalPath).join(', ')}
+                </span>
               </span>
-              <span class="meta">${new Date(session.timestamp).toLocaleString()}</span>
-              <span class="meta">
-                ${session.items.map((item) => item.originalPath).join(', ')}
-              </span>
-            </span>
-            <button
-              type="button"
-              ?disabled=${!this.canRestore || this.restoring}
-              title=${this.canRestore ? '' : this.restoreUnavailableReason}
-              @click=${() => this._restore(session.id)}
-            >
-              ${this.restoring ? 'Restoring…' : 'Restore'}
-            </button>
-          </div>
-        `;
-      })}
+              <button
+                type="button"
+                ?disabled=${!this.canRestore || this.restoring}
+                title=${this.canRestore ? '' : this.restoreUnavailableReason}
+                @click=${() => this._restore(session.id)}
+              >
+                ${this.restoring ? 'Restoring…' : 'Restore'}
+              </button>
+            </div>
+          `;
+        },
+      )}
     `;
   }
 }

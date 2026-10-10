@@ -568,7 +568,8 @@ export class VsCodeHostBridge {
     }
   >();
   private _planCounter = 0;
-
+  private static readonly MAX_DATA_URI_CACHE = 250;
+  private readonly _dataUriCache = new Map<string, string>();
   private readonly _onReady: (() => void) | undefined;
   private readonly _memento: vscode.Memento | undefined;
 
@@ -674,6 +675,7 @@ export class VsCodeHostBridge {
   dispose(): void {
     this._cleanupPlans.clear();
     this._resolutionPlans.clear();
+    this._dataUriCache.clear();
   }
 
   private async _dispatch(message: HostOutbound): Promise<void> {
@@ -743,10 +745,27 @@ export class VsCodeHostBridge {
 
       case 'request-thumbnail': {
         const asset = this._assetFor(message.assetPath);
+        const format = (
+          asset?.format ?? extname(message.assetPath).replace(/^\./, '')
+        ).toLowerCase();
+        const isImage = [
+          'svg',
+          'png',
+          'jpg',
+          'jpeg',
+          'webp',
+          'avif',
+          'gif',
+          'ico',
+          'bmp',
+          'apng',
+        ].includes(format);
+        const pathToRead =
+          asset?.thumbnail_path ?? (isImage ? (asset?.path ?? message.assetPath) : null);
         this._post({
           type: 'thumbnail',
           assetPath: message.assetPath,
-          source: asset?.path ? await this._dataUri(asset.path) : null,
+          source: pathToRead ? await this._dataUri(pathToRead) : null,
         });
         return;
       }
@@ -1189,10 +1208,21 @@ export class VsCodeHostBridge {
   }
 
   private async _dataUri(path: string): Promise<string | null> {
+    const cached = this._dataUriCache.get(path);
+    if (cached) return cached;
+
     try {
       const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(path));
       const mime = MIME_BY_EXTENSION[extname(path).toLowerCase()] ?? 'application/octet-stream';
-      return `data:${mime};base64,${Buffer.from(bytes).toString('base64')}`;
+      const uri = `data:${mime};base64,${Buffer.from(bytes).toString('base64')}`;
+
+      if (this._dataUriCache.size >= VsCodeHostBridge.MAX_DATA_URI_CACHE) {
+        const oldest = this._dataUriCache.keys().next().value;
+        if (oldest) this._dataUriCache.delete(oldest);
+      }
+      this._dataUriCache.set(path, uri);
+
+      return uri;
     } catch (error) {
       logWarn('host-bridge', 'VsCodeHostBridge.dataUri', 'Could not read a file for the panel', {
         reason: `reading ${path} failed`,

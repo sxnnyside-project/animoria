@@ -131,4 +131,22 @@ describe('DiagnosticPublisher', () => {
     expect(collection().get({ fsPath: assetA.path } as never) ?? []).toHaveLength(0);
     expect(collection().get({ fsPath: assetB.path } as never)).toHaveLength(1);
   });
+
+  it('tags no-unreferenced-assets with vscode.DiagnosticTag.Unnecessary', () => {
+    const subject = buildAsset();
+    publisher.publish(
+      buildAnalysis({
+        assets: [subject],
+        diagnostics: [
+          buildDiagnostic({
+            target_asset_path: subject.path,
+            rule_id: 'no-unreferenced-assets',
+          }),
+        ],
+      }),
+    );
+
+    const diagnostics = collection().get({ fsPath: subject.path } as never);
+    expect(diagnostics?.[0]?.tags).toEqual([1]); // DiagnosticTag.Unnecessary = 1
+  });
 });

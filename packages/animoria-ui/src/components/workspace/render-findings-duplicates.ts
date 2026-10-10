@@ -1,5 +1,6 @@
 import type { DuplicateGroup, ResolutionPlan } from '@animoria/contracts';
 import { html } from 'lit';
+import { repeat } from 'lit/directives/repeat.js';
 import type { HostCapabilities } from '../../bridge/types.js';
 import type { AnalysisViewModel } from '../../view-model/analysis-view-model.js';
 import '../animoria-duplicate-group.js';
@@ -25,7 +26,10 @@ export function renderFindings(model: AnalysisViewModel, deps: FindingsDeps) {
       (section) => html`
         <div class="section-title">${section.label} — ${section.diagnostics.length}</div>
         <div class="list">
-          ${section.diagnostics.map(
+          ${repeat(
+            section.diagnostics,
+            (entry) =>
+              `${entry.diagnostic.rule_id}:${entry.diagnostic.target_asset_path || entry.rootId}`,
             (entry) => html`
               <animoria-finding
                 compact
@@ -92,7 +96,9 @@ export function renderDuplicates(model: AnalysisViewModel, deps: DuplicatesDeps)
 
   return html`
     <div class="list">
-      ${model.duplicateGroups.map(
+      ${repeat(
+        model.duplicateGroups,
+        (group) => group.id,
         (group) => html`
           <animoria-duplicate-group
             .group=${group}

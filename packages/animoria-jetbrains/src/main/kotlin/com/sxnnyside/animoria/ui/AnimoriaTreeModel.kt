@@ -259,9 +259,10 @@ class AnimoriaTreeModel : DefaultTreeModel(DefaultMutableTreeNode(GalleryRoot)) 
         analysis?.let { addGovernanceSections(root, it) }
 
         // 4. Static Assets section
-        if (staticAssets.isNotEmpty()) {
-            val section = DefaultMutableTreeNode(StaticAssetsSectionNode(staticAssets.size))
-            staticAssets.forEach { section.add(DefaultMutableTreeNode(StaticAssetNode(it))) }
+        val filteredStatic = filteredStaticAssets()
+        if (filteredStatic.isNotEmpty()) {
+            val section = DefaultMutableTreeNode(StaticAssetsSectionNode(filteredStatic.size))
+            filteredStatic.forEach { section.add(DefaultMutableTreeNode(StaticAssetNode(it))) }
             root.add(section)
         }
 
@@ -308,6 +309,15 @@ class AnimoriaTreeModel : DefaultTreeModel(DefaultMutableTreeNode(GalleryRoot)) 
             assets
         } else {
             assets.filter { it.name.lowercase().contains(q) || it.stem.lowercase().contains(q) }
+        }
+    }
+
+    private fun filteredStaticAssets(): List<StaticAssetData> {
+        val q = searchQuery.lowercase()
+        return if (q.isEmpty()) {
+            staticAssets
+        } else {
+            staticAssets.filter { it.name.lowercase().contains(q) || it.stem.lowercase().contains(q) }
         }
     }
 

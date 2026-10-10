@@ -109,4 +109,35 @@ class ProtocolParityTest {
             proc.destroyForcibly()
         }
     }
+
+    @Test
+    @DisplayName("generateSnippet response with language and unknown keys decodes cleanly into SnippetResultData")
+    fun testGenerateSnippetDecodesWithLanguageField() {
+        val jsonPayload =
+            """
+            {
+                "results": [
+                    {
+                        "label": "React / Next.js Image",
+                        "language": "tsx",
+                        "code": "<img src={sxFaviconImg} alt=\"Sx-favicon\" loading=\"lazy\" />",
+                        "imports": "import sxFaviconImg from './Sx-favicon.svg';",
+                        "extraFieldFutureDaemon": true
+                    }
+                ],
+                "error": null,
+                "unknownTopLevel": "allowed"
+            }
+            """.trimIndent()
+
+        val parsedElement = Json.parseToJsonElement(jsonPayload)
+        val decoded = animoriaJson.decodeFromJsonElement<SnippetResultData>(parsedElement)
+
+        assertNull(decoded.error)
+        assertEquals(1, decoded.results.size)
+        val first = decoded.results.first()
+        assertEquals("React / Next.js Image", first.label)
+        assertEquals("tsx", first.language)
+        assertEquals("import sxFaviconImg from './Sx-favicon.svg';", first.imports)
+    }
 }

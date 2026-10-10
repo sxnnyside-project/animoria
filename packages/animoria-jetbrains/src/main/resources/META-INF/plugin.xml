@@ -39,6 +39,9 @@
         <projectService serviceImplementation="com.sxnnyside.animoria.backend.AnimoriaCoroutineScope"/>
         <projectService serviceImplementation="com.sxnnyside.animoria.actions.AnimoriaActionHost"/>
         <projectService serviceImplementation="com.sxnnyside.animoria.backend.AnimoriaAnalysisHolder"/>
+        <projectViewNodeDecorator implementation="com.sxnnyside.animoria.ui.AnimoriaProjectViewNodeDecorator"/>
+        <lineMarkerProvider language=""
+                            implementationClass="com.sxnnyside.animoria.gutter.AnimoriaLineMarkerProvider"/>
         <localInspection language=""
                          implementationClass="com.sxnnyside.animoria.inspections.AnimoriaGovernanceInspection"
                          displayName="Animoria asset governance"
@@ -46,6 +49,13 @@
                          shortName="AnimoriaGovernance"
                          enabledByDefault="true"
                          level="WARNING"/>
+        <statusBarWidgetFactory id="AnimoriaStatusBar"
+                                implementation="com.sxnnyside.animoria.ui.AnimoriaStatusBarWidgetFactory"/>
+        <editorNotificationProvider implementation="com.sxnnyside.animoria.editor.AnimoriaEditorNotificationProvider"/>
+        <fileEditorProvider implementation="com.sxnnyside.animoria.editor.AnimoriaAssetEditorProvider"/>
+        <searchEverywhereContributor implementation="com.sxnnyside.animoria.search.AnimoriaSearchEverywhereContributorFactory"/>
+        <lang.documentationProvider language=""
+                                   implementationClass="com.sxnnyside.animoria.docs.AnimoriaDocumentationProvider"/>
     </extensions>
 
     <projectListeners>
@@ -111,6 +121,21 @@
                     class="com.sxnnyside.animoria.actions.OpenSettingsAction"
                     text="Settings"
                     description="Configure Animoria for this project"/>
+        </group>
+
+        <group id="Animoria.ContextMenuGroup" text="Animoria" popup="true" icon="AllIcons.Actions.Preview">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="CutCopyPasteGroup"/>
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+
+            <action id="Animoria.ShowInGalleryContext"
+                    class="com.sxnnyside.animoria.actions.ShowInGalleryContextAction"
+                    text="Show in Animoria Gallery"
+                    description="Preview and inspect asset in Animoria gallery"/>
+
+            <action id="Animoria.CopySnippetContext"
+                    class="com.sxnnyside.animoria.actions.CopySnippetContextAction"
+                    text="Copy Animoria Snippet..."
+                    description="Generate and copy code integration snippet"/>
         </group>
     </actions>
 </idea-plugin>

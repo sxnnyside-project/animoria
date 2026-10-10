@@ -1,6 +1,6 @@
 plugins {
     kotlin("jvm") version "2.4.20"
-    id("org.jetbrains.intellij") version "1.17.4"
+    id("org.jetbrains.intellij.platform") version "2.19.0"
     kotlin("plugin.serialization") version "2.4.20"
     id("io.gitlab.arturbosch.detekt") version "1.23.8"
     id("org.jlleitschuh.gradle.ktlint") version "14.2.0"
@@ -18,6 +18,9 @@ version = System.getenv("ANIMORIA_VERSION") ?: "0.0.0-dev"
 
 repositories {
     mavenCentral()
+    intellijPlatform {
+        defaultRepositories()
+    }
 }
 
 // The officially documented way (via the public Kotlin/Java Gradle DSL, not
@@ -27,6 +30,10 @@ repositories {
 // `compileTestJava`/`compileTestKotlin` on whatever JDK was first on PATH.
 kotlin {
     jvmToolchain(21)
+    compilerOptions {
+        apiVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_0)
+        languageVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_0)
+    }
 }
 
 java {
@@ -50,19 +57,29 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
     jvmTarget = "21"
 }
 
-intellij {
-    pluginName.set("Animoria")
-    version.set("2024.2.4")
-    type.set("IC")
-    updateSinceUntilBuild.set(false)
-    // markdown plugin for governance report rendering
-    plugins.set(listOf("org.intellij.plugins.markdown"))
+intellijPlatform {
+    pluginConfiguration {
+        name = "Animoria"
+        ideaVersion {
+            sinceBuild = "242"
+        }
+    }
+    publishing {
+        token = providers.environmentVariable("JETBRAINS_PUBLISH_TOKEN")
+    }
 }
 
 dependencies {
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+    intellijPlatform {
+        intellijIdeaCommunity("2024.2.4")
+        bundledPlugin("org.intellij.plugins.markdown")
+        pluginVerifier()
+        zipSigner()
+    }
 
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
     testImplementation(platform("org.junit:junit-bom:6.1.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     // Gradle 8.5 bundles its own older junit-platform-launcher; without pinning
@@ -85,25 +102,26 @@ dependencies {
  * a broken one, and `AnimoriaSharedUiPanel` would render an empty rectangle with
  * nothing in the log to explain it.
  */
-val copySharedUi by tasks.registering(Copy::class) {
-    val uiDist = rootProject.file("../animoria-ui/dist")
-    val uiStyles = rootProject.file("../animoria-ui/src/styles")
+val copySharedUi =
+    tasks.register<Copy>("copySharedUi") {
+        val uiDist = rootProject.file("../animoria-ui/dist")
+        val uiStyles = rootProject.file("../animoria-ui/src/styles")
 
-    doFirst {
-        val bundle = File(uiDist, "animoria-ui.global.js")
-        require(bundle.exists()) {
-            "@animoria/ui is not built. Expected ${bundle.absolutePath}\n" +
-                "Run: pnpm --filter @animoria/ui build"
+        doFirst {
+            val bundle = File(uiDist, "animoria-ui.global.js")
+            require(bundle.exists()) {
+                "@animoria/ui is not built. Expected ${bundle.absolutePath}\n" +
+                    "Run: pnpm --filter @animoria/ui build"
+            }
         }
-    }
 
-    // The IIFE build, not the ESM one: JetBrains inlines the bundle into a document
-    // it hands to JCEF, so there is no URL to `import` from and the exports must
-    // arrive as a global.
-    from(uiDist) { include("animoria-ui.global.js") }
-    from(uiStyles) { include("tokens.css") }
-    into(layout.buildDirectory.dir("generated-resources/web"))
-}
+        // The IIFE build, not the ESM one: JetBrains inlines the bundle into a document
+        // it hands to JCEF, so there is no URL to `import` from and the exports must
+        // arrive as a global.
+        from(uiDist) { include("animoria-ui.global.js") }
+        from(uiStyles) { include("tokens.css") }
+        into(layout.buildDirectory.dir("generated-resources/web"))
+    }
 
 /**
  * Refuses to package a plugin whose bundled daemon is missing or older than Core.
@@ -126,48 +144,49 @@ val copySharedUi by tasks.registering(Copy::class) {
  * works for every capability that has not changed, which is what makes it survive
  * manual testing and reach a release.
  */
-val verifyBundledDaemon by tasks.registering {
-    val nativeDir = file("src/main/resources/native")
-    // Core is the Rust engine now — `animoria-core-rust`, not the legacy
-    // `animoria-core` TS package this used to compare against. That
-    // comparison silently no-opped once the legacy `dist/` stopped being
-    // rebuilt, which is how a stale native binary stopped being caught.
-    val coreSrc = rootProject.file("../animoria-core-rust/src")
+val verifyBundledDaemon =
+    tasks.register("verifyBundledDaemon") {
+        val nativeDir = file("src/main/resources/native")
+        // Core is the Rust engine now — `animoria-core-rust`, not the legacy
+        // `animoria-core` TS package this used to compare against. That
+        // comparison silently no-opped once the legacy `dist/` stopped being
+        // rebuilt, which is how a stale native binary stopped being caught.
+        val coreSrc = rootProject.file("../animoria-core-rust/src")
 
-    doLast {
-        val platforms = nativeDir.listFiles()?.filter { it.isDirectory }.orEmpty()
-        require(platforms.isNotEmpty()) {
-            "No bundled Animoria daemon found under ${nativeDir.absolutePath}. " +
-                "Run: pnpm package:native-daemon"
-        }
-
-        if (!coreSrc.exists()) return@doLast
-
-        val newestCore =
-            coreSrc
-                .walkTopDown()
-                .filter { it.isFile && it.extension == "rs" }
-                .maxOfOrNull { it.lastModified() } ?: return@doLast
-
-        for (platform in platforms) {
-            // The native binary is named `animoria` (build-sea.mjs's Rust
-            // equivalent, `cargo build --release -p animoria-core-rust`) —
-            // not `animoria-core`, which was the legacy Node SEA binary's
-            // name and never matched anything this migration produces.
-            val binaryName = if (platform.name.startsWith("win32")) "animoria.exe" else "animoria"
-            val binary = File(platform, binaryName)
-            require(binary.exists()) {
-                "The bundled daemon for ${platform.name} is missing its executable. " +
+        doLast {
+            val platforms = nativeDir.listFiles()?.filter { it.isDirectory }.orEmpty()
+            require(platforms.isNotEmpty()) {
+                "No bundled Animoria daemon found under ${nativeDir.absolutePath}. " +
                     "Run: pnpm package:native-daemon"
             }
-            require(binary.lastModified() >= newestCore) {
-                "The bundled daemon for ${platform.name} is older than animoria-core-rust. " +
-                    "It will refuse methods this plugin depends on, reporting them as " +
-                    "declared-but-not-implemented. Run: pnpm package:native-daemon"
+
+            if (!coreSrc.exists()) return@doLast
+
+            val newestCore =
+                coreSrc
+                    .walkTopDown()
+                    .filter { it.isFile && it.extension == "rs" }
+                    .maxOfOrNull { it.lastModified() } ?: return@doLast
+
+            for (platform in platforms) {
+                // The native binary is named `animoria` (build-sea.mjs's Rust
+                // equivalent, `cargo build --release -p animoria-core-rust`) —
+                // not `animoria-core`, which was the legacy Node SEA binary's
+                // name and never matched anything this migration produces.
+                val binaryName = if (platform.name.startsWith("win32")) "animoria.exe" else "animoria"
+                val binary = File(platform, binaryName)
+                require(binary.exists()) {
+                    "The bundled daemon for ${platform.name} is missing its executable. " +
+                        "Run: pnpm package:native-daemon"
+                }
+                require(binary.lastModified() >= newestCore) {
+                    "The bundled daemon for ${platform.name} is older than animoria-core-rust. " +
+                        "It will refuse methods this plugin depends on, reporting them as " +
+                        "declared-but-not-implemented. Run: pnpm package:native-daemon"
+                }
             }
         }
     }
-}
 
 /**
  * Runs the packaged daemon and requires it to answer what the plugin depends on.
@@ -177,11 +196,12 @@ val verifyBundledDaemon by tasks.registering {
  * and a build that ships a daemon nobody asked is how the reported failure survived
  * every previous gate.
  */
-val verifyPackagedDaemon by tasks.registering(Exec::class) {
-    dependsOn(verifyBundledDaemon)
-    workingDir = rootProject.file("../..")
-    commandLine("node", "scripts/verify-packaged-daemon.mjs")
-}
+val verifyPackagedDaemon =
+    tasks.register<Exec>("verifyPackagedDaemon") {
+        dependsOn(verifyBundledDaemon)
+        workingDir = rootProject.file("../..")
+        commandLine("node", "scripts/verify-packaged-daemon.mjs")
+    }
 
 tasks.named("buildPlugin") {
     dependsOn(verifyBundledDaemon, verifyPackagedDaemon)
@@ -201,41 +221,42 @@ tasks.named("buildPlugin") {
  * `runPluginVerifier` is the authority; this reads its own report rather than
  * re-deriving the answer by grep, which cannot know what JetBrains has annotated.
  */
-val verifyNoInternalApi by tasks.registering {
-    dependsOn(tasks.named("runPluginVerifier"))
+val verifyNoInternalApi =
+    tasks.register("verifyNoInternalApi") {
+        dependsOn(tasks.matching { it.name in setOf("runPluginVerifier", "verifyPlugin") })
 
-    doLast {
-        val reports =
-            layout.buildDirectory
-                .dir("reports/pluginVerifier")
-                .get()
-                .asFile
-        require(reports.isDirectory) { "No plugin verifier report at ${reports.absolutePath}" }
+        doLast {
+            val reports =
+                layout.buildDirectory
+                    .dir("reports/pluginVerifier")
+                    .get()
+                    .asFile
+            require(reports.isDirectory) { "No plugin verifier report at ${reports.absolutePath}" }
 
-        val verdicts =
-            reports.walkTopDown().filter { it.isFile && it.name == "verification-verdict.txt" }.toList()
-        require(verdicts.isNotEmpty()) {
-            "The verifier produced no verdicts — the gate would pass vacuously."
+            val verdicts =
+                reports.walkTopDown().filter { it.isFile && it.name == "verification-verdict.txt" }.toList()
+            require(verdicts.isNotEmpty()) {
+                "The verifier produced no verdicts — the gate would pass vacuously."
+            }
+
+            val offenders =
+                verdicts
+                    .map { it to it.readText().trim() }
+                    .filter { (_, verdict) -> verdict.contains("internal API", ignoreCase = true) }
+                    .map { (file, verdict) ->
+                        // …/pluginVerifier/<ide>/plugins/<id>/<version>/verification-verdict.txt
+                        val ide = file.parentFile.parentFile.parentFile.parentFile.name
+                        "$ide: $verdict"
+                    }
+
+            require(offenders.isEmpty()) {
+                "The plugin uses internal IntelliJ APIs and would be rejected from the Marketplace:\n" +
+                    offenders.joinToString("\n")
+            }
+
+            logger.lifecycle("verifyNoInternalApi: ${verdicts.size} IDE build(s), no internal API usage")
         }
-
-        val offenders =
-            verdicts
-                .map { it to it.readText().trim() }
-                .filter { (_, verdict) -> verdict.contains("internal API", ignoreCase = true) }
-                .map { (file, verdict) ->
-                    // …/pluginVerifier/<ide>/plugins/<id>/<version>/verification-verdict.txt
-                    val ide = file.parentFile.parentFile.parentFile.parentFile.name
-                    "$ide: $verdict"
-                }
-
-        require(offenders.isEmpty()) {
-            "The plugin uses internal IntelliJ APIs and would be rejected from the Marketplace:\n" +
-                offenders.joinToString("\n")
-        }
-
-        logger.lifecycle("verifyNoInternalApi: ${verdicts.size} IDE build(s), no internal API usage")
     }
-}
 
 sourceSets {
     named("main") {
@@ -248,20 +269,34 @@ tasks.named("processResources") {
 }
 
 tasks {
-    patchPluginXml {
-        sinceBuild.set("242")
-    }
-
     test {
         useJUnitPlatform()
     }
+}
 
-    // `publishPlugin` reads its token from this property, not from the
-    // environment directly — release.yml sets JETBRAINS_PUBLISH_TOKEN in the
-    // step's env, but nothing wired it to Gradle until now, so the task
-    // always failed with "token property must be specified" regardless of
-    // whether the secret was actually present.
-    publishPlugin {
-        token.set(System.getenv("JETBRAINS_PUBLISH_TOKEN"))
+tasks.matching { it.name.startsWith("prepareSandbox") }.configureEach {
+    doLast {
+        val configDirs =
+            listOf(
+                layout.buildDirectory
+                    .dir("idea-sandbox/config")
+                    .get()
+                    .asFile,
+                layout.buildDirectory
+                    .dir("idea-sandbox/config-test")
+                    .get()
+                    .asFile,
+            )
+        for (dir in configDirs) {
+            dir.mkdirs()
+            val file = File(dir, "disabled_plugins.txt")
+            val text = if (file.exists()) file.readText() else ""
+            val disabled = listOf("com.intellij.gradle", "org.jetbrains.plugins.gradle")
+            for (pluginId in disabled) {
+                if (!text.lines().contains(pluginId)) {
+                    file.appendText("$pluginId\n")
+                }
+            }
+        }
     }
 }

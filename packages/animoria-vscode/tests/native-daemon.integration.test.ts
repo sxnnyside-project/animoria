@@ -29,7 +29,7 @@ describe('VS Code Native Daemon Integration & Benchmark (Phase 5)', () => {
     expect(hello.capabilities).toContain('parallel_sha256');
     expect(hello.capabilities).toContain('aho_corasick_tracing');
 
-    console.log(`\n⚡ VS Code -> Native Daemon Hello Handshake: ${latencyMs.toFixed(2)} ms`);
+    console.log(`\n[perf] VS Code -> Native Daemon Hello Handshake: ${latencyMs.toFixed(2)} ms`);
   });
 
   it('scans clean-workspace fixture with sub-10ms performance and 100% health score', async () => {
@@ -43,7 +43,7 @@ describe('VS Code Native Daemon Integration & Benchmark (Phase 5)', () => {
     expect(result.analysis.diagnostics.length).toBe(0);
 
     console.log(
-      `⚡ VS Code -> Clean Workspace Scan: ${latencyMs.toFixed(2)} ms (${result.analysis.assets.length} assets)`,
+      `[perf] VS Code -> Clean Workspace Scan: ${latencyMs.toFixed(2)} ms (${result.analysis.assets.length} assets)`,
     );
   });
 
@@ -58,7 +58,7 @@ describe('VS Code Native Daemon Integration & Benchmark (Phase 5)', () => {
     expect(result.duplicate_groups[0]?.wasted_bytes).toBeGreaterThan(0);
 
     console.log(
-      `⚡ VS Code -> Duplicates Scan: ${latencyMs.toFixed(2)} ms (${result.duplicate_groups.length} duplicate groups)`,
+      `[perf] VS Code -> Duplicates Scan: ${latencyMs.toFixed(2)} ms (${result.duplicate_groups.length} duplicate groups)`,
     );
   });
 
@@ -72,7 +72,7 @@ describe('VS Code Native Daemon Integration & Benchmark (Phase 5)', () => {
     expect(result.analysis.assets.length).toBe(23);
 
     console.log(
-      `⚡ VS Code -> Multi-Syntax Tracing Scan: ${latencyMs.toFixed(2)} ms (${result.references.length} references)`,
+      `[perf] VS Code -> Multi-Syntax Tracing Scan: ${latencyMs.toFixed(2)} ms (${result.references.length} references)`,
     );
   });
 
@@ -87,7 +87,9 @@ describe('VS Code Native Daemon Integration & Benchmark (Phase 5)', () => {
     }
 
     const avgMs = runs.reduce((a, b) => a + b, 0) / runs.length;
-    console.log(`🔥 Warm Sequential Scan Average (5 runs on alive daemon): ${avgMs.toFixed(2)} ms`);
+    console.log(
+      `[perf] Warm Sequential Scan Average (5 runs on alive daemon): ${avgMs.toFixed(2)} ms`,
+    );
     // What this actually proves is "no per-request process restart" — a real
     // restart costs tens of ms just to spawn, dwarfing this budget even on
     // slow, shared CI hardware. A tight sub-15ms bound was tuned to one
@@ -104,6 +106,11 @@ describe('VS Code Native Daemon Integration & Benchmark (Phase 5)', () => {
 
     const cleanWs = resolve(fixturesDir, 'clean-workspace');
     await client.scan(cleanWs);
+
+    // Allow a brief tick for async stdout push events to flush through the stream
+    for (let i = 0; i < 20 && !receivedEvents.includes('analysis-completed'); i++) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
 
     // Expect at least analysis-started and analysis-completed events
     expect(receivedEvents).toContain('analysis-started');

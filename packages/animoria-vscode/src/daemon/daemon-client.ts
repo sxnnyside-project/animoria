@@ -85,10 +85,31 @@ export class VsCodeDaemonClient {
   }
 
   /**
+   * Returns whether the daemon process is actively running.
+   */
+  public isAlive(): boolean {
+    return this.process !== undefined && !this.process.killed;
+  }
+
+  /**
    * Spawns the daemon subprocess and performs the initial Protocol v1 handshake.
    */
   public async start(): Promise<void> {
-    if (this.process) return;
+    if (this.isAlive()) return;
+
+    if (this.process) {
+      try {
+        this.process.kill();
+      } catch {
+        // Ignore kill errors for dead process
+      }
+      this.process = undefined;
+    }
+
+    if (this.readline) {
+      this.readline.close();
+      this.readline = undefined;
+    }
 
     const bin = this.binaryPath!;
     if (bin !== 'animoria' && bin !== 'animoria.exe' && !existsSync(bin)) {
@@ -116,11 +137,19 @@ export class VsCodeDaemonClient {
     });
 
     this.process.on('exit', (code, signal) => {
+      if (this.readline) {
+        this.readline.close();
+        this.readline = undefined;
+      }
       this.rejectAllPending(new Error(`Daemon process exited (code=${code}, signal=${signal})`));
       this.process = undefined;
     });
 
     this.process.on('error', (err) => {
+      if (this.readline) {
+        this.readline.close();
+        this.readline = undefined;
+      }
       this.rejectAllPending(err);
       this.process = undefined;
     });
@@ -194,7 +223,7 @@ export class VsCodeDaemonClient {
    * Sends a framed Protocol v1 request and awaits the correlated response.
    */
   private async request<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
-    if (!this.process) {
+    if (!this.isAlive()) {
       await this.start();
     }
 
@@ -207,8 +236,44 @@ export class VsCodeDaemonClient {
     };
 
     return new Promise<T>((resolve, reject) => {
-      this.pendingRequests.set(id, { resolve: resolve as (val: unknown) => void, reject });
-      this.process?.stdin?.write(`${JSON.stringify(envelope)}\n`);
+      const timer = setTimeout(() => {
+        if (this.pendingRequests.has(id)) {
+          this.pendingRequests.delete(id);
+          reject(
+            new Error(
+              `Timeout after 30000ms waiting for daemon response to '${method}' (request: ${id})`,
+            ),
+          );
+        }
+      }, 30000);
+
+      this.pendingRequests.set(id, {
+        resolve: (val: unknown) => {
+          clearTimeout(timer);
+          (resolve as (val: unknown) => void)(val);
+        },
+        reject: (err: Error) => {
+          clearTimeout(timer);
+          reject(err);
+        },
+      });
+
+      try {
+        if (!this.process?.stdin?.writable) {
+          throw new Error('Daemon stdin stream is not writable');
+        }
+        this.process.stdin.write(`${JSON.stringify(envelope)}\n`, (err) => {
+          if (err) {
+            clearTimeout(timer);
+            this.pendingRequests.delete(id);
+            reject(err);
+          }
+        });
+      } catch (err) {
+        clearTimeout(timer);
+        this.pendingRequests.delete(id);
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
     });
   }
 
@@ -310,5 +375,13 @@ export class VsCodeDaemonClient {
       }
       this.rejectAllPending(new Error('Daemon client shut down.'));
     }
+  }
+
+  /**
+   * Safely restarts the daemon subprocess, establishing a clean handshake.
+   */
+  public async restart(): Promise<void> {
+    await this.shutdown();
+    await this.start();
   }
 }

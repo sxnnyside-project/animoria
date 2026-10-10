@@ -2,6 +2,8 @@ import type { CleanupEntry, CleanupPlan, CleanupReason, CleanupRefusal } from '.
 export type CleanupPlanSafety = 'safe' | 'partial' | 'unavailable';
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { repeat } from 'lit/directives/repeat.js';
+import { styleMap } from 'lit/directives/style-map.js';
 import { cleanupReasonLabel, formatBytes } from '../view-model/analysis-view-model.js';
 import './animoria-confidence-badge.js';
 
@@ -240,7 +242,7 @@ export class AnimoriaCleanupPreview extends LitElement {
 
     return html`
       <div class="preview">
-        <div class="safety" style="--safety-color: ${safety.color}">
+        <div class="safety" style=${styleMap({ '--safety-color': safety.color })}>
           <div class="safety-title">${safety.title}</div>
           <div class="safety-body">
             ${
@@ -267,7 +269,9 @@ export class AnimoriaCleanupPreview extends LitElement {
             ? html`
               <div class="section-title">Will be moved to trash</div>
               <ul>
-                ${plan.entries.map(
+                ${repeat(
+                  plan.entries,
+                  (entry: CleanupEntry) => entry.asset.path,
                   (entry: CleanupEntry) => html`
                     <li>
                       <span class="entry-main">
@@ -298,7 +302,9 @@ export class AnimoriaCleanupPreview extends LitElement {
             ? html`
               <div class="section-title">Refused</div>
               <ul>
-                ${plan.refusals.map(
+                ${repeat(
+                  plan.refusals,
+                  (refusal: CleanupRefusal) => refusal.assetPath,
                   (refusal: CleanupRefusal) => html`
                     <li class="refused">
                       <span class="entry-main">

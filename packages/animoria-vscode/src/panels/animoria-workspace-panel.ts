@@ -15,7 +15,7 @@ export interface PanelFocus {
   readonly rootId?: string;
 }
 
-export type PanelSurface = 'inspector' | 'findings' | 'duplicates' | 'cleanup';
+export type PanelSurface = 'workspace' | 'inspector' | 'findings' | 'duplicates' | 'cleanup';
 
 interface SurfaceDefinition {
   readonly viewType: string;
@@ -25,6 +25,11 @@ interface SurfaceDefinition {
 }
 
 const SURFACES: Readonly<Record<PanelSurface, SurfaceDefinition>> = {
+  workspace: {
+    viewType: 'animoria.workspace',
+    title: 'Animoria — Workspace',
+    column: (active) => active ?? vscode.ViewColumn.One,
+  },
   inspector: {
     viewType: 'animoria.inspector',
     title: 'Animoria — Asset',
@@ -184,6 +189,8 @@ export class AnimoriaWorkspacePanel {
       vscode.Uri.joinPath(context.extensionUri, 'media', 'tokens.css'),
     );
 
+    const mountSurface = surface === 'workspace' ? 'all' : surface;
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -242,7 +249,7 @@ export class AnimoriaWorkspacePanel {
   mount(
     document.getElementById('root'),
     createPostMessageBridge({ post: (message) => vscodeApi.postMessage(message) }),
-    ${JSON.stringify(surface)}
+    ${JSON.stringify(mountSurface)}
   );
 </script>
 </body>

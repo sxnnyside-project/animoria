@@ -1,6 +1,9 @@
 import type { Asset, DuplicateGroup, ResolutionPlan } from '@animoria/contracts';
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { classMap } from 'lit/directives/class-map.js';
+import { ifDefined } from 'lit/directives/if-defined.js';
+import { repeat } from 'lit/directives/repeat.js';
 import { formatBytes } from '../view-model/analysis-view-model.js';
 
 @customElement('animoria-duplicate-group')
@@ -223,26 +226,30 @@ export class AnimoriaDuplicateGroupView extends LitElement {
         </div>
 
         <div class="asset-list">
-          ${group.asset_ids.map((id) => {
-            const isCanonical = id === group.canonical_asset_id;
-            const isSelected = id === this._selectedKeepId;
-            return html`
-              <div class="asset-row ${isSelected ? 'selected' : ''}">
-                <span class="asset-name" title=${id}>${this._nameFor(id)}</span>
-                ${isCanonical ? html`<span class="canonical-tag">Canonical</span>` : nothing}
-                ${
-                  this.canMutate
-                    ? html`<button
-                      ?disabled=${this.resolving || isSelected}
-                      @click=${() => this._selectKeep(id)}
-                    >
-                      ${isSelected ? 'Keeping this' : 'Keep this copy'}
-                    </button>`
-                    : nothing
-                }
-              </div>
-            `;
-          })}
+          ${repeat(
+            group.asset_ids,
+            (id) => id,
+            (id) => {
+              const isCanonical = id === group.canonical_asset_id;
+              const isSelected = id === this._selectedKeepId;
+              return html`
+                <div class=${classMap({ 'asset-row': true, selected: isSelected })}>
+                  <span class="asset-name" title=${ifDefined(id)}>${this._nameFor(id)}</span>
+                  ${isCanonical ? html`<span class="canonical-tag">Canonical</span>` : nothing}
+                  ${
+                    this.canMutate
+                      ? html`<button
+                        ?disabled=${this.resolving || isSelected}
+                        @click=${() => this._selectKeep(id)}
+                      >
+                        ${isSelected ? 'Keeping this' : 'Keep this copy'}
+                      </button>`
+                      : nothing
+                  }
+                </div>
+              `;
+            },
+          )}
         </div>
 
         ${this._renderPlanPreview()}

@@ -1,6 +1,8 @@
 import type { AnalysisSnapshot, AuditEvent, AuditEventKind } from '@animoria/contracts';
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
+import { classMap } from 'lit/directives/class-map.js';
+import { repeat } from 'lit/directives/repeat.js';
 
 interface TimelineItem {
   id: string;
@@ -335,7 +337,7 @@ export class AnimoriaTimelinePanel extends LitElement {
         </div>
         <div class="filters">
           <button
-            class="filter-btn ${this._filter === 'all' ? 'active' : ''}"
+            class=${classMap({ 'filter-btn': true, active: this._filter === 'all' })}
             @click=${() => {
               this._filter = 'all';
             }}
@@ -343,7 +345,7 @@ export class AnimoriaTimelinePanel extends LitElement {
             All
           </button>
           <button
-            class="filter-btn ${this._filter === 'snapshots' ? 'active' : ''}"
+            class=${classMap({ 'filter-btn': true, active: this._filter === 'snapshots' })}
             @click=${() => {
               this._filter = 'snapshots';
             }}
@@ -351,7 +353,7 @@ export class AnimoriaTimelinePanel extends LitElement {
             Snapshots
           </button>
           <button
-            class="filter-btn ${this._filter === 'remediation' ? 'active' : ''}"
+            class=${classMap({ 'filter-btn': true, active: this._filter === 'remediation' })}
             @click=${() => {
               this._filter = 'remediation';
             }}
@@ -372,68 +374,73 @@ export class AnimoriaTimelinePanel extends LitElement {
           items.length > 0
             ? html`
                 <div class="timeline-track">
-                  ${items.map((item) => {
-                    if (item.type === 'snapshot' && item.snapshot) {
-                      const snap = item.snapshot;
-                      const score = snap.analysis?.health_score;
-                      const grade = score?.grade ? score.grade.toLowerCase() : 'f';
-                      const isSelected = this.selectedSnapshotId === snap.snapshot_id;
+                  ${repeat(
+                    items,
+                    (item) => item.id,
+                    (item) => {
+                      if (item.type === 'snapshot' && item.snapshot) {
+                        const snap = item.snapshot;
+                        const score = snap.analysis?.health_score;
+                        const grade = score?.grade ? score.grade.toLowerCase() : 'f';
+                        const isSelected = this.selectedSnapshotId === snap.snapshot_id;
 
-                      return html`
-                        <div
-                          class="timeline-entry ${isSelected ? 'selected' : ''}"
-                          @click=${() => this._selectSnapshot(snap.snapshot_id)}
-                        >
-                          <div class="marker"></div>
-                          <div class="entry-header">
-                            <span class="entry-title">
-                              Analysis Snapshot
-                              ${
-                                score
-                                  ? html`
-                                    <span class="score-badge grade-${grade}">
-                                      Score: ${score.score}% (${score.grade})
-                                    </span>
-                                  `
-                                  : nothing
-                              }
-                            </span>
-                            <span class="time-label">${this._formatRelativeTime(snap.timestamp_ms)}</span>
+                        return html`
+                          <div
+                            class=${classMap({ 'timeline-entry': true, selected: isSelected })}
+                            @click=${() => this._selectSnapshot(snap.snapshot_id)}
+                          >
+                            <div class="marker"></div>
+                            <div class="entry-header">
+                              <span class="entry-title">
+                                Analysis Snapshot
+                                ${
+                                  score
+                                    ? html`
+                                      <span class="score-badge grade-${grade}">
+                                        Score: ${score.score}% (${score.grade})
+                                      </span>
+                                    `
+                                    : nothing
+                                }
+                              </span>
+                              <span class="time-label">${this._formatRelativeTime(snap.timestamp_ms)}</span>
+                            </div>
+                            <div class="entry-body">
+                              <span class="tag">${snap.analysis?.assets?.length ?? 0} assets</span>
+                              <span class="tag">${snap.analysis?.diagnostics?.length ?? 0} diagnostics</span>
+                              <span class="tag">state: ${snap.analysis?.state ?? 'unknown'}</span>
+                            </div>
                           </div>
-                          <div class="entry-body">
-                            <span class="tag">${snap.analysis?.assets?.length ?? 0} assets</span>
-                            <span class="tag">${snap.analysis?.diagnostics?.length ?? 0} diagnostics</span>
-                            <span class="tag">state: ${snap.analysis?.state ?? 'unknown'}</span>
-                          </div>
-                        </div>
-                      `;
-                    }
+                        `;
+                      }
 
-                    if (item.type === 'event' && item.event) {
-                      const ev = item.event;
-                      const markerClass = this._getEventMarkerClass(ev.kind);
+                      if (item.type === 'event' && item.event) {
+                        const ev = item.event;
+                        const markerClass = this._getEventMarkerClass(ev.kind);
 
-                      return html`
-                        <div class="timeline-entry">
-                          <div class="marker ${markerClass}"></div>
-                          <div class="entry-header">
-                            <span class="entry-title">
-                              ${this._getEventKindLabel(ev.kind)}
-                            </span>
-                            <span class="time-label">${this._formatRelativeTime(ev.timestamp_ms)}</span>
+                        return html`
+                          <div class="timeline-entry">
+                            <div class=${classMap({ marker: true, [markerClass]: Boolean(markerClass) })}></div>
+                            <div class="entry-header">
+                              <span class="entry-title">
+                                ${this._getEventKindLabel(ev.kind)}
+                              </span>
+                              <span class="time-label">${this._formatRelativeTime(ev.timestamp_ms)}</span>
+                            </div>
+                            <div class="entry-body">
+                              <span class="tag actor">actor: ${ev.actor}</span>
+                              ${Object.entries(ev.details || {}).map(
+                                ([key, val]) =>
+                                  html`<span class="tag">${key}: ${String(val)}</span>`,
+                              )}
+                            </div>
                           </div>
-                          <div class="entry-body">
-                            <span class="tag actor">actor: ${ev.actor}</span>
-                            ${Object.entries(ev.details || {}).map(
-                              ([key, val]) => html`<span class="tag">${key}: ${String(val)}</span>`,
-                            )}
-                          </div>
-                        </div>
-                      `;
-                    }
+                        `;
+                      }
 
-                    return nothing;
-                  })}
+                      return nothing;
+                    },
+                  )}
                 </div>
               `
             : nothing

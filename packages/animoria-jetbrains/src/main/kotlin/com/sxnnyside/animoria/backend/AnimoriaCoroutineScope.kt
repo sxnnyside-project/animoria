@@ -25,7 +25,7 @@ class AnimoriaCoroutineScope :
     override val coroutineContext: CoroutineContext = job + Dispatchers.Default
 
     override fun dispose() {
-        job.cancel()
+        job.cancel(null)
     }
 
     companion object {

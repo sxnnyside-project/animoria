@@ -48,7 +48,7 @@ class CoreProcessManager(
      * predates it. The alternative — a strict decoder — turns every additive Core
      * change into a silent deserialization failure in the IDE.
      */
-    private val payloadJson = Json { ignoreUnknownKeys = true }
+    private val payloadJson = animoriaJson
 
     /**
      * The scope every daemon read-loop runs in, recreated by [start].
@@ -194,7 +194,7 @@ class CoreProcessManager(
 
                 val proc = pb.start()
                 process = proc
-                stdinWriter = PrintWriter(proc.outputStream.bufferedWriter(), true)
+                stdinWriter = PrintWriter(java.io.OutputStreamWriter(proc.outputStream, java.nio.charset.StandardCharsets.UTF_8), true)
 
                 // Drain stderr to the IDE log without mixing it into the NDJSON stream.
                 scope.launch {
@@ -230,6 +230,15 @@ class CoreProcessManager(
         // Local subprocess IPC over standard I/O (typically < 10ms for warm scans)
         timeoutMs: Long = 10_000L,
     ): JsonElement {
+        if (process?.isAlive != true || stdinWriter == null) {
+            start()
+            withTimeoutOrNull(5_000L) {
+                while ((process?.isAlive != true || stdinWriter == null) && scope.isActive) {
+                    delay(50L)
+                }
+            }
+        }
+
         val requestId = UUID.randomUUID().toString()
         val deferred = CompletableDeferred<JsonElement>()
         pendingRequests[requestId] = deferred
@@ -245,8 +254,10 @@ class CoreProcessManager(
                 put("params", data)
             }
 
-        stdinWriter?.println(payload.toString())
-            ?: error("Animoria daemon stdin not available — process not started")
+        stdinWriter?.let { writer ->
+            writer.println(payload.toString())
+            writer.flush()
+        } ?: error("Animoria daemon stdin not available — process not started")
 
         return try {
             withTimeout(timeoutMs) { deferred.await() }
@@ -275,7 +286,7 @@ class CoreProcessManager(
      * trigger the next `analyze`.
      */
     fun notifyFileChanged(workspacePath: String) {
-        if (!scope.isActive) return
+        if (!scope.isActive || process?.isAlive != true || stdinWriter == null) return
         scope.launch {
             runCatching {
                 sendCommand("markStale", buildJsonObject { put("workspace_path", workspacePath) })

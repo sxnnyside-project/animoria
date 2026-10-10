@@ -80,8 +80,21 @@ export class AnimoriaTreeItem extends vscode.TreeItem {
       const formatUpper = asset.format.toUpperCase();
       summary = [formatUpper, fps, dur, dims].filter(Boolean).join(' · ');
 
+      const staticImageFormats = new Set([
+        'svg',
+        'png',
+        'jpg',
+        'jpeg',
+        'webp',
+        'avif',
+        'gif',
+        'ico',
+        'bmp',
+      ]);
       if (thumbnailPath) {
         this.iconPath = vscode.Uri.file(thumbnailPath);
+      } else if (staticImageFormats.has(asset.format.toLowerCase())) {
+        this.iconPath = vscode.Uri.file(asset.path);
       } else {
         this.iconPath = new vscode.ThemeIcon(
           asset.kind === 'motion' ? 'play-circle' : 'file-media',

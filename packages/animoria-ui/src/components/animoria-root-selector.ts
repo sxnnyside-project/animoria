@@ -1,5 +1,6 @@
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { repeat } from 'lit/directives/repeat.js';
 import type { RootFilter, RootSummary } from '../view-model/analysis-view-model.js';
 
 /**
@@ -129,7 +130,9 @@ export class AnimoriaRootSelector extends LitElement {
           <span class="count">${total}</span>
         </button>
 
-        ${this.roots.map(
+        ${repeat(
+          this.roots,
+          (summary) => summary.rootId,
           (summary) => html`
             <button
               type="button"

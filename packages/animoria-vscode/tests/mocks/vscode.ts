@@ -72,6 +72,65 @@ export class ThemeColor {
   constructor(public readonly id: string) {}
 }
 
+export class FileDecoration {
+  badge?: string;
+  tooltip?: string;
+  color?: ThemeColor;
+  propagate?: boolean;
+  constructor(badge?: string, tooltip?: string, color?: ThemeColor) {
+    this.badge = badge;
+    this.tooltip = tooltip;
+    this.color = color;
+  }
+}
+
+export class CodeLens {
+  range: Range;
+  command?: { title: string; command: string; arguments?: unknown[] };
+  isResolved: boolean;
+  constructor(range: Range, command?: { title: string; command: string; arguments?: unknown[] }) {
+    this.range = range;
+    this.command = command;
+    this.isResolved = command !== undefined;
+  }
+}
+
+export class DataTransferItem {
+  constructor(public readonly value: unknown) {}
+  asString(): Promise<string> {
+    return Promise.resolve(String(this.value));
+  }
+  asFile(): unknown {
+    return undefined;
+  }
+}
+
+export class DataTransfer {
+  private readonly _items = new Map<string, DataTransferItem>();
+
+  get(mimeType: string): DataTransferItem | undefined {
+    return this._items.get(mimeType);
+  }
+
+  set(mimeType: string, value: DataTransferItem): void {
+    this._items.set(mimeType, value);
+  }
+
+  forEach(callback: (item: DataTransferItem, mimeType: string) => void): void {
+    for (const [mime, item] of this._items) {
+      callback(item, mime);
+    }
+  }
+}
+
+export class SnippetString {
+  constructor(public value = '') {}
+}
+
+export class DocumentDropEdit {
+  constructor(public insertText: string | SnippetString) {}
+}
+
 export class TreeItem {
   label?: string;
   collapsibleState?: TreeItemCollapsibleState;
@@ -154,6 +213,11 @@ export enum DiagnosticSeverity {
   Hint = 3,
 }
 
+export enum DiagnosticTag {
+  Unnecessary = 1,
+  Deprecated = 2,
+}
+
 export class Location {
   constructor(
     public readonly uri: Uri,
@@ -171,6 +235,7 @@ export class DiagnosticRelatedInformation {
 export class Diagnostic {
   source?: string;
   code?: string | number | { value: string | number; target: Uri };
+  tags?: DiagnosticTag[];
   relatedInformation?: DiagnosticRelatedInformation[];
 
   constructor(
@@ -565,6 +630,16 @@ export const window = {
   onDidChangeActiveTextEditor(_listener: (editor: unknown) => unknown): Disposable {
     return new Disposable(() => {});
   },
+  registerFileDecorationProvider(_provider: unknown): Disposable {
+    return new Disposable(() => {});
+  },
+  registerCustomEditorProvider(
+    _viewType: string,
+    _provider: unknown,
+    _options?: unknown,
+  ): Disposable {
+    return new Disposable(() => {});
+  },
 };
 
 export class CodeActionKind {
@@ -596,12 +671,24 @@ export const languages = {
   ): Disposable {
     return new Disposable(() => {});
   },
+  registerCodeLensProvider(_selector: unknown, _provider: unknown): Disposable {
+    return new Disposable(() => {});
+  },
+  registerDocumentDropEditProvider(_selector: unknown, _provider: unknown): Disposable {
+    return new Disposable(() => {});
+  },
   /** The most recently created collection, so a test can inspect what was published. */
   _lastDiagnosticCollection: undefined as FakeDiagnosticCollection | undefined,
   createDiagnosticCollection(name: string): FakeDiagnosticCollection {
     const collection = new FakeDiagnosticCollection(name);
     languages._lastDiagnosticCollection = collection;
     return collection;
+  },
+};
+
+export const lm = {
+  registerTool(_name: string, _tool: unknown): Disposable {
+    return new Disposable(() => {});
   },
 };
 
@@ -632,6 +719,13 @@ export const workspace = {
   },
   get workspaceFolders() {
     return __mockState.workspaceFolders;
+  },
+  getWorkspaceFolder(uri: Uri) {
+    if (!__mockState.workspaceFolders) return undefined;
+    return (
+      __mockState.workspaceFolders.find((f) => uri.fsPath.startsWith(f.uri.fsPath)) ??
+      __mockState.workspaceFolders[0]
+    );
   },
   getConfiguration(section: string): FakeWorkspaceConfiguration {
     return new FakeWorkspaceConfiguration(section);

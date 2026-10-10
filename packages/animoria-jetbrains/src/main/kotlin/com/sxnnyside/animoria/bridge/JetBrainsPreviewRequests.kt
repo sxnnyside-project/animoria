@@ -62,7 +62,7 @@ internal class JetBrainsPreviewRequests(
         scope.launch {
             val file = File(assetPath)
             val extension = file.extension.lowercase()
-            val browserAnimated = extension in setOf("gif", "apng", "svg")
+            val isBrowserImage = extension in MIME_BY_EXTENSION.keys
 
             // Provide Lottie JSON document to the JCEF player to enable interactive scrubbing and playback
             if (extension == "json" || extension == "lottie") {
@@ -70,7 +70,7 @@ internal class JetBrainsPreviewRequests(
             }
 
             val sourceUri =
-                if (browserAnimated && file.isFile) {
+                if (isBrowserImage && file.isFile) {
                     runCatching {
                         val mime = MIME_BY_EXTENSION[extension] ?: "application/octet-stream"
                         "data:$mime;base64," + Base64.getEncoder().encodeToString(file.readBytes())
@@ -94,7 +94,7 @@ internal class JetBrainsPreviewRequests(
                         buildJsonObject {
                             put("kind", "image")
                             put("source", sourceUri)
-                            put("animates", true)
+                            put("animates", extension in setOf("gif", "apng", "webp", "svg"))
                         }
                     stillUri != null ->
                         buildJsonObject {

@@ -1,8 +1,11 @@
-import { basename } from 'node:path';
+import { basename, relative } from 'node:path';
 import type { Asset, DuplicateGroup, UsageReference, WorkspaceAnalysis } from '@animoria/contracts';
 import * as vscode from 'vscode';
+import { registerLanguageModelTools } from './ai/animoria-lm-tools.js';
 import { VsCodeDaemonClient } from './daemon/daemon-client.js';
+import { AnimoriaFileDecorationProvider } from './decorations/animoria-file-decoration-provider.js';
 import { DiagnosticPublisher } from './diagnostics/diagnostic-publisher.js';
+import { AnimoriaCustomEditorProvider } from './editors/animoria-custom-editor-provider.js';
 import { OutputChannelLogger } from './logging/output-channel-logger.js';
 import { AnimoriaWorkspacePanel } from './panels/animoria-workspace-panel.js';
 import {
@@ -11,9 +14,15 @@ import {
   generateSnippetsForAsset,
 } from './panels/vscode-host-bridge.js';
 import { AnimoriaCodeActionProvider } from './providers/animoria-code-action-provider.js';
+import { AnimoriaCodeLensProvider } from './providers/animoria-code-lens-provider.js';
 import { AnimoriaHoverProvider, HOVER_LANGUAGES } from './providers/animoria-hover-provider.js';
 import {
+  AnimoriaDocumentDropEditProvider,
+  AnimoriaTreeDragAndDropController,
+} from './providers/animoria-tree-dnd-controller.js';
+import {
   AnimoriaGovernanceIssueItem,
+  AnimoriaTreeItem,
   AnimoriaTreeProvider,
 } from './providers/animoria-tree-provider.js';
 import { AnimoriaFileWatcher } from './watchers/animoria-file-watcher.js';
@@ -50,6 +59,9 @@ let lastDuplicateGroups: DuplicateGroup[] = [];
 let hoverRegistration: vscode.Disposable | undefined;
 let diagnosticPublisher: DiagnosticPublisher | undefined;
 let activeEditorTracker: ActiveEditorTracker | undefined;
+let statusBarItem: vscode.StatusBarItem | undefined;
+let fileDecorationProvider: AnimoriaFileDecorationProvider | undefined;
+let codeLensProvider: AnimoriaCodeLensProvider | undefined;
 
 function createSessionAdapter(): WorkspaceSession {
   const folders = vscode.workspace.workspaceFolders ?? [];
@@ -123,12 +135,59 @@ export async function activate(context: vscode.ExtensionContext) {
   activeEditorTracker = new ActiveEditorTracker();
   context.subscriptions.push(activeEditorTracker);
 
+  const dndController = new AnimoriaTreeDragAndDropController();
+  context.subscriptions.push(dndController);
+
   const treeView = vscode.window.createTreeView('animoria.gallery', {
     treeDataProvider: treeProvider,
+    dragAndDropController: dndController,
     showCollapseAll: false,
   });
 
+  statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 10);
+  statusBarItem.name = 'Animoria';
+  statusBarItem.command = 'animoria.openWorkspace';
+  context.subscriptions.push(statusBarItem);
+
   daemonClient = new VsCodeDaemonClient(undefined, context.extensionPath);
+
+  const unsubscribeDaemonEvents = daemonClient.onEvent((event) => {
+    switch (event.event) {
+      case 'ready':
+        logger.log('info', {
+          operation: 'daemon',
+          component: 'VsCodeDaemonClient',
+          message: `Native daemon ready (Protocol v${event.protocol})`,
+        });
+        break;
+      case 'analysis-started':
+        if (statusBarItem) {
+          statusBarItem.text = '$(sync~spin) Animoria: Scanning assets...';
+          statusBarItem.tooltip =
+            'Animoria native engine is discovering and verifying workspace visual assets';
+          statusBarItem.show();
+        }
+        break;
+      case 'analysis-completed':
+        if (statusBarItem) {
+          const score = lastAnalysis?.health_score?.score ?? 100;
+          const count = lastAnalysis?.assets.length ?? 0;
+          statusBarItem.text = `$(shield) Animoria: ${score}% (${count} assets)`;
+          statusBarItem.tooltip = `Animoria Health Score: ${score}% across ${count} visual assets. Click to open workspace panel.`;
+          statusBarItem.show();
+        }
+        break;
+      case 'analysis-stale':
+        if (statusBarItem) {
+          statusBarItem.text = '$(history) Animoria: Assets changed';
+          statusBarItem.tooltip =
+            'Visual asset changes detected on disk; automatic re-indexing triggered';
+          statusBarItem.show();
+        }
+        break;
+    }
+  });
+  context.subscriptions.push({ dispose: unsubscribeDaemonEvents });
 
   const refreshCommand = vscode.commands.registerCommand('animoria.refresh', () => scanWorkspace());
 
@@ -146,7 +205,7 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   const openWorkspaceCommand = vscode.commands.registerCommand('animoria.openWorkspace', () => {
-    AnimoriaWorkspacePanel.show(context, createSessionAdapter, () => daemonClient, 'inspector', {
+    AnimoriaWorkspacePanel.show(context, createSessionAdapter, () => daemonClient, 'workspace', {
       tab: 'assets',
     });
   });
@@ -158,6 +217,74 @@ export async function activate(context: vscode.ExtensionContext) {
       if (!path) return;
       const uri = vscode.Uri.file(path);
       await vscode.commands.executeCommand('revealInExplorer', uri);
+    },
+  );
+
+  const openFileCommand = vscode.commands.registerCommand(
+    'animoria.openFile',
+    async (
+      item?:
+        | AnimoriaTreeItem
+        | Asset
+        | { asset?: Asset; path?: string }
+        | AnimoriaGovernanceIssueItem,
+    ) => {
+      let path: string | undefined;
+      if (item instanceof AnimoriaTreeItem) {
+        path = item.asset.path;
+      } else if (item instanceof AnimoriaGovernanceIssueItem) {
+        path = item.diagnostic.target_asset_path;
+      } else if (item && 'asset' in item && item.asset) {
+        path = item.asset.path;
+      } else if (item && 'path' in item && typeof item.path === 'string') {
+        path = item.path;
+      }
+      if (!path) return;
+      await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(path));
+    },
+  );
+
+  const copyRelativePathCommand = vscode.commands.registerCommand(
+    'animoria.copyRelativePath',
+    async (
+      item?:
+        | AnimoriaTreeItem
+        | Asset
+        | { asset?: Asset; path?: string }
+        | AnimoriaGovernanceIssueItem,
+    ) => {
+      let path: string | undefined;
+      let relPath: string | undefined;
+
+      if (item instanceof AnimoriaTreeItem) {
+        path = item.asset.path;
+        relPath = item.asset.relative_path;
+      } else if (item instanceof AnimoriaGovernanceIssueItem) {
+        path = item.diagnostic.target_asset_path;
+      } else if (item && 'asset' in item && item.asset) {
+        path = item.asset.path;
+        relPath = item.asset.relative_path;
+      } else if (item && 'path' in item && typeof item.path === 'string') {
+        path = item.path;
+        if (
+          'relative_path' in item &&
+          typeof (item as { relative_path?: string }).relative_path === 'string'
+        ) {
+          relPath = (item as { relative_path?: string }).relative_path;
+        }
+      }
+
+      if (!path) return;
+
+      const wsFolder = vscode.workspace.workspaceFolders?.[0];
+      const rel =
+        relPath || (wsFolder ? relative(wsFolder.uri.fsPath, path).replace(/\\/g, '/') : path);
+
+      await vscode.env.clipboard.writeText(rel);
+      void vscode.window.setStatusBarMessage(
+        `Animoria: Copied relative path "${rel}" to clipboard`,
+        3000,
+      );
     },
   );
 
@@ -345,6 +472,8 @@ export async function activate(context: vscode.ExtensionContext) {
     startCleanupReviewCommand,
     restoreCleanupCommand,
     resolveDuplicatesCommand,
+    openFileCommand,
+    copyRelativePathCommand,
     generateSnippetCommand,
     toggleViewModeCommand,
   );
@@ -365,6 +494,64 @@ export async function activate(context: vscode.ExtensionContext) {
     },
   );
   context.subscriptions.push(codeActionRegistration);
+
+  // File Decoration Provider (File Explorer badges and states)
+  fileDecorationProvider = new AnimoriaFileDecorationProvider(
+    () => lastAnalysis ?? null,
+    () => lastDuplicateGroups,
+  );
+  context.subscriptions.push(
+    vscode.window.registerFileDecorationProvider(fileDecorationProvider),
+    fileDecorationProvider,
+  );
+
+  // CodeLens Provider (inline metrics and triggers in code)
+  codeLensProvider = new AnimoriaCodeLensProvider(
+    () => lastAnalysis ?? null,
+    () => lastReferences,
+  );
+  context.subscriptions.push(
+    vscode.languages.registerCodeLensProvider(
+      HOVER_LANGUAGES.map((lang) => ({ language: lang })),
+      codeLensProvider,
+    ),
+    codeLensProvider,
+  );
+
+  // Custom Readonly Editor Provider (native visual inspector for assets)
+  const customEditorProvider = new AnimoriaCustomEditorProvider(
+    context,
+    createSessionAdapter,
+    () => daemonClient,
+  );
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(
+      AnimoriaCustomEditorProvider.viewType,
+      customEditorProvider,
+      {
+        supportsMultipleEditorsPerDocument: false,
+      },
+    ),
+  );
+
+  // Document Drop Edit Provider (smart tag/snippet insertion on drop into editors)
+  const dropEditProvider = new AnimoriaDocumentDropEditProvider();
+  if (typeof vscode.languages.registerDocumentDropEditProvider === 'function') {
+    context.subscriptions.push(
+      vscode.languages.registerDocumentDropEditProvider(
+        [{ scheme: 'file' }, { scheme: 'untitled' }],
+        dropEditProvider,
+      ),
+    );
+  }
+
+  // Language Model Tools (Copilot and AI agents integration)
+  const lmToolsDisposable = registerLanguageModelTools(
+    context,
+    () => lastAnalysis ?? null,
+    () => lastDuplicateGroups,
+  );
+  context.subscriptions.push(lmToolsDisposable);
 
   // Initial scan
   await scanWorkspace();
@@ -482,6 +669,14 @@ async function performScanWorkspace(): Promise<void> {
       diagnosticPublisher.publish(combinedAnalysis);
     }
 
+    if (fileDecorationProvider) {
+      fileDecorationProvider.notifyDecorationsChanged();
+    }
+
+    if (codeLensProvider) {
+      codeLensProvider.notifyLensesChanged();
+    }
+
     const refCounts: Record<string, number> = {};
     for (const r of allReferences) {
       const p = r.asset_id;
@@ -498,6 +693,12 @@ async function performScanWorkspace(): Promise<void> {
 
     const rootSummary =
       scannedRoots.length > 1 ? ` across ${scannedRoots.length} workspace folders` : '';
+    if (statusBarItem) {
+      const score = combinedAnalysis.health_score?.score ?? 100;
+      statusBarItem.text = `$(shield) Animoria: ${score}% (${combinedAnalysis.assets.length} assets)`;
+      statusBarItem.tooltip = `Animoria Health Score: ${score}% (${combinedAnalysis.assets.length} assets${rootSummary}). Click to open workspace panel.`;
+      statusBarItem.show();
+    }
     vscode.window.setStatusBarMessage(
       `Animoria: ${combinedAnalysis.assets.length} assets indexed${rootSummary} (Health: ${combinedAnalysis.health_score?.score ?? 100}%)`,
       4000,

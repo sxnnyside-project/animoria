@@ -83,6 +83,10 @@ export class DiagnosticPublisher implements vscode.Disposable {
     result.source = 'Animoria';
     result.code = diagnostic.rule_id;
 
+    if (diagnostic.rule_id === 'no-unreferenced-assets') {
+      result.tags = [vscode.DiagnosticTag.Unnecessary];
+    }
+
     return result;
   }
 }

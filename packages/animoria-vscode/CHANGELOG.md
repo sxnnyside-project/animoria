@@ -17,7 +17,17 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- **Daemon Push Events**: Integrated unsolicited daemon push event subscription for real-time indexing status and governance change alerts.
+- **Daemon Push Events & Status Bar**: Integrated unsolicited daemon push event subscription (`ready`, `analysis-started`, `analysis-completed`, `analysis-stale`) with a live interactive status bar item and health score badge.
+- **O(1) Hover Resolution**: Replaced linear $O(N)$ string searches with an indexed `WeakMap` cache and token boundary extraction, delivering sub-millisecond hover response times without editor stutters.
+- **Thumbnail LRU Caching & Native Path Priority**: Prioritized Rust pre-rendered `thumbnail_path` with an in-memory 250-entry LRU Data URI cache in `VsCodeHostBridge`, eliminating redundant disk reads and base64 conversions.
+- **Native Diagnostics UX & QuickFixes**: `DiagnosticPublisher` tags `no-unreferenced-assets` with native `vscode.DiagnosticTag.Unnecessary` for dead-code faded styling, alongside rule-specific Lightbulb QuickFix actions (`animoria.startCleanupReview`, `animoria.deleteAsset`, `animoria.resolveDuplicates`, and `animoria.viewFindings`).
+- **File Explorer Governance Badges (Fase A)**: `AnimoriaFileDecorationProvider` decorates assets in VS Code's native file explorer with `∅` (dimmed unreferenced), `2x`/`Nx` (duplicate warnings), and `!` governance badges.
+- **Inline Asset CodeLenses (Fase B)**: `AnimoriaCodeLensProvider` displays size metrics, total workspace reference counts, and 1-click preview and duplicate resolution triggers directly above asset imports and tags in code.
+- **Native Custom Asset Inspector (Fase C)**: `AnimoriaCustomEditorProvider` (`animoria.customAssetViewer`) opens Lottie, Rive, SVG, WebP, and raster assets in a full-featured interactive player tab within the main editor grid.
+- **Tree Drag and Drop & Document Drop Edits (Fase D)**: `AnimoriaTreeDragAndDropController` and `AnimoriaDocumentDropEditProvider` enable dragging assets directly from the gallery into code editors with smart framework-aware snippet and image tag insertion.
+- **Real VS Code Electron E2E Test Suite (Fase E)**: Configured `@vscode/test-electron` smoke test harness (`npm run test:electron`) to verify extension activation and command registration within headless VS Code/Electron instances.
+- **Copilot & Language Model Tools (Fase F)**: Registered native `vscode.lm` tools (`animoria_searchAssets` and `animoria_getGovernanceReport`) allowing AI coding agents to search asset catalogs and inspect visual health metrics.
+- **Daemon Resilience, Auto-Recovery & Timeout Guards**: Robust subprocess lifecycle management in `VsCodeDaemonClient` with auto-resuscitation upon unexpected termination, stdin stream write protection, stream cleanup on exit/error, and 30-second request timeouts.
 - **Canonical Protocol v1 Contracts**: Direct integration with `@animoria/contracts` derived from Rust native core via `ts-rs`.
 - **Extended Governance & Presets**: Full UI and diagnostics support for Biome-style rules (`naming-convention`, `svg-sanitization`, `max-dimensions`, `allowed-formats`) and `.animoriarc.json` configuration presets.
 

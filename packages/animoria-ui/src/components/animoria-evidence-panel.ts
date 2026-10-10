@@ -1,5 +1,6 @@
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { repeat } from 'lit/directives/repeat.js';
 
 export type EvidenceKind = 'reference' | 'absence' | 'duplicate' | 'metadata';
 
@@ -98,7 +99,9 @@ export class AnimoriaEvidencePanel extends LitElement {
           ev.locations && ev.locations.length > 0
             ? html`
               <div class="locations">
-                ${ev.locations.map(
+                ${repeat(
+                  ev.locations,
+                  (loc) => `${loc.file}:${loc.line ?? 0}`,
                   (loc) => html`
                     <div class="loc-item" @click=${() => this._navigate(loc)}>
                       <span>${loc.file}${loc.line ? `:${loc.line}` : ''}</span>

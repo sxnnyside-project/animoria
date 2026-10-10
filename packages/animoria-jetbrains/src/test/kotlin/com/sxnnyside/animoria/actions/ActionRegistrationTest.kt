@@ -142,21 +142,27 @@ class ActionRegistrationTest {
     @Test
     @DisplayName("every registered extension class exists")
     fun extensionClassesExist() {
-        val missing = mutableListOf<String>()
-        for (tag in listOf("projectService", "applicationService")) {
-            for (element in elements(tag)) {
-                val fqcn = element.getAttribute("serviceImplementation")
-                if (fqcn.isNotBlank() && !classExists(fqcn)) missing.add(fqcn)
+        val tagToAttr =
+            listOf(
+                "projectService" to "serviceImplementation",
+                "applicationService" to "serviceImplementation",
+                "toolWindow" to "factoryClass",
+                "localInspection" to "implementationClass",
+                "projectViewNodeDecorator" to "implementation",
+                "lineMarkerProvider" to "implementationClass",
+                "statusBarWidgetFactory" to "implementation",
+                "editorNotificationProvider" to "implementation",
+                "fileEditorProvider" to "implementation",
+                "searchEverywhereContributor" to "implementation",
+                "lang.documentationProvider" to "implementationClass",
+            )
+        val missing =
+            tagToAttr.flatMap { (tag, attr) ->
+                elements(tag).mapNotNull { el ->
+                    val fqcn = el.getAttribute(attr)
+                    if (fqcn.isNotBlank() && !classExists(fqcn)) fqcn else null
+                }
             }
-        }
-        for (element in elements("toolWindow")) {
-            val fqcn = element.getAttribute("factoryClass")
-            if (fqcn.isNotBlank() && !classExists(fqcn)) missing.add(fqcn)
-        }
-        for (element in elements("localInspection")) {
-            val fqcn = element.getAttribute("implementationClass")
-            if (fqcn.isNotBlank() && !classExists(fqcn)) missing.add(fqcn)
-        }
 
         assertTrue(missing.isEmpty(), "extensions reference classes that do not exist: $missing")
     }

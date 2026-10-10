@@ -95,13 +95,15 @@ fn test_daemon_subprocess_real_pipes_lifecycle() {
 
     // 4. Scan clean-workspace fixture
     let clean_ws = fixtures_root().join("clean-workspace");
-    let ws_path = clean_ws.to_string_lossy().to_string();
-    writeln!(
-        stdin,
-        "{{\"protocol\":1,\"id\":\"req-scan\",\"method\":\"scan\",\"params\":{{\"workspace_path\":\"{}\"}}}}",
-        ws_path
-    )
-    .expect("Write scan");
+    let scan_req = serde_json::json!({
+        "protocol": 1,
+        "id": "req-scan",
+        "method": "scan",
+        "params": {
+            "workspace_path": clean_ws.to_string_lossy()
+        }
+    });
+    writeln!(stdin, "{}", scan_req).expect("Write scan");
 
     // Expect analysis-started event
     line.clear();
