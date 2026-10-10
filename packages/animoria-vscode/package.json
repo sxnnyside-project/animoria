@@ -380,13 +380,13 @@
     "@animoria/ui": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.5.1",
-    "@types/vscode": "^1.85.0",
+    "@types/node": "^26.6.4",
+    "@types/vscode": "^1.140.0",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^4.0.0",
     "lottie-web": "5.13.0",
-    "typescript": "^5.9.3",
-    "vite": "^8.3.0",
-    "vitest": "^4.1.10"
+    "typescript": "^7.0.2",
+    "vite": "^8.3.3",
+    "vitest": "^5.0.3"
   }
 }

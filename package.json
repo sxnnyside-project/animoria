@@ -34,11 +34,11 @@
     "verify:packaged-daemon": "node scripts/verify-packaged-daemon.mjs"
   },
   "devDependencies": {
-    "@biomejs/biome": "1.9.4",
+    "@biomejs/biome": "2.5.15",
     "@commitlint/cli": "21.2.3",
     "@commitlint/config-conventional": "21.2.3",
     "husky": "9.1.7",
     "turbo": "2.11.7",
-    "typescript": "5.9.3"
+    "typescript": "7.0.2"
   }
 }
