@@ -1,10 +1,8 @@
 package com.sxnnyside.animoria.ui
 
 import com.intellij.icons.AllIcons
-import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
-import com.intellij.openapi.wm.CustomStatusBarWidget
 import com.intellij.openapi.wm.StatusBar
 import com.intellij.openapi.wm.StatusBarWidget
 import com.intellij.openapi.wm.StatusBarWidgetFactory
@@ -41,8 +39,7 @@ class AnimoriaStatusBarWidgetFactory : StatusBarWidgetFactory {
  */
 class AnimoriaStatusBarWidget(
     private val project: Project,
-) : CustomStatusBarWidget,
-    Disposable {
+) : AnimoriaStatusBarWidgetBase() {
     private val label =
         JLabel("Animoria").apply {
             icon = AllIcons.Actions.Preview

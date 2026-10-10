@@ -64,6 +64,16 @@ intellijPlatform {
             sinceBuild = "242"
         }
     }
+    pluginVerification {
+        ides {
+            recommended()
+        }
+        failureLevel =
+            listOf(
+                org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel.COMPATIBILITY_PROBLEMS,
+                org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.FailureLevel.INVALID_PLUGIN,
+            )
+    }
     publishing {
         token = providers.environmentVariable("JETBRAINS_PUBLISH_TOKEN")
     }

@@ -3,7 +3,6 @@ package com.sxnnyside.animoria.ui
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.wm.ToolWindow
-import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.content.ContentFactory
 import com.sxnnyside.animoria.backend.CoreProcessManager
 
@@ -13,7 +12,7 @@ import com.sxnnyside.animoria.backend.CoreProcessManager
  * Initializes the native daemon process, registers the tool window instance, and constructs
  * the content tabs (Assets gallery panel and shared UI panels for Preview, Findings, Duplicates, and Cleanup).
  */
-class AnimoriaToolWindowFactory : ToolWindowFactory {
+class AnimoriaToolWindowFactory : AnimoriaToolWindowFactoryBase() {
     override fun createToolWindowContent(
         project: Project,
         toolWindow: ToolWindow,
