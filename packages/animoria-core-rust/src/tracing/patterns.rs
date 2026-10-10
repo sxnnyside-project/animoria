@@ -263,12 +263,16 @@ pub fn asset_matches_path_token(
     source_path: &std::path::Path,
     token: &str,
 ) -> bool {
-    let clean_suffix = token.trim_start_matches(['.', '/']);
-    let asset_p = std::path::Path::new(asset_path);
+    let clean_token = token.replace('\\', "/");
+    let asset_clean = asset_path.replace('\\', "/");
+    let clean_suffix = clean_token.trim_start_matches(['.', '/']);
+    let asset_p = std::path::Path::new(&asset_clean);
 
-    if token.starts_with("./") || token.starts_with("../") {
-        if let Some(parent) = source_path.parent() {
-            let resolved = parent.join(token);
+    if clean_token.starts_with("./") || clean_token.starts_with("../") {
+        let source_clean = source_path.to_string_lossy().replace('\\', "/");
+        let source_p = std::path::Path::new(&source_clean);
+        if let Some(parent) = source_p.parent() {
+            let resolved = parent.join(&clean_token);
             let mut normalized = std::path::PathBuf::new();
             for comp in resolved.components() {
                 match comp {
@@ -279,23 +283,23 @@ pub fn asset_matches_path_token(
                     other => normalized.push(other.as_os_str()),
                 }
             }
-            let norm_str = normalized.to_string_lossy();
-            if norm_str == asset_path {
+            let norm_str = normalized.to_string_lossy().replace('\\', "/");
+            if norm_str == asset_clean {
                 return true;
             }
             if !clean_suffix.contains('/') {
                 // e.g. "./icon.png": must reside in target directory
-                return normalized.parent() == asset_p.parent() && asset_p.ends_with(clean_suffix);
+                return normalized.parent() == asset_p.parent()
+                    && asset_clean.ends_with(clean_suffix);
             } else {
-                return asset_p.ends_with(clean_suffix);
+                return asset_clean.ends_with(clean_suffix);
             }
         }
-    } else if token.starts_with("http://") || token.starts_with("https://") {
-        if let Some(pos) = token.find("://") {
-            let after_proto = &token[pos + 3..];
+    } else if clean_token.starts_with("http://") || clean_token.starts_with("https://") {
+        if let Some(pos) = clean_token.find("://") {
+            let after_proto = &clean_token[pos + 3..];
             if let Some(slash_idx) = after_proto.find('/') {
                 let url_path = &after_proto[slash_idx..];
-                let asset_clean = asset_path.replace('\\', "/");
                 let path_tokens: Vec<&str> =
                     url_path.split('/').filter(|s| !s.is_empty()).collect();
                 for i in 0..path_tokens.len() {
@@ -308,8 +312,8 @@ pub fn asset_matches_path_token(
         }
         return false;
     } else {
-        let trimmed = token.trim_start_matches('/');
-        return asset_path.ends_with(trimmed);
+        let trimmed = clean_token.trim_start_matches('/');
+        return asset_clean.ends_with(trimmed);
     }
     false
 }

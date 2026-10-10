@@ -238,7 +238,9 @@ impl AssetReferenceDetector {
                         let is_self = (source_str.ends_with(pat)
                             && (source_str.len() == pat.len()
                                 || source_str.as_bytes()[source_str.len() - pat.len() - 1]
-                                    == b'/'))
+                                    == b'/'
+                                || source_str.as_bytes()[source_str.len() - pat.len() - 1]
+                                    == b'\\'))
                             || source_str == asset.path;
                         if is_self {
                             continue;
@@ -344,7 +346,10 @@ impl AssetReferenceDetector {
                                     && (source_str.len() == asset.name.len()
                                         || source_str.as_bytes()
                                             [source_str.len() - asset.name.len() - 1]
-                                            == b'/'))
+                                            == b'/'
+                                        || source_str.as_bytes()
+                                            [source_str.len() - asset.name.len() - 1]
+                                            == b'\\'))
                                     || source_str == asset.path;
                                 if is_self {
                                     continue;
