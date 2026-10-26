@@ -2,7 +2,7 @@
 
 ![Animoria Banner](https://raw.githubusercontent.com/sxnnyside-project/animoria/main/docs/banner.png)
 
-![Version](https://img.shields.io/badge/version-2.3.0-blue)
+![Version](https://img.shields.io/badge/version-2.3.1-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 [![CI](https://github.com/sxnnyside-project/animoria/workflows/CI/badge.svg)](https://github.com/sxnnyside-project/animoria/actions)
 
@@ -24,11 +24,11 @@
 
 ## About
 
-**Animoria** is a Visual Asset Governance DevTool: a workspace-wide engine for discovering, auditing, and cleaning up the visual assets a codebase accumulates — covering animated (Lottie, dotLottie, Rive, GIF, APNG, Animated SVG) and static (SVG, PNG, JPEG, WebP, AVIF) formats.
+**Animoria** is a Visual Asset Governance DevTool: a workspace-wide engine for discovering, auditing, and cleaning up the visual assets a codebase accumulates — covering animated (Lottie, dotLottie, Rive, GIF, APNG, Animated SVG) and static (SVG, PNG, JPEG, WebP, AVIF, and legacy raster/icon formats such as BMP, ICO, TIFF, and PSD) formats.
 
 As software projects grow, visual assets become a source of silent technical debt: duplicate files get committed across directories, unreferenced assets linger after design iterations, and developers lack traceability into which source files reference which assets.
 
-Animoria indexes your workspace in a single linear pass, validates files by binary signatures and structure rather than extensions alone, traces usage references across 20+ programming syntaxes, and surfaces actionable governance diagnostics (unreferenced files, content duplicates, oversized assets, and disallowed formats) with verified evidence.
+Animoria indexes your workspace in a single linear pass, validates files by binary signatures and structure rather than extensions alone, traces usage references across 70+ source syntaxes — web, mobile, and game engines (Godot, Unity, Android, iOS, Roblox Luau) — and surfaces actionable governance diagnostics (unreferenced files, content duplicates, oversized assets, and disallowed formats) with verified evidence.
 
 ### Philosophy
 
@@ -38,9 +38,9 @@ Animoria is a Sxnnyside Project tool, part of the developer tooling initiative.
 
 ## Features
 
-- **Asset Governance**: Enforces configurable rules (`no-unreferenced-assets`, `no-duplicate-content`, `max-file-size-kb`, `allowed-formats`, `no-gif`) with structured evidence, confidence ratings, and remediation steps.
+- **Asset Governance**: Enforces configurable rules (`no-unreferenced-assets`, `no-duplicate-content`, `max-file-size-kb`, `max-dimensions`, `allowed-formats`, `naming-convention`, `svg-sanitization`, `no-gif`) with structured evidence, confidence ratings, and remediation steps.
 - **Single-Pass Auto-Scanning**: Traverses the workspace in linear time, extracting metadata (dimensions, FPS, duration, layer count, markers) without background freezing.
-- **Reference Tracing**: Scans across 20+ file extensions (`.ts`, `.tsx`, `.vue`, `.svelte`, `.astro`, `.dart`, `.swift`, `.kt`, etc.) with attribute, style, and Markdown awareness.
+- **Reference Tracing**: Scans across 70+ file extensions (`.ts`, `.tsx`, `.vue`, `.svelte`, `.astro`, `.dart`, `.swift`, `.kt`, `.gd`, `.tscn`, `.prefab`, `.luau`, etc.) with attribute, style, and Markdown awareness, plus engine-native references (Godot `res://`, Unity GUIDs and `Resources.Load`, Android `@drawable/`, iOS asset catalogs).
 - **Multi-Root Workspace Support**: Indexes multi-root projects independently while providing aggregate workspace health reporting.
 - **Native Offline Previews**: Renders static thumbnails and vector frames directly in-editor with zero external Chromium or cloud dependencies.
 - **Multi-IDE Support**: Native extension for VS Code and fully integrated plugin with background daemon for JetBrains IDEs.
@@ -52,7 +52,7 @@ Animoria is a Sxnnyside Project tool, part of the developer tooling initiative.
 
 - Node.js (>= 22.0.0)
 - pnpm (>= 11.0.0)
-- Rust (stable toolchain, via [rustup](https://rustup.rs)) — required to build the native engine
+- Rust (stable toolchain, 1.88 or newer, via [rustup](https://rustup.rs)) — required to build the native engine
 
 ### From Source
 

@@ -20,10 +20,12 @@ pub struct CheckArgs<'a> {
 
 pub fn execute_check(target_path: &Path, args: CheckArgs<'_>) -> anyhow::Result<i32> {
     let canonical = resolve_workspace_path(target_path)?;
+    // Fail before scanning: a broken config must not silently turn into default rules.
+    let policy =
+        GovernancePolicy::try_load_from_workspace(&canonical).map_err(anyhow::Error::msg)?;
     let mut index = AssetIndex::new(canonical.to_string_lossy().to_string(), canonical.clone());
     let analysis = index.scan_workspace(&[])?;
 
-    let policy = GovernancePolicy::load_from_workspace(&canonical);
     let effective_min_score = args.min_score.or(policy.ci_min_score);
     let effective_max_warnings = if args.strict {
         Some(0)

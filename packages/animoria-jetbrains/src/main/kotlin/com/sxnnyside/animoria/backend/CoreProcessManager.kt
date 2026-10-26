@@ -537,10 +537,15 @@ class CoreProcessManager(
                 val root = lastRoots.firstOrNull()
                 if (root != null) {
                     scope.launch {
-                        runCatching { sendCommand("analyze", buildJsonObject { put("workspace_path", root) }) }
-                            .onFailure { error ->
-                                AnimoriaLogger.error("Animoria: initial scan failed", error)
-                            }
+                        runCatching {
+                            sendCommand(
+                                "analyze",
+                                buildJsonObject { put("workspace_path", root) },
+                                ANALYZE_TIMEOUT_MS,
+                            )
+                        }.onFailure { error ->
+                            AnimoriaLogger.error("Animoria: initial scan failed", error)
+                        }
                     }
                 }
             }
@@ -676,6 +681,9 @@ class CoreProcessManager(
     }
 
     companion object {
+        /** The daemon serves one request at a time, so a slow scan must not time out and stall the queue. */
+        const val ANALYZE_TIMEOUT_MS = 300_000L
+
         /**
          * The protocol version this plugin speaks (Protocol v1).
          */

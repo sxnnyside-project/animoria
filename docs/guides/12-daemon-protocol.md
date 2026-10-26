@@ -131,13 +131,13 @@ Error codes seen in `server.rs` are not a fixed closed enum type in the Rust sou
 
 ### The Declared Daemon Methods (`supported_methods()`)
 
-`supported_methods()` is the single place the `hello.methods` list is built, kept intentionally in sync with the `match` arms in `handle_request` so the two cannot drift. As of this writing it returns exactly these 20 methods:
+`supported_methods()` is the single place the `hello.methods` list is built, kept intentionally in sync with the `match` arms in `handle_request` so the two cannot drift. As of this writing it returns exactly these 27 methods:
 
-1. **Handshake**: `hello`
-2. **Scanning & Analysis**: `scan`, `check`, `analyze`, `getAnalysis`, `getUsageReferences`
+1. **Handshake & Liveness**: `hello`, `ping`
+2. **Scanning & Analysis**: `scan`, `check`, `analyze`, `getAnalysis`, `getUsageReferences`, `aggregateHealthScores`, `markStale`
 3. **Preview**: `generateThumbnail`, `getLottieDocument`
-4. **Snippets & Reports**: `generateSnippet`, `exportReport`
-5. **Duplicate Resolution**: `remediate_plan`, `buildResolutionPlan`, `applyResolutionPlan`
+4. **Snippets & Reports**: `generateSnippet`, `exportReport`, `listAuditEvents`, `listAnalysisSnapshots`
+5. **Duplicate Resolution**: `remediate_plan`, `buildResolutionPlan`, `applyResolutionPlan`, `applyReferenceRewrite`
 6. **Trash**: `trash_asset`, `restore_asset`, `listTrashSessions`, `restoreTrashSession`
 7. **Cleanup**: `buildCleanupProposal`, `buildCleanupPlan`, `applyCleanupPlan`
 8. **Lifecycle**: `shutdown`
@@ -145,6 +145,8 @@ Error codes seen in `server.rs` are not a fixed closed enum type in the Rust sou
 This count reflects `supported_methods()` in `packages/animoria-core-rust/src/daemon/server.rs` at the time this document was written. If you need the current number, count the entries in that array yourself — it is the only source of truth.
 
 Any method not in this list returns `unsupported-method`.
+
+Mutating methods are confined to workspaces the daemon has scanned: `trash_asset` and `applyReferenceRewrite` answer `mutation-refused` for any other workspace path, `applyReferenceRewrite` only applies a line the last scan traced as an asset reference, and `getLottieDocument` only reads assets that are in the index. `restore_asset` and the trash-session methods work without a prior scan, so Undo still works right after the daemon restarts.
 
 ### Push Events
 

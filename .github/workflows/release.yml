@@ -59,6 +59,9 @@ jobs:
           check "animoria-vscode/package.json" \
             "$(node -p "require('./packages/animoria-vscode/package.json').version")"
 
+          check "animoria-core-rust/Cargo.toml" \
+            "$(node -p "fs.readFileSync('packages/animoria-core-rust/Cargo.toml', 'utf8').match(/^version\s*=\s*\"([^\"]+)\"/m)[1]")"
+
           # Gradle reads ANIMORIA_VERSION; assert it resolves to the tag, not the dev fallback.
           RESOLVED_GRADLE_VERSION="${ANIMORIA_VERSION:-$TAG_VERSION}"
           check "jetbrains (ANIMORIA_VERSION)" "$RESOLVED_GRADLE_VERSION"
@@ -74,7 +77,7 @@ jobs:
         uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
         with:
           components: clippy, rustfmt
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
@@ -84,7 +87,7 @@ jobs:
           distribution: 'zulu'
           java-version: '21'
       - name: Install just
-        uses: taiki-e/install-action@183e4297cca2404691e9380e1307288dced5c82a # v2.87.25
+        uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
         with:
           tool: just
       - name: Install dependencies
@@ -201,7 +204,7 @@ jobs:
           "native-daemon/${{ matrix.platform_arch }}/$BIN_NAME" --version
 
       - name: Upload native daemon artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: native-daemon-${{ matrix.platform_arch }}
           path: native-daemon
@@ -219,7 +222,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
 
@@ -291,7 +294,7 @@ jobs:
         run: echo "VERSION=${{ needs.verify-versions.outputs.version }}" >> $GITHUB_OUTPUT
 
       - name: Download native daemon artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: native-daemon-*
           path: native-daemon
@@ -365,6 +368,11 @@ jobs:
           cd packages/animoria-jetbrains
           ./gradlew publishPlugin
 
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN || secrets.CRATES_IO_TOKEN }}
+        run: cargo publish --manifest-path packages/animoria-core-rust/Cargo.toml
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
@@ -407,7 +415,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
 
@@ -428,7 +436,7 @@ jobs:
         run: pnpm --filter @animoria/ui build
 
       - name: Download native daemon artifacts from the source run
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: native-daemon-*
           path: native-daemon

@@ -13,6 +13,15 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.3.1] — 2026-10-26
+
+### Fixed
+
+- **Scan No Longer Times Out on Large Workspaces**: `scan`, `check`, and `analyze` now wait up to 5 minutes (other requests keep 30 seconds), so a slow scan no longer fails and stalls every request queued behind it.
+- **Daemon Warnings Reach the Log**: The daemon's standard error is now captured, so configuration warnings (invalid `.animoriarc.json`, unknown rules) and binary-scene warnings are visible instead of being dropped.
+
+---
+
 ## [2.3.0] — 2026-10-06
 
 ### Added
@@ -150,7 +159,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.3.1...HEAD
+[2.3.1]: https://github.com/sxnnyside-project/animoria/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/sxnnyside-project/animoria/compare/v2.2.1...v2.3.0
 [2.2.1]: https://github.com/sxnnyside-project/animoria/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/sxnnyside-project/animoria/compare/v2.1.0...v2.2.0

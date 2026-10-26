@@ -8,7 +8,7 @@ Two configuration files allow teams to customize policies and asset indexing beh
 
 Both configuration files reside at the workspace root and are parsed by the Rust engine (`animoria-core-rust`), applying identically across the **VS Code Extension**, the **JetBrains Plugin**, and the **CLI** — all three talk to the same compiled `animoria` binary, so there is exactly one implementation of config loading and rule evaluation (see `docs/ARCHITECTURE.md` §2.E, §3).
 
-The Rust config loader (`GovernancePolicy::load_from_workspace` in `packages/animoria-core-rust/src/governance/policy.rs`) recognizes exactly two file names, checked in this order: `.animoriarc.json` first, then `.animoriarc` (extensionless) as a fallback if the former is absent. Both are parsed identically as JSON — the extensionless fallback is not a YAML file, it is simply an alternate filename for the same JSON schema. YAML variants (`.animoriarc.yaml`, `.animoriarc.yml`) are not supported by the loader; no code path in `animoria-core-rust` parses YAML for this config file.
+The Rust config loader (`GovernancePolicy::load_from_workspace` in `packages/animoria-core-rust/src/governance/policy.rs`) recognizes exactly two file names, checked in this order: `.animoriarc.json` first, then `.animoriarc` (extensionless) as a fallback if the former is absent. Both are parsed identically as JSON — the extensionless fallback is not a YAML file, it is simply an alternate filename for the same JSON schema. A config file that exists but cannot be read or parsed is an error for `animoria check` (a CI gate never silently falls back to default rules); other commands print a warning once and use the defaults. YAML variants (`.animoriarc.yaml`, `.animoriarc.yml`) are not supported by the loader; no code path in `animoria-core-rust` parses YAML for this config file.
 
 ---
 
@@ -30,13 +30,13 @@ The Rust config loader (`GovernancePolicy::load_from_workspace` in `packages/ani
 ```
 
 > [!NOTE]
-> The repository's own [.animoriarc.json](../.animoriarc.json) currently includes a `no-duplicate-names` entry. That rule id does not exist in the current governance engine (only the five rules listed below are implemented — see `packages/animoria-core-rust/src/governance/rules/`), so it is silently ignored per the schema's own "unrecognized rule ids are still accepted" contract.
+> The repository's own [.animoriarc.json](../.animoriarc.json) currently includes a `no-duplicate-names` entry. That rule id does not exist in the current governance engine (only the eight rules listed below are implemented — see `packages/animoria-core-rust/src/governance/rules/`), so it is ignored per the schema's own "unrecognized rule ids are still accepted" contract (the engine reports an unknown rule id once on standard error, as a likely typo).
 
 ---
 
 ### Built-in Governance Rules
 
-Every rule is optional. Any rule omitted from the `rules` map is disabled (`off`). There are exactly **five** built-in rules, each implemented as its own type in `packages/animoria-core-rust/src/governance/rules/`:
+Every rule is optional. Any rule omitted from the `rules` map is disabled (`off`). There are exactly **eight** built-in rules, each implemented as its own type in `packages/animoria-core-rust/src/governance/rules/`:
 
 | Rule Identifier | Allowed Options | Description |
 | :--- | :--- | :--- |
@@ -45,6 +45,9 @@ Every rule is optional. Any rule omitted from the `rules` map is disabled (`off`
 | `max-file-size-kb` | `number` *(implies error)*<br>`["error" \| "warning", number]`<br>`"off"` | Flags assets exceeding the specified limit in kibibytes (e.g. `["warning", 512]`). |
 | `no-unreferenced-assets` | `"error" \| "warning" \| "off"` | Flags valid assets with zero detected usage references across workspace source code. |
 | `no-duplicate-content` | `"error" \| "warning" \| "off"` | Detects byte-identical asset duplicates via SHA-256 content hashing, flagging every non-canonical member of a `DuplicateGroup`. |
+| `max-dimensions` | `["error" \| "warning", { "maxWidth": number, "maxHeight": number }]`<br>`"off"` | Flags images larger than the given pixel dimensions (e.g. `{ "maxWidth": 3840, "maxHeight": 2160 }`). |
+| `naming-convention` | `["error" \| "warning", "kebab-case" \| "snake_case" \| "camelCase" \| "PascalCase" \| "lowercase"]`<br>`["error" \| "warning", { "case": ..., "pattern": "<regex>" }]`<br>`"off"` | Flags asset file names that do not match the casing or custom regex. Density suffixes (`@2x`, `@3x`, `@1.5x`) are stripped before checking. |
+| `svg-sanitization` | `"error" \| "warning" \| "off"` | Flags SVGs with `<script>`, `<!ENTITY`, `javascript:` URIs, `<foreignObject>`, `<iframe>`, `<embed>`, or inline event handlers (XSS/XXE vectors). |
 
 There is no `no-duplicate-names` rule — filename-based duplicate detection does not exist in the current engine; only byte-identical content matching (`no-duplicate-content`) is implemented.
 
@@ -79,6 +82,7 @@ Place an `.animoriaignore` file at your workspace root to exclude specific paths
 * Lines starting with `#` are treated as comments.
 * Trailing slashes match directories recursively (e.g., `legacy-assets/`).
 * Standard glob wildcards (`*`, `**`) match nested directory trees.
+* A leading `/` anchors the pattern to the workspace root (`/legacy/` matches only `<root>/legacy/`, not `src/legacy/`).
 
 ```gitignore
 # Exclude build output and test fixtures
@@ -94,7 +98,7 @@ private-assets/
 > [!TIP]
 > This repository's own [.animoriaignore](../.animoriaignore) is a live reference for the syntax above.
 
-The parser lives in `packages/animoria-core-rust/src/scanner/ignore_rules.rs` and is backed by the `globset` crate. Each non-empty, non-`#`-comment line compiles into an ordered rule; rules are evaluated in file order and the **last matching rule wins**, matching `.gitignore` semantics. A line starting with `!` re-includes any path matched by an earlier pattern — including the default excluded directories (`node_modules`, `.git`, `dist`, etc.), which are seeded as ordinary rules before your custom patterns run.
+The parser lives in `packages/animoria-core-rust/src/scanner/ignore_rules.rs` and is backed by the `globset` crate. Each non-empty, non-`#`-comment line compiles into an ordered rule; rules are evaluated in file order and the **last matching rule wins**, matching `.gitignore` semantics. A line starting with `!` re-includes any path matched by an earlier pattern — including the default excluded directories (`node_modules`, `.git`, `dist`, etc.), which are seeded as ordinary rules before your custom patterns run. In a Unity project (a `ProjectSettings/` folder at the root) the generated `/Library/` and `/Temp/` folders are seeded the same way, so `!/Library/Keep/` re-includes something inside them. The same ignore rules apply both to asset discovery and to the source files searched for references, whether they come from `.animoriaignore` or from `files.ignore` in `.animoriarc.json`.
 
 ---
 

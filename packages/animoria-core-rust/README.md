@@ -4,12 +4,12 @@ The native engine. Every other package in this monorepo — the CLI, the VS Code
 
 ## What it owns
 
-- **Scanning**: parallel filesystem traversal (`ignore` + `rayon`), respecting `.gitignore`/`.animoriaignore`.
-- **Parsing**: structural validation and metadata extraction for 11 formats — Lottie, dotLottie, Rive, GIF, APNG, Animated SVG, SVG, PNG, JPEG, WebP, AVIF — behind one `Asset { kind: AssetKind }` model. Static and motion assets are not separate pipelines.
-- **Reference tracing**: an Aho-Corasick automaton built from every asset's filename/stem, run once over every source file across 26 file extensions (TS/JS/JSX family, Vue, Svelte, Astro, Kotlin, Java, Swift, Dart, HTML, CSS/SCSS/Sass/Less, Markdown, JSON, XML, YAML).
+- **Scanning**: parallel filesystem traversal (`ignore` + `rayon`), respecting `.gitignore`/`.animoriaignore` (and Unity's generated `Library/` and `Temp/` in Unity projects).
+- **Parsing**: structural validation and metadata extraction for 19 formats — Lottie, dotLottie, Rive, GIF, APNG, Animated SVG, SVG, PNG, JPEG, WebP, AVIF, BMP, EPS, ICNS, ICO, ODD, PS, PSD, TIFF — behind one `Asset { kind: AssetKind }` model. Static and motion assets are not separate pipelines.
+- **Reference tracing**: an Aho-Corasick automaton built from every asset's filename/stem, run once over every source file across 79 file extensions (TS/JS/JSX family, Vue, Svelte, Astro, Kotlin, Java, Swift, Dart, HTML, CSS/SCSS/Sass/Less, Markdown, JSON, XML, YAML, Godot, Unity, Luau, Objective-C, and more).
 - **Deduplication**: parallel SHA-256 content hashing, clustered into `DuplicateGroup`s.
 - **Governance**: a `Rule` trait evaluated against an `AnalysisContext`, producing diagnostics and a 0–100 health score.
-- **Remediation**: staged, reversible moves into `.animoria/trash/`, restorable by session.
+- **Remediation**: staged, reversible moves into `.animoria/trash/`, restorable by session; Unity `.meta` and Godot `.import` sidecars move and restore with their asset.
 - **Protocol v1 daemon**: an NDJSON server over stdio, the same one every IDE host and the CLI both speak.
 
 ## Module map
@@ -31,7 +31,7 @@ src/
 ## Build & test
 
 ```bash
-cargo build --release           # target/release/animoria
+cargo build --release           # target/release/animoria (Rust 1.88+)
 cargo test                      # unit + integration + fuzz (proptest) suites
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
@@ -71,5 +71,5 @@ Both engines discover, parse, and trace references across the same 11 formats �
 ## Design notes worth knowing before you change something
 
 - **Never drop malformed assets.** A parser failure sets `is_valid: false` and records `error`; it does not remove the asset from the index. `parser/registry.rs` is the enforcement point.
-- **Path containment is checked at the mutation boundary**, not at every call site — `remediation/trash.rs::TrashManager` canonicalizes and verifies every path against the workspace root before touching the filesystem, so both the CLI and the daemon get the guarantee for free.
+- **Path containment is checked at the mutation boundary**, not at every call site — `remediation/trash.rs::TrashManager` canonicalizes and verifies every path against the workspace root before touching the filesystem, so both the CLI and the daemon get the guarantee for free. The daemon additionally confines `trash_asset` and `applyReferenceRewrite` to workspaces it has scanned.
 - **The daemon's NDJSON reader is capped** (`daemon/server.rs::MAX_LINE_BYTES`) — a line without a terminator is refused past 64 MiB rather than buffered indefinitely.

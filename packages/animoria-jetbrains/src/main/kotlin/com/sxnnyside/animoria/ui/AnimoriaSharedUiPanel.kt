@@ -17,6 +17,7 @@ import kotlinx.serialization.json.JsonObject
 import java.awt.BorderLayout
 import java.awt.Color
 import java.nio.charset.StandardCharsets
+import java.security.SecureRandom
 import java.util.Base64
 import javax.swing.JComponent
 import javax.swing.JPanel
@@ -171,15 +172,22 @@ class AnimoriaSharedUiPanel(
      * means "the panel is blank" can only ever be a JavaScript error rather than a
      * resource-resolution failure with no visible cause.
      */
+    private fun newNonce(): String {
+        val bytes = ByteArray(16).also { SecureRandom().nextBytes(it) }
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+    }
+
     private fun documentHtml(queryInject: String): String {
         val bundle = loadResource("/web/animoria-ui.global.js")
         val tokens = loadResource("/web/tokens.css")
+        val nonce = newNonce()
 
         return """
             <!DOCTYPE html>
             <html lang="en">
             <head>
             <meta charset="UTF-8">
+            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'nonce-$nonce';">
             <style>$tokens</style>
             <style>${themeAdapterCss()}</style>
             <style>
@@ -189,10 +197,10 @@ class AnimoriaSharedUiPanel(
             </head>
             <body>
             <div id="root"></div>
-            <script>
+            <script nonce="$nonce">
             $bundle
             </script>
-            <script>
+            <script nonce="$nonce">
             // ── Transport ────────────────────────────────────────────────────
             // Host → UI arrives as a `MessageEvent`, exactly as it does in a VS Code
             // webview, so the shared bridge needs no JetBrains-specific branch.

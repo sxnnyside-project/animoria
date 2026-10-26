@@ -11,6 +11,38 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.3.1] — 2026-10-26
+
+### Added
+
+- **Game-Engine & Mobile Reference Tracing**: The tracing engine now follows asset references in Godot (`.gd`, `.tscn`, `.tres`, `.gdshader`, `project.godot`, `res://` paths), Unity (`.prefab`, `.unity`, `.mat`, `.asset`, `.anim`, `.controller`, `.uxml`, `.uss`), Roblox/Rojo Luau (`.lua`, `.luau`, `WaitForChild`/`FindFirstChild` lookups), Android (`R.drawable`, `R.mipmap`, `@drawable/`, `@mipmap/`, `@raw/`), and iOS (`Image("x")`, `UIImage(named:)`, `.imageset` folder names, storyboards, XIBs, Objective-C).
+- **Unity GUID & `Resources.Load` Tracing**: Assets are matched by the `guid:` stored in their `.meta` file, and `Resources.Load("UI/hero")` resolves to `UI/hero.png` without an extension.
+- **Unity Project Awareness**: Unity's generated `Library/` and `Temp/` folders are ignored (root-anchored) whenever `ProjectSettings/` exists, and can be re-included with `!/Library/Keep/` in `files.ignore` or `.animoriaignore`. Binary-serialized scenes and prefabs now print a warning instead of being skipped silently.
+- **Root-Anchored Ignore Patterns**: A leading `/` in `.animoriaignore` and `files.ignore` anchors the pattern to the workspace root (absolute-path patterns keep working).
+- **Sidecar Files Travel With Assets**: Unity `.meta` and Godot `.import` files are moved to the trash with their asset and restored with it, so a restored asset keeps its GUID/uid.
+- **Atomic Writes**: Reference rewrites, the trash-session journal, and the snapshot history are written through a temporary file and renamed, so an interrupted write can no longer leave an empty file. Rewrite temporaries are staged in `.animoria/tmp/`.
+- **Audit Log Rotation**: `audit-log.jsonl` rotates to `audit-log.jsonl.old` past 5 MiB; both generations are listed.
+
+### Changed
+
+- **Strict `.animoriarc.json` in CI**: `animoria check` now fails on a config that exists but cannot be parsed, instead of silently falling back to default rules. Other commands warn once and use defaults. Unknown rule ids and unknown `extends` presets are reported once per process.
+- **`.animoriaignore` Applies to Source Files**: Ignored folders are now also skipped when tracing references, matching how `files.ignore` already behaved.
+- **Minimum Rust Version**: `rust-version = "1.88"` is now declared in `Cargo.toml`.
+- **Dependencies**: `@commitlint/*` 21.2.4, `turbo` 2.11.9, `@rive-app/canvas` 2.45.0, `@types/node` 26.6.5, and the GitHub Actions `taiki-e/install-action` 2.87.27, `actions/upload-artifact` 7.0.2, `actions/download-artifact` 8.0.2, and `actions/setup-node` 7.1.0 (SHA-pinned).
+- **Daemon Mutation Scope**: `trash_asset` and `applyReferenceRewrite` act only on workspaces the daemon has scanned, and a rewrite must target a line the scan traced. `getLottieDocument` reads only indexed assets. `restore_asset` works on a freshly restarted daemon.
+
+### Fixed
+
+- **CSS Rules Starting With `#` or `*`**: `#hero { background: url(hero.png) }` and `* { ... }` are no longer treated as comments (a leading `#` is a comment only in Python, Ruby, TOML, YAML, GDScript, and shell). Lua `--` and `--[[ ]]` comments (any `=` level) are skipped.
+- **Bare Filename References**: `src="logo.png"` (no directory) was never counted as a reference because the weaker stem match hid the filename match.
+- **`animoria clean --apply`**: Duplicates that source code still references are kept, a failure midway still records the trash session, and a failed journal write now reports where the files are.
+- **Restore Safety**: Restoring no longer overwrites an existing file, no longer creates folders outside the workspace, requires the item to come from `.animoria/trash`, and an interrupted session restore can be retried.
+- **Corrupt Trash Journal**: An unreadable `sessions.json` is preserved as `sessions.json.corrupt` instead of being overwritten.
+- **Reference Rewrites**: Indented lines are now rewritten (they were refused before), indentation and each line's own line ending are preserved, and symlinks are edited in place.
+- **iOS Asset Catalogs**: `Contents.json` inside `.xcassets` no longer counts as a usage of its own images.
+
+---
+
 ## [2.3.0] — 2026-10-06
 
 ### Added
@@ -210,7 +242,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.3.1...HEAD
+[2.3.1]: https://github.com/sxnnyside-project/animoria/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/sxnnyside-project/animoria/compare/v2.2.1...v2.3.0
 [2.2.1]: https://github.com/sxnnyside-project/animoria/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/sxnnyside-project/animoria/compare/v2.1.0...v2.2.0

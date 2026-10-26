@@ -11,6 +11,10 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- Changes staged for the next release go here. -->
 
+### Fixed
+
+- **Path Containment on `/api/lottie-document`**: The dev bridge now resolves `assetPath` inside the fixture workspace (as `/api/file` already did) and answers 403 for anything outside it.
+
 ---
 
 ## [1.0.0] — 2026-08-12

@@ -11,7 +11,7 @@
 
 ## Stop Shipping Hidden Design Debt
 
-Visual assets — animated (Lottie, dotLottie, Rive, GIF, APNG, Animated SVG) and static (SVG, PNG, JPEG, WebP, AVIF) — silently accumulate in modern codebases:
+Visual assets — animated (Lottie, dotLottie, Rive, GIF, APNG, Animated SVG) and static (SVG, PNG, JPEG, WebP, AVIF, BMP, ICO, TIFF, PSD) — silently accumulate in modern codebases:
 * **Bundle Bloat:** Duplicate files get checked into multiple directories under different names, inflating release packages.
 * **Orphaned Exports:** Redesigned animations linger forever because developers aren't sure if another team or screen is still referencing them.
 * **Zero Traceability:** Searching for asset usages with plain text grep frequently yields false positives or misses dynamic imports entirely.
@@ -24,8 +24,8 @@ Visual assets — animated (Lottie, dotLottie, Rive, GIF, APNG, Animated SVG) an
 
 | Capability | Animoria | Generic File Explorer | LottieFiles Extension |
 | :--- | :---: | :---: | :---: |
-| **All Visual Formats** *(Lottie, dotLottie, Rive, GIF, APNG, SVG, PNG, WebP)* |  **Yes** | ⚠️ Generic icons only | ❌ Lottie only |
-| **Multi-Syntax Code Usage Tracing** *(TS, JSX, Vue, Svelte, Dart, Swift, etc.)* |  **Yes** | ❌ No | ❌ No |
+| **All Visual Formats** *(Lottie, dotLottie, Rive, GIF, APNG, SVG, PNG, WebP, and more)* |  **Yes** | ⚠️ Generic icons only | ❌ Lottie only |
+| **Multi-Syntax Code Usage Tracing** *(TS, JSX, Vue, Svelte, Dart, Swift, Godot, Unity, Android, iOS, etc.)* |  **Yes** | ❌ No | ❌ No |
 | **SHA-256 Byte-Identical Duplicate Detection** |  **Yes** | ❌ No | ❌ No |
 | **Automated Governance & Repository Health Score** |  **Yes** | ❌ No | ❌ No |
 | **Safe Reversible Deletions** *(Staged trash with manifest rollback)* |  **Yes** | ❌ Permanent delete | ❌ No |
@@ -43,11 +43,11 @@ Visual assets — animated (Lottie, dotLottie, Rive, GIF, APNG, Animated SVG) an
 
 ### 2. Multi-Syntax Usage Tracing
 * Never wonder *"Where is this icon used?"* again.
-* Traces asset references across 20+ file extensions (`.ts`, `.tsx`, `.vue`, `.svelte`, `.astro`, `.md`, `.css`, `.dart`, `.swift`, `.kt`, etc.).
+* Traces asset references across 70+ file extensions (`.ts`, `.tsx`, `.vue`, `.svelte`, `.astro`, `.md`, `.css`, `.dart`, `.swift`, `.kt`, `.gd`, `.prefab`, `.luau`, etc.), including Godot `res://` paths, Unity GUIDs, Android `@drawable/`, and iOS asset catalogs.
 * Click any reference in the sidebar to jump directly to the exact file and line in your code.
 
 ### 3. Automated Governance & Health Score
-* Evaluates your repository against customizable rules (`no-unreferenced-assets`, `no-duplicate-content`, `max-file-size-kb`, `no-gif`, `allowed-formats`).
+* Evaluates your repository against customizable rules (`no-unreferenced-assets`, `no-duplicate-content`, `max-file-size-kb`, `max-dimensions`, `no-gif`, `allowed-formats`, `naming-convention`, `svg-sanitization`).
 * Generates a 0–100% **Workspace Health Score**.
 * Findings are published directly to the native VS Code **Problems Panel** (`F8` to cycle through them) and exportable as Markdown/JSON.
 
@@ -85,8 +85,8 @@ Visual assets — animated (Lottie, dotLottie, Rive, GIF, APNG, Animated SVG) an
 * **Animated SVG** (`.svg`)
 
 ### 🖼️ Static Formats (Discovery & Inspection)
-* **Vector:** SVG (`.svg`)
-* **Raster:** PNG (`.png`), JPEG (`.jpg`, `.jpeg`), WebP (`.webp`), AVIF (`.avif`)
+* **Vector:** SVG (`.svg`), EPS (`.eps`), PostScript (`.ps`)
+* **Raster:** PNG (`.png`), JPEG (`.jpg`, `.jpeg`), WebP (`.webp`), AVIF (`.avif`), BMP (`.bmp`), ICO (`.ico`), ICNS (`.icns`), TIFF (`.tiff`, `.tif`), PSD (`.psd`), ODD (`.odd`)
 
 ---
 

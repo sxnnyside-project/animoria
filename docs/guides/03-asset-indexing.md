@@ -98,9 +98,11 @@ pub const DEFAULT_EXCLUDE_DIRS: &[&str] = &[
     ".svelte-kit", ".animoria",
 ];
 ```
+In a Unity project (a `ProjectSettings/` folder at the root) `ignore_rules::unity_generated_patterns` also seeds root-anchored `/Library/` and `/Temp/` rules ahead of your own, so `!/Library/Keep/` can re-include a path. A leading `/` anchors any pattern to the workspace root. `AssetReferenceDetector` reads the same `.animoriaignore` through `ignore_rules::read_animoriaignore`, so an ignored folder is ignored as a source of references too.
+
 Standard `.gitignore` rules are also respected — `WorkspaceScanner` and `AssetReferenceDetector` both configure the `ignore` crate's `WalkBuilder` with `.git_ignore(true)`, `.git_global(true)`, and `.git_exclude(true)`.
 
-Only files whose extension is in `RECOGNIZED_EXTENSIONS` (`json`, `lottie`, `riv`, `gif`, `apng`, `svg`, `png`, `jpg`, `jpeg`, `webp`, `avif`) are collected as scan candidates at all.
+Only files whose extension is in `RECOGNIZED_EXTENSIONS` (`json`, `lottie`, `riv`, `gif`, `apng`, `svg`, `png`, `jpg`, `jpeg`, `webp`, `avif`, `bmp`, `eps`, `icns`, `ico`, `cur`, `odd`, `ps`, `psd`, `tiff`, `tif`) are collected as scan candidates at all.
 
 ### Multi-Root Workspace Indexing
 - A single daemon process can back multiple workspace roots simultaneously: `DaemonServer` holds `indices: HashMap<String, AssetIndex>`, keyed by `root_id`.

@@ -74,15 +74,15 @@ The library consists of 15 specialized technical guides:
 | 01 | [**Get Started**](01-get-started.md) | Maintainer onboarding, monorepo layout, toolchain (`just`, pnpm, Gradle), DXQE standards | Root, All packages |
 | 02 | [**Format Heuristics**](02-format-heuristics.md) | Asset sniffing, structural JSON validation (Lottie), ZIP parsing (dotLottie), Rive binary signatures | `animoria-core-rust` |
 | 03 | [**Asset Indexing**](03-asset-indexing.md) | Workspace scanning, `.animoriaignore`, multi-root indexing | `animoria-core-rust` |
-| 04 | [**Reference Usage Analysis**](04-reference-usage-analysis.md) | Multi-syntax source code reference scanning (26 file extensions), high/medium confidence scoring | `animoria-core-rust` |
-| 05 | [**Governance Pipeline**](05-governance-pipeline.md) | `.animoriarc` policy loading, the 5 built-in rules, Health Score (0–100%), headless CI gate (`check`) | `animoria-core-rust` |
+| 04 | [**Reference Usage Analysis**](04-reference-usage-analysis.md) | Multi-syntax source code reference scanning (79 file extensions), high/medium confidence scoring | `animoria-core-rust` |
+| 05 | [**Governance Pipeline**](05-governance-pipeline.md) | `.animoriarc` policy loading, the 8 built-in rules, Health Score (0–100%), headless CI gate (`check`) | `animoria-core-rust` |
 | 06 | [**Workspace Analysis**](06-workspace-analysis.md) | Lifecycle state, multi-root aggregation, view-model projection | `animoria-core-rust`, `@animoria/ui` |
 | 07 | [**Duplicates Resolution**](07-duplicates-resolution.md) | SHA-256 binary content hashing, plan-based resolution (no source reference auto-rewriting) | `animoria-core-rust` |
 | 08 | [**Cleanup, Trash & Restore**](08-cleanup-trash-restore.md) | Staged deletion to `.animoria/trash`, cleanup proposal vs plan execution, restore mechanics | `animoria-core-rust`, `animoria-vscode` |
 | 09 | [**Asset Preview & Inspection**](09-asset-preview-inspection.md) | Interactive playback data (`AnimationPreview`), metadata extraction, preview webviews | `animoria-core-rust`, `@animoria/ui` |
 | 10 | [**Thumbnail Engine**](10-thumbnail-engine.md) | Placeholder-badge SVG generation — no raster downscaling or cache yet | `animoria-core-rust` |
 | 11 | [**Snippet Generation**](11-snippet-generation.md) | Framework code generation (uneven coverage — see guide), relative path resolution | `animoria-core-rust` |
-| 12 | [**Daemon Protocol v1**](12-daemon-protocol.md) | Native Rust daemon subprocess, NDJSON Protocol v1 envelopes, `hello` handshake, the 20 methods `supported_methods()` declares, 64 MiB NDJSON line cap | `animoria-core-rust` |
+| 12 | [**Daemon Protocol v1**](12-daemon-protocol.md) | Native Rust daemon subprocess, NDJSON Protocol v1 envelopes, `hello` handshake, the 27 methods `supported_methods()` declares, 64 MiB NDJSON line cap | `animoria-core-rust` |
 | 13 | [**VS Code Client**](13-vscode-client.md) | Extension host spawning/speaking Protocol v1 to the native daemon, native TreeView, diagnostics, hover providers, WebviewPanel | `animoria-vscode` |
 | 14 | [**JetBrains Client**](14-jetbrains-client.md) | IntelliJ plugin architecture, `CoreProcessManager`, bundled native-binary resolution (`DaemonBinaryResolver`), JCEF tool window | `animoria-jetbrains` |
 | 15 | [**Sandbox & Client Parity**](15-sandbox-client-parity.md) | Vite dev harness driving the real native daemon (`RustDaemonClient`/`SandboxHost`, `canMutate: false`), client capability parity | `apps/animoria-sandbox` |

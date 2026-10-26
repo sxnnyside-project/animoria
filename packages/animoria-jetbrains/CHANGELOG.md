@@ -13,6 +13,19 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.3.1] — 2026-10-26
+
+### Changed
+
+- **Toolchain**: Kotlin 2.4.21 (`jvm` and `plugin.serialization`) and the Gradle wrapper 9.8.1.
+
+### Fixed
+
+- **Scan No Longer Times Out on Large Projects**: `analyze` now waits up to 5 minutes instead of 10 seconds, so a slow scan no longer fails and stalls the requests queued behind it.
+- **Content Security Policy for the Embedded Dashboard**: The JCEF page now ships a per-load nonce Content-Security-Policy (scripts only by nonce, images only as `data:`), matching the VS Code webview.
+
+---
+
 ## [2.3.0] — 2026-10-06
 
 ### Added
@@ -106,7 +119,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.3.1...HEAD
+[2.3.1]: https://github.com/sxnnyside-project/animoria/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/sxnnyside-project/animoria/compare/v2.2.1...v2.3.0
 [2.2.1]: https://github.com/sxnnyside-project/animoria/compare/v2.2.0...v2.2.1
 [2.2.0]: https://github.com/sxnnyside-project/animoria/compare/v2.1.0...v2.2.0

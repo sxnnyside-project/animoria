@@ -181,7 +181,11 @@ class AnimoriaGalleryPanel(
                             val analysis = AnimoriaAnalysisHolder.of(project).current()
                             val root = analysis?.rootPath?.ifEmpty { null } ?: project.basePath.orEmpty()
                             if (root.isNotEmpty()) {
-                                manager.sendCommand("analyze", buildJsonObject { put("workspace_path", root) })
+                                manager.sendCommand(
+                                    "analyze",
+                                    buildJsonObject { put("workspace_path", root) },
+                                    CoreProcessManager.ANALYZE_TIMEOUT_MS,
+                                )
                             }
                         }
                     }

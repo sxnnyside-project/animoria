@@ -273,10 +273,17 @@ pub fn apply_cleanup_plan(
         "applied"
     };
 
+    let mut journal_error = None;
     let session_id = if trashed.is_empty() {
         None
     } else {
-        Some(record_trash_session(workspace_root, &trashed))
+        record_trash_session(workspace_root, &trashed)
+            .map_err(|e| {
+                journal_error = Some(format!(
+                    "Files were moved but the undo journal could not be saved: {e}"
+                ))
+            })
+            .ok()
     };
 
     (
@@ -285,11 +292,7 @@ pub fn apply_cleanup_plan(
             removed_asset_paths,
             recovered_bytes,
             trash_session_id: session_id,
-            error: if status == "failed" {
-                first_error
-            } else {
-                None
-            },
+            error: first_error.filter(|_| status == "failed").or(journal_error),
         },
         trashed,
     )
@@ -363,10 +366,17 @@ pub fn apply_resolution_plan(
     } else {
         "applied"
     };
+    let mut journal_error = None;
     let session_id = if trashed.is_empty() {
         None
     } else {
-        Some(record_trash_session(workspace_root, &trashed))
+        record_trash_session(workspace_root, &trashed)
+            .map_err(|e| {
+                journal_error = Some(format!(
+                    "Files were moved but the undo journal could not be saved: {e}"
+                ))
+            })
+            .ok()
     };
 
     (
@@ -375,11 +385,7 @@ pub fn apply_resolution_plan(
             removed_asset_paths,
             recovered_bytes,
             trash_session_id: session_id,
-            error: if status == "failed" {
-                first_error
-            } else {
-                None
-            },
+            error: first_error.filter(|_| status == "failed").or(journal_error),
         },
         trashed,
     )
@@ -392,7 +398,10 @@ fn sessions_journal_path(workspace_root: &Path) -> PathBuf {
         .join("sessions.json")
 }
 
-pub fn record_trash_session(workspace_root: &Path, trashed: &[(TrashItem, u64)]) -> String {
+pub fn record_trash_session(
+    workspace_root: &Path,
+    trashed: &[(TrashItem, u64)],
+) -> std::io::Result<String> {
     let now_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
@@ -412,26 +421,30 @@ pub fn record_trash_session(workspace_root: &Path, trashed: &[(TrashItem, u64)])
             })
             .collect(),
     });
-    write_sessions(workspace_root, &sessions);
-    session_id
+    write_sessions(workspace_root, &sessions)?;
+    Ok(session_id)
 }
 
 pub fn read_sessions(workspace_root: &Path) -> Vec<SessionManifest> {
     let path = sessions_journal_path(workspace_root);
-    match fs::read_to_string(&path) {
-        Ok(raw) => serde_json::from_str(&raw).unwrap_or_default(),
-        Err(_) => Vec::new(),
-    }
+    let Ok(raw) = fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    serde_json::from_str(&raw).unwrap_or_else(|_| {
+        // Keep the unreadable journal for manual recovery; the next write would overwrite it.
+        let _ = fs::rename(&path, path.with_extension("json.corrupt"));
+        Vec::new()
+    })
 }
 
-fn write_sessions(workspace_root: &Path, sessions: &[SessionManifest]) {
+// shortcut: no lock between the daemon and the CLI, so two simultaneous writers can lose an
+// update (never corrupt the file); add a lock file if concurrent trashing becomes common.
+fn write_sessions(workspace_root: &Path, sessions: &[SessionManifest]) -> std::io::Result<()> {
     let path = sessions_journal_path(workspace_root);
     if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
+        fs::create_dir_all(parent)?;
     }
-    if let Ok(json) = serde_json::to_string_pretty(sessions) {
-        let _ = fs::write(path, json);
-    }
+    crate::remediation::write_atomic(&path, serde_json::to_string_pretty(sessions)?.as_bytes())
 }
 
 pub fn restore_session(workspace_root: &Path, session_id: &str) -> Result<Vec<String>, String> {
@@ -444,6 +457,11 @@ pub fn restore_session(workspace_root: &Path, session_id: &str) -> Result<Vec<St
     let trash_mgr = TrashManager::new(workspace_root);
     let mut restored = Vec::new();
     for item in &session.items {
+        // Put back by an earlier, interrupted restore of this session: not restored by this
+        // call, so it is not reported as such.
+        if !Path::new(&item.trash_path).exists() && Path::new(&item.original_path).exists() {
+            continue;
+        }
         let trash_item = TrashItem {
             asset_id: String::new(),
             original_path: item.original_path.clone(),
@@ -457,6 +475,29 @@ pub fn restore_session(workspace_root: &Path, session_id: &str) -> Result<Vec<St
     }
 
     sessions.remove(pos);
-    write_sessions(workspace_root, &sessions);
+    write_sessions(workspace_root, &sessions).map_err(|e| e.to_string())?;
     Ok(restored)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn corrupt_journal_is_kept_not_overwritten() {
+        let ws = tempdir().unwrap();
+        let journal = sessions_journal_path(ws.path());
+        fs::create_dir_all(journal.parent().unwrap()).unwrap();
+        fs::write(&journal, "{ truncated").unwrap();
+
+        assert!(read_sessions(ws.path()).is_empty());
+        assert_eq!(
+            fs::read_to_string(journal.with_extension("json.corrupt")).unwrap(),
+            "{ truncated"
+        );
+
+        let id = record_trash_session(ws.path(), &[]).unwrap();
+        assert_eq!(read_sessions(ws.path())[0].id, id);
+    }
 }

@@ -1,3 +1,5 @@
+use crate::scanner::walker::RECOGNIZED_EXTENSIONS;
+
 pub const SOURCE_EXTENSIONS: &[&str] = &[
     "ts",
     "tsx",
@@ -59,25 +61,61 @@ pub const SOURCE_EXTENSIONS: &[&str] = &[
     "hpp",
     "cs",
     "toml",
+    // Godot: scripts, scenes, resources, shaders, project.godot
+    "gd",
+    "tscn",
+    "tres",
+    "gdshader",
+    "godot",
+    // Unity: serialized YAML that references assets by guid
+    "prefab",
+    "unity",
+    "mat",
+    "asset",
+    "anim",
+    "controller",
+    "uxml",
+    "uss",
+    // iOS: interface files and Objective-C
+    "storyboard",
+    "xib",
+    "m",
+    "mm",
+    // Roblox / Rojo: Luau and Lua scripts
+    "luau",
+    "lua",
 ];
 
 pub fn is_source_file_extension(ext: &str) -> bool {
     SOURCE_EXTENSIONS.contains(&ext.to_lowercase().as_str())
 }
 
-pub fn is_line_comment_or_url(line: &str) -> bool {
-    let trimmed = line.trim();
-    // Line comments
-    if trimmed.starts_with("//")
-        || trimmed.starts_with('#')
-        || trimmed.starts_with("/*")
-        || trimmed.starts_with('*')
-        || trimmed.starts_with("<!--")
-    {
-        return true;
-    }
+/// Languages where a leading `#` starts a comment. In CSS/SCSS/HTML a leading `#` is an id
+/// selector (`#hero { background: url(hero.png) }`), which is a real reference.
+const HASH_COMMENT_EXTENSIONS: &[&str] = &["py", "rb", "toml", "yml", "yaml", "gd", "sh"];
 
-    false
+/// Opening of a Lua long comment (`--[[`, `--[=[`, `--[==[` ...): the byte length of the opener
+/// and the closing bracket with the same number of `=` signs.
+pub fn lua_long_comment(trimmed: &str) -> Option<(usize, String)> {
+    let after = trimmed.strip_prefix("--[")?;
+    let level = after.bytes().take_while(|b| *b == b'=').count();
+    if after.as_bytes().get(level) != Some(&b'[') {
+        return None;
+    }
+    Some((3 + level + 1, format!("]{}]", "=".repeat(level))))
+}
+
+/// Whether the whole line is a comment in the language of a file with extension `ext`.
+/// Lines inside a `/* ... */` block are handled by the caller, so a leading `*` is not
+/// treated as a comment here (`* { background: url(bg.png) }` is a CSS rule).
+pub fn is_line_comment_or_url(line: &str, ext: &str) -> bool {
+    let trimmed = line.trim();
+    // Only Lua/Luau: in CSS a leading `--` is a custom property (`--logo: url(logo.png)`).
+    (trimmed.starts_with("--") && matches!(ext, "lua" | "luau"))
+        || trimmed.starts_with("//")
+        || trimmed.starts_with("/*")
+        || trimmed.starts_with("<!--")
+        || (trimmed.starts_with('#') && HASH_COMMENT_EXTENSIONS.contains(&ext))
 }
 
 /// Whether a line containing an asset's *stem* (name without extension) is a
@@ -103,7 +141,32 @@ pub fn is_valid_stem_reference(line_lower: &str, stem_lower: &str) -> bool {
         let after = &line_lower[pos + stem_lower.len()..];
 
         // 1. Android R.raw.<stem>
-        if before.ends_with("r.raw.") {
+        if ["r.raw.", "r.drawable.", "r.mipmap."]
+            .iter()
+            .any(|p| before.ends_with(p))
+        {
+            return true;
+        }
+
+        // 1a. Unity runtime load by name: Resources.Load("UI/hero") has no GUID and no extension
+        if line_lower.contains("resources.load") {
+            return true;
+        }
+
+        // 1b. Android XML resource: @drawable/stem, @mipmap/stem, @raw/stem
+        if ["@raw/", "@drawable/", "@mipmap/"]
+            .iter()
+            .any(|p| before.ends_with(p))
+        {
+            return true;
+        }
+
+        // 1c. iOS: Image("stem"), UIImage(named: "stem"), #imageLiteral(resourceName: "stem")
+        if (before.ends_with('"') && after.starts_with('"'))
+            && ["image(", "image(named:", "resourcename:"]
+                .iter()
+                .any(|k| line_lower.contains(k))
+        {
             return true;
         }
 
@@ -125,6 +188,11 @@ pub fn is_valid_stem_reference(line_lower: &str, stem_lower: &str) -> bool {
         {
             return true;
         }
+    }
+
+    // 7. Roblox / Rojo: instances are looked up by name (`:WaitForChild("stem")`)
+    if line_lower.contains("waitforchild(") || line_lower.contains("findfirstchild(") {
+        return true;
     }
 
     // 2. Android setAnimation("stem") / setAnimation('stem')
@@ -263,8 +331,24 @@ pub fn asset_matches_path_token(
     source_path: &std::path::Path,
     token: &str,
 ) -> bool {
+    // Godot's `res://` is the project root, so the rest is a workspace-relative suffix.
     let clean_token = token.replace('\\', "/");
+    let clean_token = clean_token
+        .strip_prefix("res://")
+        .unwrap_or(&clean_token)
+        .to_string();
     let asset_clean = asset_path.replace('\\', "/");
+    // Android `@drawable/name` has no directory or extension: match the resource folder and stem.
+    if let Some((kind, name)) = clean_token
+        .strip_prefix('@')
+        .and_then(|t| t.split_once('/'))
+    {
+        let asset_p = std::path::Path::new(&asset_clean);
+        return asset_p.file_stem().and_then(|s| s.to_str()) == Some(name)
+            && asset_p
+                .components()
+                .any(|c| c.as_os_str().to_string_lossy().starts_with(kind));
+    }
     let clean_suffix = clean_token.trim_start_matches(['.', '/']);
     let asset_p = std::path::Path::new(&asset_clean);
 
@@ -313,15 +397,15 @@ pub fn asset_matches_path_token(
         return false;
     } else {
         let trimmed = clean_token.trim_start_matches('/');
-        return asset_clean.ends_with(trimmed);
+        // Also without the extension: `Resources.Load("UI/hero")` names `UI/hero.png`.
+        return asset_clean.ends_with(trimmed)
+            || asset_p
+                .with_extension("")
+                .to_string_lossy()
+                .ends_with(trimmed);
     }
     false
 }
-
-pub const KNOWN_ASSET_EXTENSIONS: &[&str] = &[
-    "json", "lottie", "riv", "gif", "apng", "svg", "png", "jpg", "jpeg", "webp", "avif", "bmp",
-    "cur", "ico", "icns", "tiff", "tif", "psd", "eps", "ps", "odd",
-];
 
 /// Represents a parsed dynamic reference pattern extracted from an interpolated
 /// string (e.g. `${c.id}.webp`, `/characters/${c.id}.webp`, or `'icons/' + id + '.png'`).
@@ -350,7 +434,7 @@ fn parse_dynamic_pattern_from_token(token: &str) -> Option<DynamicPattern> {
         .trim_matches(['"', '\'', '`', '}', ')', ';', ',', ' '])
         .to_lowercase();
 
-    if !KNOWN_ASSET_EXTENSIONS.contains(&ext_lower.as_str()) {
+    if !RECOGNIZED_EXTENSIONS.contains(&ext_lower.as_str()) {
         return None;
     }
 
@@ -443,7 +527,7 @@ pub fn extract_dynamic_patterns(line: &str) -> Vec<DynamicPattern> {
                 }
             } else if t.starts_with('.') && t.len() <= 6 {
                 let ext = t.trim_start_matches('.').to_lowercase();
-                if KNOWN_ASSET_EXTENSIONS.contains(&ext.as_str()) {
+                if RECOGNIZED_EXTENSIONS.contains(&ext.as_str()) {
                     target_ext = Some(ext);
                 }
             }
@@ -519,6 +603,105 @@ pub fn asset_matches_dynamic_pattern(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lua_long_comment_openers() {
+        assert_eq!(lua_long_comment("--[[ x"), Some((4, "]]".to_string())));
+        assert_eq!(lua_long_comment("--[==[ x"), Some((6, "]==]".to_string())));
+        assert_eq!(lua_long_comment("--[= not an opener"), None);
+        assert_eq!(lua_long_comment("-- plain"), None);
+    }
+
+    #[test]
+    fn css_rules_starting_with_hash_or_star_are_not_comments() {
+        assert!(!is_line_comment_or_url(
+            "#hero { background: url(hero.png) }",
+            "css"
+        ));
+        assert!(!is_line_comment_or_url(
+            "* { background: url(bg.png) }",
+            "css"
+        ));
+        assert!(is_line_comment_or_url("# logo.png is unused", "py"));
+        assert!(is_line_comment_or_url("# logo.png is unused", "gd"));
+        assert!(is_line_comment_or_url("// logo.png", "ts"));
+        assert!(is_line_comment_or_url("-- local i = 'logo.png'", "luau"));
+        assert!(!is_line_comment_or_url("--logo: url(logo.png);", "css"));
+        assert!(is_line_comment_or_url("<!-- logo.png -->", "html"));
+    }
+
+    #[test]
+    fn unity_resources_load_matches_asset_without_extension() {
+        let src = std::path::Path::new("Assets/Scripts/Ui.cs");
+        assert!(asset_matches_path_token(
+            "Assets/Resources/UI/hero.png",
+            src,
+            "UI/hero"
+        ));
+        assert!(!asset_matches_path_token(
+            "Assets/Resources/UI/other.png",
+            src,
+            "UI/hero"
+        ));
+        assert!(is_valid_stem_reference(
+            "var s = resources.load<sprite>(\"ui/hero\");",
+            "hero"
+        ));
+    }
+
+    #[test]
+    fn godot_res_path_matches_asset() {
+        let src = std::path::Path::new("scenes/main.tscn");
+        assert!(asset_matches_path_token(
+            "assets/ui/icon.png",
+            src,
+            "res://assets/ui/icon.png"
+        ));
+        assert!(!asset_matches_path_token(
+            "assets/ui/other.png",
+            src,
+            "res://assets/ui/icon.png"
+        ));
+        assert!(is_source_file_extension("tscn") && is_source_file_extension("luau"));
+    }
+
+    #[test]
+    fn android_resource_refs_match_by_stem_and_folder() {
+        let src = std::path::Path::new("app/src/main/res/layout/a.xml");
+        assert!(asset_matches_path_token(
+            "app/src/main/res/drawable-hdpi/logo.png",
+            src,
+            "@drawable/logo"
+        ));
+        assert!(!asset_matches_path_token(
+            "app/src/main/res/drawable-hdpi/other.png",
+            src,
+            "@drawable/logo"
+        ));
+        assert!(is_valid_stem_reference(
+            "painterresource(r.drawable.logo)",
+            "logo"
+        ));
+        assert!(is_valid_stem_reference(
+            "android:src=\"@mipmap/logo\"",
+            "logo"
+        ));
+    }
+
+    #[test]
+    fn ios_image_refs_need_quoted_stem() {
+        assert!(is_valid_stem_reference("image(\"logo\")", "logo"));
+        assert!(is_valid_stem_reference("uiimage(named: \"logo\")", "logo"));
+        assert!(!is_valid_stem_reference("let logo = 1", "logo"));
+    }
+
+    #[test]
+    fn roblox_waitforchild_is_stem_reference() {
+        assert!(is_valid_stem_reference(
+            "local i = gui:waitforchild(\"coin\")",
+            "coin"
+        ));
+    }
 
     #[test]
     fn test_extract_path_token() {

@@ -1,7 +1,8 @@
 [package]
 name = "animoria"
-version = "2.3.0"
+version = "2.3.1"
 edition = "2021"
+rust-version = "1.88"
 authors = ["Sxnnyside Project <houjou.sxnnyside@sxnnysideproject.com>"]
 description = "High-performance Rust core engine for Animoria: visual asset discovery, format parsing, usage tracing, and governance."
 license = "MIT"

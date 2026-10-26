@@ -4,6 +4,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Files engines keep next to an asset: Unity's `.meta` (its GUID) and Godot's `.import` (its uid).
+/// They travel with the asset, or restoring it would give it a new identity.
+const SIDECAR_SUFFIXES: &[&str] = &[".meta", ".import"];
+
+fn sidecar(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.as_os_str().to_owned();
+    name.push(suffix);
+    PathBuf::from(name)
+}
+
 pub struct TrashManager {
     workspace_root: PathBuf,
     trash_root: PathBuf,
@@ -83,6 +93,14 @@ impl TrashManager {
         }
 
         move_file_safe(&file_path, &dest_path)?;
+        for suffix in SIDECAR_SUFFIXES {
+            let side = sidecar(&file_path, suffix);
+            if side.is_file() {
+                if let Err(e) = move_file_safe(&side, &sidecar(&dest_path, suffix)) {
+                    eprintln!("[Trash] Could not move '{}': {e}", side.display());
+                }
+            }
+        }
 
         Ok(TrashItem {
             asset_id: asset_id.to_string(),
@@ -93,39 +111,66 @@ impl TrashManager {
     }
 
     pub fn restore_from_trash(&self, item: &TrashItem) -> anyhow::Result<()> {
-        let trashed = Path::new(&item.trashed_path);
-        // The trashed copy must itself be inside this workspace's own trash,
-        // and — since `original_path` is data from a `TrashItem` a caller
-        // supplies, not something this manager derived — the restore
-        // destination must land back inside the workspace too. Skipping
-        // either check turns a tampered or cross-workspace `TrashItem` into
-        // a write-anywhere: move an arbitrary trashed file to an arbitrary
-        // path outside the workspace.
-        self.require_within_workspace(trashed)?;
-        let original = Path::new(&item.original_path);
-
-        if let Some(parent) = original.parent() {
-            fs::create_dir_all(parent)?;
-        }
         let canonical_root =
             fs::canonicalize(&self.workspace_root).unwrap_or_else(|_| self.workspace_root.clone());
-        let canonical_original = fs::canonicalize(original.parent().unwrap_or(original))
+        // `TrashItem` is caller-supplied data, so both ends are validated before anything
+        // touches the disk: the source must be in this workspace's own trash, and the
+        // destination must land back inside the workspace without clobbering a file.
+        let trashed = self.require_within_workspace(Path::new(&item.trashed_path))?;
+        if !trashed.starts_with(canonical_root.join(".animoria/trash")) {
+            bail!(
+                "refusing to restore '{}': it is not inside the workspace trash",
+                trashed.display()
+            );
+        }
+
+        let original = Path::new(&item.original_path);
+        if original
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            bail!(
+                "refusing to restore to '{}': path contains '..'",
+                original.display()
+            );
+        }
+        let existing_ancestor = original
+            .ancestors()
+            .skip(1)
+            .find(|a| a.exists())
             .with_context(|| {
                 format!(
                     "cannot resolve restore destination '{}'",
                     original.display()
                 )
-            })?
-            .join(original.file_name().unwrap_or_default());
-        if !canonical_original.starts_with(&canonical_root) {
+            })?;
+        let canonical_ancestor = fs::canonicalize(existing_ancestor)?;
+        if !canonical_ancestor.starts_with(&canonical_root) {
             bail!(
                 "refusing to restore to '{}': it is outside the workspace root '{}'",
-                canonical_original.display(),
+                original.display(),
                 canonical_root.display()
             );
         }
+        if original.exists() {
+            bail!(
+                "refusing to restore '{}': a file already exists there",
+                original.display()
+            );
+        }
 
-        move_file_safe(trashed, original)?;
+        if let Some(parent) = original.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        move_file_safe(&trashed, original)?;
+        for suffix in SIDECAR_SUFFIXES {
+            let (from, to) = (sidecar(&trashed, suffix), sidecar(original, suffix));
+            if from.is_file() && !to.exists() {
+                if let Err(e) = move_file_safe(&from, &to) {
+                    eprintln!("[Trash] Could not restore '{}': {e}", to.display());
+                }
+            }
+        }
         Ok(())
     }
 }
@@ -156,6 +201,62 @@ fn move_file_safe(src: &Path, dst: &Path) -> anyhow::Result<()> {
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn unity_meta_and_godot_import_travel_with_the_asset() {
+        let ws = tempdir().unwrap();
+        let png = ws.path().join("hero.png");
+        for (name, body) in [
+            ("hero.png", "png"),
+            ("hero.png.meta", "guid: a"),
+            ("hero.png.import", "uid"),
+        ] {
+            fs::write(ws.path().join(name), body).unwrap();
+        }
+        let manager = TrashManager::new(ws.path());
+
+        let item = manager.stage_to_trash("a", &png).unwrap();
+        assert!(!ws.path().join("hero.png.meta").exists());
+        assert!(!ws.path().join("hero.png.import").exists());
+        assert!(Path::new(&format!("{}.meta", item.trashed_path)).is_file());
+
+        manager.restore_from_trash(&item).unwrap();
+        assert_eq!(
+            fs::read_to_string(ws.path().join("hero.png.meta")).unwrap(),
+            "guid: a"
+        );
+        assert_eq!(
+            fs::read_to_string(ws.path().join("hero.png.import")).unwrap(),
+            "uid"
+        );
+    }
+
+    #[test]
+    fn restore_refuses_to_overwrite_and_does_not_create_outside_dirs() {
+        let ws = tempdir().unwrap();
+        let outside = tempdir().unwrap();
+        let file = ws.path().join("logo.png");
+        fs::write(&file, b"old").unwrap();
+        let manager = TrashManager::new(ws.path());
+        let item = manager.stage_to_trash("a", &file).unwrap();
+
+        fs::write(&file, b"new").unwrap();
+        assert!(manager.restore_from_trash(&item).is_err());
+        assert_eq!(fs::read(&file).unwrap(), b"new");
+
+        let mut escaping = item.clone();
+        escaping.original_path = outside
+            .path()
+            .join("x/y/a.png")
+            .to_string_lossy()
+            .to_string();
+        assert!(manager.restore_from_trash(&escaping).is_err());
+        assert!(!outside.path().join("x").exists());
+
+        let mut not_trash = item;
+        not_trash.trashed_path = file.to_string_lossy().to_string();
+        assert!(manager.restore_from_trash(&not_trash).is_err());
+    }
 
     #[test]
     fn test_stage_to_trash_avoids_homonymous_collision() {

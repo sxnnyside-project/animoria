@@ -108,7 +108,7 @@ Computes SHA-256 content hashes per asset and groups byte-identical assets into 
 
 ### E. Governance & Rules Engine (`governance/`)
 
-Evaluates workspace assets against configured rules. There are exactly **five built-in rules**, each implemented in its own file under `governance/rules/`:
+Evaluates workspace assets against configured rules. There are exactly **eight built-in rules**, each implemented in its own file under `governance/rules/`:
 
 | Rule id | Source file | Behavior |
 | :--- | :--- | :--- |
@@ -117,6 +117,9 @@ Evaluates workspace assets against configured rules. There are exactly **five bu
 | `max-file-size-kb` | `governance/rules/max_file_size.rs` (`MaxFileSizeRule`) | Flags assets exceeding a configured size threshold. |
 | `no-unreferenced-assets` | `governance/rules/no_unreferenced.rs` (`NoUnreferencedAssetsRule`) | Flags valid assets with zero detected usage references. |
 | `no-duplicate-content` | `governance/rules/no_duplicates.rs` (`NoDuplicateContentRule`) | Flags non-canonical members of a byte-identical `DuplicateGroup`. |
+| `max-dimensions` | `governance/rules/max_dimensions.rs` (`MaxDimensionsRule`) | Flags images wider or taller than configured thresholds. |
+| `naming-convention` | `governance/rules/naming_convention.rs` (`NamingConventionRule`) | Flags file names that break a configured casing or regex (density suffixes such as `@2x` are stripped first). |
+| `svg-sanitization` | `governance/rules/svg_sanitization.rs` (`SvgSanitizationRule`) | Flags SVGs containing `<script>`, `<!ENTITY`, `javascript:` URIs, `<foreignObject>`, `<iframe>`, `<embed>`, or inline event handlers. |
 
 Health scoring aggregates rule violations into the `HealthScoreReport` / `CategoryScore` contracts (0–100%).
 

@@ -196,11 +196,12 @@ pub fn apply_reference_rewrite(
         ));
     }
 
-    let contents = std::fs::read_to_string(&proposal.file_path)
+    let contents = std::fs::read_to_string(&canonical_target)
         .map_err(|e| format!("could not read {}: {e}", proposal.file_path))?;
 
-    let uses_crlf = contents.contains("\r\n");
-    let mut lines: Vec<String> = contents.lines().map(str::to_string).collect();
+    // Split keeping each line's own terminator, so only the target line changes in the file
+    // (a file with mixed CRLF/LF stays mixed).
+    let mut lines: Vec<&str> = contents.split_inclusive('\n').collect();
     let idx = proposal.line_number as usize;
     if idx == 0 || idx > lines.len() {
         return Err(format!(
@@ -209,23 +210,30 @@ pub fn apply_reference_rewrite(
         ));
     }
 
-    let current = &lines[idx - 1];
-    if current != &proposal.original_line {
+    let current = lines[idx - 1];
+    let body = current.trim_end_matches(['\r', '\n']);
+    // `UsageReference.line_content` (the source of a proposal) is trimmed, so compare trimmed
+    // and put the line's own indentation and trailing space back.
+    if body.trim() != proposal.original_line.trim() {
         return Err(format!(
             "{}:{} has changed since this rewrite was proposed — refusing to overwrite it",
             proposal.file_path, proposal.line_number
         ));
     }
 
-    lines[idx - 1] = proposal.proposed_line.clone();
-    let newline = if uses_crlf { "\r\n" } else { "\n" };
-    let mut rejoined = lines.join(newline);
-    if contents.ends_with(newline) || contents.ends_with('\n') {
-        rejoined.push_str(newline);
-    }
+    let lead = &body[..body.len() - body.trim_start().len()];
+    let trail = &body[body.trim_end().len()..];
+    let eol = &current[body.len()..];
+    let replacement = format!("{lead}{}{trail}{eol}", proposal.proposed_line.trim());
+    lines[idx - 1] = &replacement;
 
-    std::fs::write(&proposal.file_path, rejoined)
-        .map_err(|e| format!("could not write {}: {e}", proposal.file_path))
+    // Written through the resolved path, so a symlink inside the workspace is not replaced.
+    super::write_atomic_staged(
+        &canonical_target,
+        lines.concat().as_bytes(),
+        &canonical_root.join(".animoria/tmp"),
+    )
+    .map_err(|e| format!("could not write {}: {e}", proposal.file_path))
 }
 
 #[cfg(test)]
@@ -460,5 +468,68 @@ mod tests {
 
         let unchanged = std::fs::read_to_string(&path).unwrap();
         assert_eq!(unchanged, "<img src=\"./old-icon.svg\" />\n");
+    }
+
+    fn proposal_for(
+        path: &std::path::Path,
+        line: u32,
+        from: &str,
+        to: &str,
+    ) -> ReferenceRewriteProposal {
+        ReferenceRewriteProposal {
+            file_path: path.to_string_lossy().to_string(),
+            line_number: line,
+            original_line: from.to_string(),
+            proposed_line: to.to_string(),
+        }
+    }
+
+    #[test]
+    fn rewrite_keeps_indentation_and_each_lines_own_line_ending() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("App.tsx");
+        // Mixed endings and an indented target line; proposals carry the trimmed text.
+        std::fs::write(&path, "a\r\n    <img src=\"./old.svg\" />  \r\nb\nc").unwrap();
+
+        apply_reference_rewrite(
+            &proposal_for(
+                &path,
+                2,
+                "<img src=\"./old.svg\" />",
+                "<img src=\"./new.svg\" />",
+            ),
+            dir.path(),
+        )
+        .unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "a\r\n    <img src=\"./new.svg\" />  \r\nb\nc"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rewrite_through_a_symlink_edits_the_target_and_keeps_the_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real.ts");
+        let link = dir.path().join("link.ts");
+        std::fs::write(&real, "import './old.svg'\n").unwrap();
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        apply_reference_rewrite(
+            &proposal_for(&link, 1, "import './old.svg'", "import './new.svg'"),
+            dir.path(),
+        )
+        .unwrap();
+
+        assert!(std::fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(
+            std::fs::read_to_string(&real).unwrap(),
+            "import './new.svg'\n"
+        );
     }
 }

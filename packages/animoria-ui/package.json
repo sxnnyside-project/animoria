@@ -1,6 +1,6 @@
 {
   "name": "@animoria/ui",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "private": true,
   "description": "Animoria's shared product UI: Lit components that render a WorkspaceAnalysis and emit host intent. No host APIs, no governance decisions.",
   "type": "module",
@@ -27,14 +27,14 @@
   },
   "dependencies": {
     "@animoria/contracts": "workspace:*",
-    "@rive-app/canvas": "^2.44.0",
+    "@rive-app/canvas": "^2.45.0",
     "lit": "^3.3.3",
     "lottie-web": "5.13.0"
   },
   "devDependencies": {
-    "@types/node": "^26.5.1",
+    "@types/node": "^26.6.5",
     "typescript": "^5.9.3",
-    "vite": "^8.3.0",
+    "vite": "^8.3.4",
     "vitest": "^4.1.10"
   }
 }

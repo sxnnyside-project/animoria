@@ -78,7 +78,7 @@ class AnimoriaActionHost(
         runInBackground("Animoria: running governance") {
             // `runGovernance` is not a protocol method either. `analyze` is the one
             // that completes the analysis and emits `analysis-completed`.
-            processManager.sendCommand("analyze")
+            processManager.sendCommand("analyze", timeoutMs = CoreProcessManager.ANALYZE_TIMEOUT_MS)
             ApplicationManager.getApplication().invokeLater { GovernanceReportEditor.open(project) }
         }
     }

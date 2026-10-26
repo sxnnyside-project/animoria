@@ -7,11 +7,40 @@ use std::path::PathBuf;
 use super::patterns::{
     asset_matches_dynamic_pattern, asset_matches_path_token, extract_dynamic_patterns,
     extract_path_token, extract_quoted_tokens, is_line_comment_or_url, is_source_file_extension,
-    is_valid_exact_filename_reference, is_valid_stem_reference,
+    is_valid_exact_filename_reference, is_valid_stem_reference, lua_long_comment,
 };
 use crate::contracts::asset::Asset;
 use crate::contracts::usage::UsageReference;
 use crate::scanner::ignore_rules::IgnoreRules;
+
+/// Unity scenes and prefabs can be saved as binary, which this tracer cannot search.
+const UNITY_SERIALIZED_EXTENSIONS: &[&str] =
+    &["unity", "prefab", "asset", "mat", "anim", "controller"];
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PatternKind {
+    Filename,
+    Stem,
+    /// Unity references assets by the `guid:` stored in `<asset>.meta`, never by path.
+    Guid,
+}
+
+/// iOS asset catalogs reference an image by its `.imageset` folder name, not its file name.
+fn imageset_name(asset_path: &str) -> Option<String> {
+    let parent = std::path::Path::new(asset_path)
+        .parent()?
+        .file_name()?
+        .to_str()?;
+    parent.strip_suffix(".imageset").map(str::to_string)
+}
+
+fn read_unity_guid(asset_path: &str) -> Option<String> {
+    let meta = fs::read_to_string(format!("{asset_path}.meta")).ok()?;
+    meta.lines()
+        .find_map(|l| l.trim().strip_prefix("guid:"))
+        .map(|g| g.trim().to_string())
+        .filter(|g| g.len() == 32 && g.bytes().all(|b| b.is_ascii_hexdigit()))
+}
 
 /// Finds where workspace assets are actually used, across every source
 /// syntax `patterns::SOURCE_EXTENSIONS` covers, in one parallel pass.
@@ -60,7 +89,13 @@ impl AssetReferenceDetector {
         min_stem_length: Option<usize>,
         dynamic_collections: &[String],
     ) -> anyhow::Result<Self> {
-        let ignore_rules = IgnoreRules::new(custom_ignore_patterns)?;
+        let mut patterns = crate::scanner::ignore_rules::unity_generated_patterns(&root_path);
+        patterns.extend_from_slice(custom_ignore_patterns);
+        // Same file the asset scanner reads: an ignored folder is ignored as source too.
+        patterns.extend(crate::scanner::ignore_rules::read_animoriaignore(
+            &root_path,
+        ));
+        let ignore_rules = IgnoreRules::new(&patterns)?;
         Ok(Self {
             root_path,
             ignore_rules,
@@ -99,6 +134,14 @@ impl AssetReferenceDetector {
             }
             if self.ignore_rules.is_ignored(path)
                 || self.ignore_rules.is_ignored_relative(path, &self.root_path)
+            {
+                continue;
+            }
+            // An asset catalog's Contents.json lists its own images; it is not a usage.
+            if path
+                .to_string_lossy()
+                .replace('\\', "/")
+                .contains(".xcassets/")
             {
                 continue;
             }
@@ -141,17 +184,29 @@ impl AssetReferenceDetector {
 
         // Build mapping: pattern string -> (&Asset, is_exact_filename)
         let mut patterns = Vec::new();
-        let mut pattern_to_asset: Vec<(&Asset, bool)> = Vec::new();
+        let mut pattern_to_asset: Vec<(&Asset, PatternKind)> = Vec::new();
 
         for asset in assets {
             // Pattern 1: Exact filename (e.g. "hero.json", "logo.webp")
             patterns.push(asset.name.clone());
-            pattern_to_asset.push((asset, true));
+            pattern_to_asset.push((asset, PatternKind::Filename));
 
             // Pattern 2: Stem (e.g. "hero", "logo") if stem length >= min_stem_length
             if asset.stem.len() >= self.min_stem_length && asset.stem != asset.name {
                 patterns.push(asset.stem.clone());
-                pattern_to_asset.push((asset, false));
+                pattern_to_asset.push((asset, PatternKind::Stem));
+            }
+
+            if let Some(name) = imageset_name(&asset.path) {
+                if name.len() >= self.min_stem_length && name != asset.stem {
+                    patterns.push(name);
+                    pattern_to_asset.push((asset, PatternKind::Stem));
+                }
+            }
+
+            if let Some(guid) = read_unity_guid(&asset.path) {
+                patterns.push(guid);
+                pattern_to_asset.push((asset, PatternKind::Guid));
             }
         }
 
@@ -175,7 +230,25 @@ impl AssetReferenceDetector {
             .flat_map(|source_path| {
                 let content = match fs::read_to_string(source_path) {
                     Ok(c) => c,
-                    Err(_) => return Vec::new(),
+                    Err(e) => {
+                        // A binary-serialized Unity scene/prefab cannot be searched; say so,
+                        // otherwise its assets would silently look unreferenced.
+                        if e.kind() == std::io::ErrorKind::InvalidData
+                            && UNITY_SERIALIZED_EXTENSIONS.contains(
+                                &source_path
+                                    .extension()
+                                    .and_then(|x| x.to_str())
+                                    .unwrap_or(""),
+                            )
+                        {
+                            eprintln!(
+                                "[Tracing] Skipped '{}': not UTF-8 text (binary-serialized?), \
+                                 its asset references are not counted.",
+                                source_path.display()
+                            );
+                        }
+                        return Vec::new();
+                    }
                 };
 
                 let relative_source = source_path
@@ -192,16 +265,33 @@ impl AssetReferenceDetector {
 
                 let mut file_refs = Vec::new();
                 let mut in_block_comment = false;
+                let is_lua = matches!(syntax_type.as_str(), "lua" | "luau");
+                let mut lua_close: Option<String> = None;
 
                 for (line_idx, line) in content.lines().enumerate() {
                     let line_number = (line_idx + 1) as u32;
                     let trimmed = line.trim();
 
                     if in_block_comment {
-                        if trimmed.contains("*/") || trimmed.contains("-->") {
+                        let ended = match &lua_close {
+                            Some(close) => trimmed.contains(close.as_str()),
+                            None => trimmed.contains("*/") || trimmed.contains("-->"),
+                        };
+                        if ended {
                             in_block_comment = false;
+                            lua_close = None;
                         }
                         continue;
+                    }
+
+                    if is_lua {
+                        if let Some((open_len, close)) = lua_long_comment(trimmed) {
+                            if !trimmed[open_len..].contains(close.as_str()) {
+                                in_block_comment = true;
+                                lua_close = Some(close);
+                            }
+                            continue;
+                        }
                     }
 
                     if (trimmed.starts_with("/*") && !trimmed.contains("*/"))
@@ -212,11 +302,12 @@ impl AssetReferenceDetector {
                     }
 
                     // Skip comment lines
-                    if is_line_comment_or_url(line) {
+                    if is_line_comment_or_url(line, &syntax_type) {
                         continue;
                     }
 
                     let mut matched_assets_on_line = std::collections::HashSet::new();
+                    let line_lower = line.to_lowercase();
 
                     let path_tokens_on_line: Vec<&str> = extract_quoted_tokens(line)
                         .into_iter()
@@ -226,9 +317,11 @@ impl AssetReferenceDetector {
                     // Aho-Corasick linear scan on line
                     for mat in ac.find_overlapping_iter(line) {
                         let pat_idx = mat.pattern().as_usize();
-                        let (asset, is_exact_filename) = pattern_to_asset[pat_idx];
+                        let (asset, kind) = pattern_to_asset[pat_idx];
 
-                        if !matched_assets_on_line.insert(asset.path.clone()) {
+                        // Marked as seen only once a pattern validates: the stem of `logo.png` matches
+                        // first, and failing its stricter check must not hide the filename match.
+                        if matched_assets_on_line.contains(&asset.path) {
                             continue;
                         }
 
@@ -258,7 +351,7 @@ impl AssetReferenceDetector {
 
                         // Multi-asset disambiguation: if the line contains explicit path specifiers with '/',
                         // the candidate asset MUST match at least one of those paths.
-                        if !path_tokens_on_line.is_empty() {
+                        if kind != PatternKind::Guid && !path_tokens_on_line.is_empty() {
                             let matches_any_path = path_tokens_on_line.iter().any(|token| {
                                 asset_matches_path_token(&asset.path, source_path, token)
                             });
@@ -268,7 +361,9 @@ impl AssetReferenceDetector {
                         }
 
                         // Disambiguation for tokens enclosing the match
-                        if let Some(token) = extract_path_token(line, match_start, mat.end()) {
+                        if let Some(token) = extract_path_token(line, match_start, mat.end())
+                            .filter(|_| kind != PatternKind::Guid)
+                        {
                             if token.contains('/')
                                 && !asset_matches_path_token(&asset.path, source_path, token)
                             {
@@ -276,30 +371,33 @@ impl AssetReferenceDetector {
                             }
                         }
 
-                        let line_lower = line.to_lowercase();
-
-                        if is_exact_filename {
-                            let filename_lower = pat.to_lowercase();
-                            if !is_valid_exact_filename_reference(&line_lower, &filename_lower) {
-                                continue;
+                        match kind {
+                            PatternKind::Filename => {
+                                let filename_lower = pat.to_lowercase();
+                                if !is_valid_exact_filename_reference(&line_lower, &filename_lower)
+                                {
+                                    continue;
+                                }
                             }
-                        } else {
-                            let stem_lower = asset.stem.to_lowercase();
-                            if !is_valid_stem_reference(&line_lower, &stem_lower) {
-                                continue;
+                            PatternKind::Stem => {
+                                if !is_valid_stem_reference(&line_lower, &pat.to_lowercase()) {
+                                    continue;
+                                }
                             }
+                            PatternKind::Guid => {}
                         }
 
                         // Documentation files (.md, .mdx) get low confidence so documentation mentions
                         // do not mask assets that are orphaned in production code
                         let confidence = if syntax_type == "md" || syntax_type == "mdx" {
                             "low"
-                        } else if is_exact_filename {
+                        } else if kind != PatternKind::Stem {
                             "high"
                         } else {
                             "medium"
                         };
 
+                        matched_assets_on_line.insert(asset.path.clone());
                         file_refs.push(UsageReference {
                             asset_id: asset.path.clone(),
                             file_path: source_path.to_string_lossy().to_string(),
@@ -519,6 +617,183 @@ mod tests {
 
         assert_eq!(refs.len(), 1);
         assert_eq!(refs[0].confidence, "low");
+    }
+
+    fn detect_in(files: &[(&str, &str)], asset_rel: &str) -> Vec<UsageReference> {
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        for (rel, body) in files {
+            let abs = root.join(rel);
+            fs::create_dir_all(abs.parent().unwrap()).unwrap();
+            fs::write(abs, body).unwrap();
+        }
+        let abs = root.join(asset_rel).to_string_lossy().to_string();
+        let name = asset_rel.rsplit('/').next().unwrap();
+        let stem = name.rsplit_once('.').unwrap().0;
+        let asset = make_test_asset(&abs, &abs, asset_rel, name, stem);
+        AssetReferenceDetector::new(root.to_path_buf(), &[])
+            .unwrap()
+            .detect_references(&[asset])
+    }
+
+    #[test]
+    fn unity_guid_in_prefab_is_a_high_confidence_reference() {
+        let guid = "0123456789abcdef0123456789abcdef";
+        let refs = detect_in(
+            &[
+                ("Assets/hero.png", "png"),
+                (
+                    "Assets/hero.png.meta",
+                    &format!("fileFormatVersion: 2\nguid: {guid}\n"),
+                ),
+                (
+                    "Assets/Hero.prefab",
+                    &format!("  m_Sprite: {{fileID: 21300000, guid: {guid}, type: 3}}\n"),
+                ),
+            ],
+            "Assets/hero.png",
+        );
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].confidence, "high");
+    }
+
+    #[test]
+    fn unity_project_ignores_library_and_flags_binary_scenes_without_failing() {
+        let guid = "fedcba9876543210fedcba9876543210";
+        let dir = tempdir().unwrap();
+        let root = dir.path();
+        for (rel, body) in [
+            (
+                "ProjectSettings/ProjectVersion.txt",
+                "m_EditorVersion: 6000",
+            ),
+            ("Assets/hero.png", "png"),
+            ("Assets/hero.png.meta", &format!("guid: {guid}\n")),
+            ("Library/Cache.prefab", &format!("guid: {guid}\n")),
+        ] {
+            let abs = root.join(rel);
+            fs::create_dir_all(abs.parent().unwrap()).unwrap();
+            fs::write(abs, body).unwrap();
+        }
+        fs::write(root.join("Assets/Binary.unity"), [0xff, 0xfe, 0x00, 0x80]).unwrap();
+        let abs = root.join("Assets/hero.png").to_string_lossy().to_string();
+        let asset = make_test_asset(&abs, &abs, "Assets/hero.png", "hero.png", "hero");
+
+        let refs = AssetReferenceDetector::new(root.to_path_buf(), &[])
+            .unwrap()
+            .detect_references(&[asset]);
+        // The only guid mention is inside generated Library/, and the binary scene is skipped.
+        assert!(refs.is_empty());
+    }
+
+    #[test]
+    fn lua_leveled_long_comments_are_skipped() {
+        let src = "--[==[\nlocal a = 'coin.png'\n]]\nlocal b = 'coin.png'\n]==]\nlocal c = 'coin.png'\n--[=[ one line 'coin.png' ]=]\nlocal d = 'coin.png'\n";
+        let refs = detect_in(
+            &[("art/coin.png", "png"), ("src/main.lua", src)],
+            "art/coin.png",
+        );
+        let lines: Vec<u32> = refs.iter().map(|r| r.line_number).collect();
+        assert_eq!(lines, vec![6, 8]);
+    }
+
+    #[test]
+    fn lua_comments_are_skipped_but_code_is_traced() {
+        let src = "-- local a = 'coin.png'\n--[[\nlocal b = 'coin.png'\n]]\nlocal c = 'coin.png'\n";
+        let refs = detect_in(
+            &[("art/coin.png", "png"), ("src/main.luau", src)],
+            "art/coin.png",
+        );
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].line_number, 5);
+    }
+
+    #[test]
+    fn bare_quoted_filename_without_a_directory_is_a_reference() {
+        let refs = detect_in(
+            &[
+                ("public/logo.png", "png"),
+                ("src/App.tsx", "<img src=\"logo.png\" />\n"),
+            ],
+            "public/logo.png",
+        );
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].confidence, "high");
+    }
+
+    #[test]
+    fn unity_resources_load_by_name_is_a_reference() {
+        let refs = detect_in(
+            &[
+                ("Assets/Resources/UI/hero.png", "png"),
+                (
+                    "Assets/Scripts/Ui.cs",
+                    "var s = Resources.Load<Sprite>(\"UI/hero\");\n",
+                ),
+            ],
+            "Assets/Resources/UI/hero.png",
+        );
+        assert_eq!(refs.len(), 1);
+    }
+
+    #[test]
+    fn single_line_css_rule_starting_with_hash_counts_as_a_reference() {
+        let refs = detect_in(
+            &[
+                ("public/hero.png", "png"),
+                (
+                    "styles/main.css",
+                    "#hero { background: url(../public/hero.png) }\n",
+                ),
+            ],
+            "public/hero.png",
+        );
+        assert_eq!(refs.len(), 1);
+    }
+
+    #[test]
+    fn animoriaignore_hides_source_files_from_reference_tracing() {
+        let files = [
+            ("public/logo.png", "png"),
+            ("generated/use.ts", "import l from '../public/logo.png';\n"),
+        ];
+        assert_eq!(detect_in(&files, "public/logo.png").len(), 1);
+
+        let mut with_ignore = files.to_vec();
+        with_ignore.push((".animoriaignore", "# generated code\ngenerated/\n"));
+        assert!(detect_in(&with_ignore, "public/logo.png").is_empty());
+    }
+
+    #[test]
+    fn ios_imageset_name_is_referenced_and_catalog_json_is_not() {
+        let refs = detect_in(
+            &[
+                ("A.xcassets/logo.imageset/logo@2x.png", "png"),
+                (
+                    "A.xcassets/logo.imageset/Contents.json",
+                    "{\"filename\": \"logo@2x.png\"}",
+                ),
+                ("App/View.swift", "Image(\"logo\")\n"),
+            ],
+            "A.xcassets/logo.imageset/logo@2x.png",
+        );
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].syntax_type, "swift");
+    }
+
+    #[test]
+    fn android_xml_drawable_reference() {
+        let refs = detect_in(
+            &[
+                ("res/drawable-hdpi/ic_logo.png", "png"),
+                (
+                    "res/layout/main.xml",
+                    "<ImageView android:src=\"@drawable/ic_logo\" />\n",
+                ),
+            ],
+            "res/drawable-hdpi/ic_logo.png",
+        );
+        assert_eq!(refs.len(), 1);
     }
 
     #[test]

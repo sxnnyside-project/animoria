@@ -1,6 +1,6 @@
 {
   "name": "animoria",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "Ultra-fast cross-IDE asset intelligence, motion analytics, and automated deduplication engine",
   "license": "MIT",
   "author": "Sxnnyside",
@@ -35,10 +35,10 @@
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
-    "@commitlint/cli": "21.2.3",
-    "@commitlint/config-conventional": "21.2.3",
+    "@commitlint/cli": "21.2.4",
+    "@commitlint/config-conventional": "21.2.4",
     "husky": "9.1.7",
-    "turbo": "2.11.7",
+    "turbo": "2.11.9",
     "typescript": "5.9.3"
   }
 }

@@ -15,7 +15,7 @@ Reference scanning is implemented in `animoria-core-rust`'s `tracing` module, bu
 
 ```mermaid
 graph TD
-    WorkspaceFiles["Source Files (26 extensions — SOURCE_EXTENSIONS)"]
+    WorkspaceFiles["Source Files (79 extensions — SOURCE_EXTENSIONS)"]
 
     subgraph TracingEngine["Tracing Subsystem"]
         Detector["AssetReferenceDetector (tracing/detector.rs)"]
@@ -57,18 +57,22 @@ Ingested & hashed Asset list
 ## 4. Core Implementation
 
 ### Supported Source Extensions
-`SOURCE_EXTENSIONS` in [`src/tracing/patterns.rs`](../../packages/animoria-core-rust/src/tracing/patterns.rs) lists exactly 26 extensions (counted directly from the array):
+`SOURCE_EXTENSIONS` in [`src/tracing/patterns.rs`](../../packages/animoria-core-rust/src/tracing/patterns.rs) lists exactly 79 extensions (counted directly from the array):
 
 ```rust
 pub const SOURCE_EXTENSIONS: &[&str] = &[
-    "ts", "tsx", "js", "jsx", "mjs", "cjs", "vue", "svelte", "astro", "kt", "kts", "java", "swift",
-    "dart", "html", "htm", "css", "scss", "sass", "less", "md", "mdx", "json", "xml", "yml",
-    "yaml",
+    "ts", "tsx", "js", "jsx", "mjs", "cjs", "vue", "svelte", "astro", "kt", "kts", "java",
+    "swift", "dart", "html", "htm", "css", "scss", "sass", "less", "md", "mdx", "json", "xml",
+    "yml", "yaml", "php", "phtml", "blade", "twig", "erb", "liquid", "njk", "nunjucks", "ejs",
+    "hbs", "handlebars", "mustache", "jinja", "jinja2", "j2", "heex", "eex", "leex", "htmx",
+    "gohtml", "gotmpl", "razor", "cshtml", "vbhtml", "py", "rb", "rs", "go", "c", "cpp", "h",
+    "hpp", "cs", "toml", "gd", "tscn", "tres", "gdshader", "godot", "prefab", "unity", "mat",
+    "asset", "anim", "controller", "uxml", "uss", "storyboard", "xib", "m", "mm", "luau", "lua",
 ];
 ```
 
 ### Two-Tier Confidence Model
-For every asset, the detector registers up to two Aho-Corasick patterns (`AssetReferenceDetector::detect_references`):
+For every asset, the detector registers up to three kinds of Aho-Corasick patterns (the third, a Unity GUID, is described below the table) (`AssetReferenceDetector::detect_references`):
 
 | Pattern | Confidence | Criteria |
 |---|---|---|
@@ -77,11 +81,18 @@ For every asset, the detector registers up to two Aho-Corasick patterns (`AssetR
 
 `is_valid_stem_reference` recognizes syntaxes actually seen referencing assets by stem: Android `R.raw.<stem>`, native `setAnimation("stem")`, React/React Native `require('.../stem')` / `source={...}`, Flutter's `Lottie.`/`LottieBuilder.` APIs, iOS/SwiftUI `LottieAnimationView`/`AnimationView`/`LottieAnimation.named`, and bare path-like references (`./stem`, `../stem`, `/stem.`, or a quoted `stem.json`).
 
+**Engine-native references.** Besides filenames and stems, the detector understands how game engines and mobile platforms point at assets:
+- **Unity**: a third pattern, the 32-hex `guid:` read from `<asset>.meta`, matches `{fileID: ..., guid: ...}` in `.prefab`, `.unity`, `.mat`, `.asset`, `.anim`, and `.controller` files (always `"high"`, no path needed). `Resources.Load("UI/hero")` resolves to `UI/hero.png` without the extension. Serialized scenes that are not UTF-8 text are reported on standard error and skipped.
+- **Godot**: `res://` is the project root, so `res://assets/icon.png` is matched as a workspace-relative path in `.gd`, `.tscn`, `.tres`, `.gdshader`, and `project.godot`.
+- **Android**: `R.drawable.x`, `R.mipmap.x`, `R.raw.x`, and XML `@drawable/x` / `@mipmap/x` / `@raw/x` match by stem and resource folder.
+- **iOS**: `Image("x")`, `UIImage(named: "x")`, and `#imageLiteral(resourceName: "x")` match by quoted stem; an image inside `x.imageset/` is referenced by the folder name `x`. Files under `*.xcassets/` (their `Contents.json`) are never treated as usages.
+- **Roblox / Rojo**: `.lua`/`.luau` sources, with `:WaitForChild("x")` and `:FindFirstChild("x")` counted as stem references.
+
 ### Negative Filters
 Within `detect_references`, a raw pattern match is still discarded if:
 - The source file *is* the asset itself (an asset cannot reference itself).
 - The match is immediately preceded by `http://`, `https://`, or `//cdn.` on the line (remote URLs, not local references).
-- The line is a comment (`is_line_comment_or_url`: starts with `//`, `#`, `/*`, `*`, or `<!--`) — comment lines are skipped entirely before matching.
+- The line is a comment (`is_line_comment_or_url(line, ext)`: starts with `//`, `/*`, or `<!--` in any language, `#` only in Python, Ruby, TOML, YAML, GDScript, and shell files — in CSS `#hero { ... }` is a selector — and `--` only in Lua/Luau; `--[[ ... ]]` blocks of any `=` level are skipped too) — comment lines are skipped entirely before matching.
 
 ### Performance Model
 `AssetReferenceDetector` builds **one** `AhoCorasickBuilder` automaton (case-insensitive, `MatchKind::Standard`) covering every asset's patterns, then scans every source file exactly once in parallel via `rayon`'s `par_iter`. This is deliberately O(files) rather than O(files × assets) — the doc comment on `AssetReferenceDetector` in `detector.rs` notes this is the difference between sub-second and multi-second scans on workspaces with hundreds of assets and thousands of source files.
@@ -127,7 +138,7 @@ This has been confirmed across the whole module: `packages/animoria-core-rust/sr
 
 ## 10. Tests & Fixtures
 
-Neither `tracing/` nor `governance/` contains any `#[test]` or `#[cfg(test)]` unit tests — all coverage for reference detection is via integration tests. `packages/animoria-core-rust/tests/golden_corpus_parity_test.rs` exercises both fixture workspaces `fixtures/reference-formats/` (positive cases per syntax: HTML `src`/`srcset`, CSS `url()`, SCSS `@import`, Vue template/style, Svelte attribute, Astro attribute, MDX/Markdown import and image/link, code import, query-suffix and fragment-suffix variants — plus explicit false-positive fixtures like `fp-external-url.json`, `fp-data-uri.json`, `fp-protocol-relative.json`, `fp-prose.json`, `fp-variable-name.json`, `fp-json-string.json`, `fp-wrong-extension.json`, `fp-outside-workspace.json`) and `fixtures/reference-edge-cases/` (assets referenced only from TS, CSS, Markdown, HTML, inline code, JSON data, or only from a comment — the last one exercising the comment-skip behavior in section 3). No dedicated fixtures directory exists purely for governance rules beyond `fixtures/mixed-governance/` (covered in the governance guide).
+`tracing/` and `governance/` carry in-file `#[cfg(test)]` unit tests (including per-engine cases for Godot, Unity, Android, iOS, and Luau), in addition to the integration tests. `packages/animoria-core-rust/tests/golden_corpus_parity_test.rs` exercises both fixture workspaces `fixtures/reference-formats/` (positive cases per syntax: HTML `src`/`srcset`, CSS `url()`, SCSS `@import`, Vue template/style, Svelte attribute, Astro attribute, MDX/Markdown import and image/link, code import, query-suffix and fragment-suffix variants — plus explicit false-positive fixtures like `fp-external-url.json`, `fp-data-uri.json`, `fp-protocol-relative.json`, `fp-prose.json`, `fp-variable-name.json`, `fp-json-string.json`, `fp-wrong-extension.json`, `fp-outside-workspace.json`) and `fixtures/reference-edge-cases/` (assets referenced only from TS, CSS, Markdown, HTML, inline code, JSON data, or only from a comment — the last one exercising the comment-skip behavior in section 3). No dedicated fixtures directory exists purely for governance rules beyond `fixtures/mixed-governance/` (covered in the governance guide).
 
 ## 11. Extension Points
 

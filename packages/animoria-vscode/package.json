@@ -2,7 +2,7 @@
   "name": "animoria-vscode",
   "displayName": "Animoria",
   "description": "Visual Asset Governance for developers — discover, preview, trace, and clean up animated (Lottie, dotLottie, Rive, GIF, APNG, SVG) and static (SVG, PNG, JPEG, WebP, AVIF) assets directly inside VS Code.",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "publisher": "SxnnysideProject",
   "author": {
     "name": "Sxnnyside Project",
@@ -380,13 +380,13 @@
     "@animoria/ui": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.5.1",
+    "@types/node": "^26.6.5",
     "@types/vscode": "^1.85.0",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^4.0.0",
     "lottie-web": "5.13.0",
     "typescript": "^5.9.3",
-    "vite": "^8.3.0",
+    "vite": "^8.3.4",
     "vitest": "^4.1.10"
   }
 }

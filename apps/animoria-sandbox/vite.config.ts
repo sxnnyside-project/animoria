@@ -169,8 +169,19 @@ export default defineConfig({
           if (url.pathname === '/api/lottie-document') {
             try {
               await ready;
-              const assetPath = url.searchParams.get('assetPath') ?? '';
-              const document = await daemon.request('getLottieDocument', { assetPath });
+              const requested = url.searchParams.get('assetPath') ?? '';
+              // Same containment `/api/file` applies, so the daemon is never handed a path
+              // outside the fixture workspace.
+              const assetPath = resolveWithinRoot(workspacePath, requested);
+              if (!assetPath) {
+                res.statusCode = 403;
+                res.end(JSON.stringify({ error: 'Path is outside the fixture workspace.' }));
+                return;
+              }
+              const document = await daemon.request('getLottieDocument', {
+                assetPath,
+                workspace_path: workspacePath,
+              });
               res.setHeader('Content-Type', 'application/json');
               res.end(JSON.stringify(document));
             } catch (err) {

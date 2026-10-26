@@ -135,7 +135,7 @@ A file that matches a visual extension but fails structural validation is **not 
 
 ## 8. Sandbox
 
-The sandbox's fixture data does not cover all 11 `AssetFormat` variants. The repo-root `fixtures/` directory (used by the sandbox's fake daemon and the Rust golden-corpus tests alike) contains only `.gif`, `.svg`, and `.json` (a candidate Lottie file) among the 11 formats, alongside unrelated non-asset extensions (`.astro`, `.css`, `.html`, `.md`, `.mdx`, `.scss`, `.svelte`, `.ts`, `.vue`, `.gitkeep`). `dot-lottie`, `rive`, `apng`, `animated-svg`, `png`, `jpeg`, `webp`, and `avif` have no fixture representation anywhere in the repo's `fixtures/` tree.
+The sandbox's fixture data does not cover all 19 `AssetFormat` variants. The repo-root `fixtures/` directory (used by the sandbox's fake daemon and the Rust golden-corpus tests alike) contains only `.gif`, `.svg`, and `.json` (a candidate Lottie file) among the 19 formats, alongside unrelated non-asset extensions (`.astro`, `.css`, `.html`, `.md`, `.mdx`, `.scss`, `.svelte`, `.ts`, `.vue`, `.gitkeep`). `dot-lottie`, `rive`, `apng`, `animated-svg`, `png`, `jpeg`, `webp`, and `avif` have no fixture representation anywhere in the repo's `fixtures/` tree.
 
 ## 9. Contracts & Types
 

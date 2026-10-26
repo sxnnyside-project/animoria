@@ -99,13 +99,14 @@ restore_session(workspace_root, session_id)
 
 `TrashManager::stage_to_trash(asset_id, file_path)`:
 - Resolves and canonicalizes `file_path`, then calls `require_within_workspace` to reject any path that resolves outside the workspace root (`fs::canonicalize` + `starts_with` check) — this containment check was added recently and now guards every caller of both `stage_to_trash` and `restore_from_trash`, whether the path came from a CLI argument or a daemon NDJSON message.
-- Creates `.animoria/trash/session_<epoch_ms>/` and moves the file into it with `fs::rename`.
+- Creates `.animoria/trash/session_<epoch_ms>/` and moves the file into it with `fs::rename`. Engine sidecars travel with the asset: an existing `<file>.meta` (Unity GUID) or `<file>.import` (Godot uid) is moved next to it in the trash.
 - Returns a `TrashItem { asset_id, original_path, trashed_path, trashed_at_ms }`.
 
 `TrashManager::restore_from_trash(item)`:
 - Verifies the trashed copy (`item.trashed_path`) is still within the workspace.
 - Verifies the *restore destination* (`item.original_path`) also resolves within the workspace — necessary because `TrashItem` is data a caller supplies (e.g. from the session journal or a daemon request), not something the manager itself derived; skipping this check would let a tampered or cross-workspace `TrashItem` become an arbitrary write outside the workspace.
-- Creates the destination's parent directories if needed, then `fs::rename`s the file back.
+- Requires the trashed copy to be inside `.animoria/trash/`, rejects a destination containing `..`, and refuses to overwrite a file that already exists there. All of that is checked before any directory is created.
+- Then creates the destination's parent directories if needed and `fs::rename`s the file back, restoring its `.meta`/`.import` sidecars when the destination has none.
 
 ### Session Journal (`daemon/cleanup.rs`)
 
@@ -119,7 +120,7 @@ pub struct SessionManifest {
 }
 ```
 
-`record_trash_session` reads the existing journal, appends the new session, and rewrites the whole file with `serde_json::to_string_pretty`. `restore_session` reads it, finds the session by id, restores every item, then removes that session and rewrites the file again. There is no locking around this read-modify-write cycle — concurrent cleanup/restore calls against the same workspace could race.
+`record_trash_session` reads the existing journal, appends the new session, and rewrites the whole file with `serde_json::to_string_pretty` through `remediation::write_atomic` (temp file plus rename), so an interrupted write cannot truncate the journal; a failed write is reported to the caller. `restore_session` reads it, finds the session by id, restores every item, then removes that session and rewrites the file again. There is no locking around this read-modify-write cycle — concurrent cleanup/restore calls against the same workspace could race.
 
 No explicit locking or transaction guard exists around the `sessions.json` read-modify-write cycle, and none is needed: the daemon's main loop in `daemon/server.rs`'s `run()` reads NDJSON requests from stdin one line at a time, synchronously, on a single thread, and only writes the response for a given request before reading the next line. This makes every daemon method — including `record_trash_session`'s `read_sessions` → mutate → `write_sessions` sequence in `daemon/cleanup.rs` — inherently serialized within one daemon process: two `sessions.json` read-modify-write cycles can never interleave because there is never more than one request being handled at a time. The only remaining exposure is a second daemon process (or an external editor) writing `sessions.json` concurrently, which nothing in this code guards against today.
 
@@ -186,7 +187,7 @@ pub struct SessionManifest {
 | **Partial cleanup plan with refusals, no opt-in** | One or more requested asset paths are not currently proposed for cleanup | `apply_cleanup_plan` returns `status: "failed"` with an error message naming the refusal count; nothing is staged. |
 | **Path outside workspace root** | A file path resolves (after canonicalization) outside the workspace root, for either staging or restoring | `TrashManager` returns an error via `require_within_workspace`; the operation aborts for that item. |
 | **Unknown trash session id** | `restoreTrashSession`/`animoria restore --session <id>` given an id not in `sessions.json` | Returns an error string naming the missing session id; the journal is left untouched. |
-| **Journal file missing or corrupt** | No prior cleanup ever ran, or `sessions.json` was hand-edited into invalid JSON | `read_sessions` treats both as "no sessions" (`Vec::new()`) rather than erroring. |
+| **Journal file missing or corrupt** | No prior cleanup ever ran, or `sessions.json` was hand-edited into invalid JSON | `read_sessions` treats both as "no sessions" (`Vec::new()`) rather than erroring; an unparsable journal is first renamed to `sessions.json.corrupt` so the next write cannot overwrite it. |
 
 ## 9. Common Maintenance Tasks
 

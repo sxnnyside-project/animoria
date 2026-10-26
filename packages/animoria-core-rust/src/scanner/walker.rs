@@ -14,19 +14,9 @@ pub struct WorkspaceScanner {
 
 impl WorkspaceScanner {
     pub fn new(root_path: PathBuf, custom_ignore_patterns: &[String]) -> anyhow::Result<Self> {
-        // Look for .animoriaignore in root
-        let mut patterns = custom_ignore_patterns.to_vec();
-        let animoria_ignore_path = root_path.join(".animoriaignore");
-        if animoria_ignore_path.is_file() {
-            if let Ok(content) = std::fs::read_to_string(&animoria_ignore_path) {
-                for line in content.lines() {
-                    let trimmed = line.trim();
-                    if !trimmed.is_empty() && !trimmed.starts_with('#') {
-                        patterns.push(trimmed.to_string());
-                    }
-                }
-            }
-        }
+        let mut patterns = super::ignore_rules::unity_generated_patterns(&root_path);
+        patterns.extend_from_slice(custom_ignore_patterns);
+        patterns.extend(super::ignore_rules::read_animoriaignore(&root_path));
 
         let ignore_rules = IgnoreRules::new(&patterns)?;
         Ok(Self {

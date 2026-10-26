@@ -25,7 +25,7 @@ graph TD
     subgraph RulesEngineSubsystem["2. Rules Evaluation"]
         Context["AnalysisContext (context.rs)"]
         Engine["GovernanceEngine (engine.rs)"]
-        Rules["5 built-in Rule impls (rules/*.rs)"]
+        Rules["8 built-in Rule impls (rules/*.rs)"]
     end
 
     subgraph ScoringReport["3. Health Score"]
@@ -58,7 +58,7 @@ Governance evaluation runs as the last stage of every `AssetIndex::scan_workspac
 Ingested Assets + Duplicate Groups + Usage References
 → GovernancePolicy::load_from_workspace(root)          — read .animoriarc.json / .animoriarc, or defaults
 → AnalysisContext::new(...)                              — bundle assets/refs/dupes/policy, precompute referenced-id set
-→ GovernanceEngine::new().evaluate(ctx)                  — run all 5 rules, aggregate diagnostics
+→ GovernanceEngine::new().evaluate(ctx)                  — run all 8 rules, aggregate diagnostics
 → Penalty-based health score calculation (0–100, clamped)
 → Letter grade derived from score (A/B/C/D/F)
 → RuleDiagnostic[] + HealthScoreReport attached to WorkspaceAnalysis
@@ -88,7 +88,7 @@ Each rule's config value in `.animoriarc.json` can be a bool, a string (`"off"`/
 
 ### Built-in Governance Rules
 
-There are exactly **5** built-in rules, registered in `GovernanceEngine::new()`:
+There are exactly **8** built-in rules, registered in `GovernanceEngine::new()`:
 
 | Rule Identifier | File | Severity | Description & Default Behavior |
 |---|---|---|---|
@@ -97,6 +97,9 @@ There are exactly **5** built-in rules, registered in `GovernanceEngine::new()`:
 | `max-file-size-kb` | [`rules/max_file_size.rs`](../../packages/animoria-core-rust/src/governance/rules/max_file_size.rs) | Warning | Flags assets whose `size_bytes` exceeds the configured KB threshold (`max_kb * 1024`). Default threshold: 512 KB. |
 | `allowed-formats` | [`rules/allowed_formats.rs`](../../packages/animoria-core-rust/src/governance/rules/allowed_formats.rs) | Error | Flags any asset whose `format` is not in the configured allow-list. Disabled (no restriction) unless `allowed_formats` is set. |
 | `no-gif` | [`rules/allowed_formats.rs`](../../packages/animoria-core-rust/src/governance/rules/allowed_formats.rs) | Warning | Flags every `AssetFormat::Gif` asset. Disabled by default (`no_gif: false`). |
+| `max-dimensions` | [`rules/max_dimensions.rs`](../../packages/animoria-core-rust/src/governance/rules/max_dimensions.rs) | Warning | Flags images wider or taller than the configured `maxWidth`/`maxHeight`. Disabled unless configured. |
+| `naming-convention` | [`rules/naming_convention.rs`](../../packages/animoria-core-rust/src/governance/rules/naming_convention.rs) | Warning | Flags file names that break the configured casing (`kebab-case`, `snake_case`, `camelCase`, `PascalCase`, `lowercase`) or custom `pattern` regex; density suffixes (`@2x`) are stripped first. Disabled unless configured. |
+| `svg-sanitization` | [`rules/svg_sanitization.rs`](../../packages/animoria-core-rust/src/governance/rules/svg_sanitization.rs) | Error | Flags SVGs with `<script>`, `<!ENTITY`, `javascript:` URIs, `<foreignObject>`, `<iframe>`, `<embed>`, or inline event handlers. Disabled unless configured. |
 
 `allowed-formats` and `no-gif` are two separate `Rule` implementations (`AllowedFormatsRule`, `NoGifRule`) that both live in the same `allowed_formats.rs` file.
 
@@ -166,7 +169,7 @@ The `"exportReport" =>` handler in `server.rs` reads `workspace_path` (or `works
 
 ## 8. Sandbox
 
-`fixtures/mixed-governance/` is the sandbox/test fixture for governance, but it does not exercise all 5 built-in rules. Its `.animoriarc.json` only configures `no-gif` (warning), `max-file-size-kb` (error, 4 KB threshold), and `no-unreferenced-assets` (error); its assets are `ok.json` (referenced, compliant), `oversized.json` (exceeds 4 KB), `legacy.gif` (triggers `no-gif`), and `forgotten.json` (not imported by `src/app.ts`, triggers `no-unreferenced-assets`). There is no duplicate pair in the fixture, so `no-duplicate-content` never fires, and `allowed_formats` is not restricted in the config, so `allowed-formats` never fires either — only 3 of the 5 rules are actually exercised by this fixture.
+`fixtures/mixed-governance/` is the sandbox/test fixture for governance, but it does not exercise all 8 built-in rules. Its `.animoriarc.json` only configures `no-gif` (warning), `max-file-size-kb` (error, 4 KB threshold), and `no-unreferenced-assets` (error); its assets are `ok.json` (referenced, compliant), `oversized.json` (exceeds 4 KB), `legacy.gif` (triggers `no-gif`), and `forgotten.json` (not imported by `src/app.ts`, triggers `no-unreferenced-assets`). There is no duplicate pair in the fixture, so `no-duplicate-content` never fires, and `allowed_formats` is not restricted in the config, so `allowed-formats` never fires either — only 3 of the 5 rules are actually exercised by this fixture.
 
 ## 9. Contracts & Types
 
@@ -246,7 +249,7 @@ echo $?
 | Engine | [`packages/animoria-core-rust/src/governance/rule.rs`](../../packages/animoria-core-rust/src/governance/rule.rs) | `Rule` trait definition |
 | Engine | [`packages/animoria-core-rust/src/governance/context.rs`](../../packages/animoria-core-rust/src/governance/context.rs) | `AnalysisContext` — bundled evaluation inputs |
 | Engine | [`packages/animoria-core-rust/src/governance/policy.rs`](../../packages/animoria-core-rust/src/governance/policy.rs) | `.animoriarc.json` policy loading and defaults |
-| Engine | [`packages/animoria-core-rust/src/governance/rules/`](../../packages/animoria-core-rust/src/governance/rules) | The 5 built-in rule implementations |
+| Engine | [`packages/animoria-core-rust/src/governance/rules/`](../../packages/animoria-core-rust/src/governance/rules) | The 8 built-in rule implementations |
 | CLI | [`packages/animoria-core-rust/src/cli/commands/check.rs`](../../packages/animoria-core-rust/src/cli/commands/check.rs) | `animoria check` CI gate command |
 
 ## 15. Verification Checklist

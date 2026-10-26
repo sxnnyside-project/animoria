@@ -20,6 +20,32 @@ pub const DEFAULT_EXCLUDE_DIRS: &[&str] = &[
     "doc",
 ];
 
+/// Unity regenerates `Library/` and `Temp/` (imported copies of every asset), so in a Unity
+/// project (marked by `ProjectSettings/`) they are never real assets or real usages.
+/// Root-anchored (leading `/`) and listed before user patterns, so `!/Library/Keep/` in
+/// `.animoriarc.json` `files.ignore` or `.animoriaignore` can re-include something.
+pub fn unity_generated_patterns(root: &Path) -> Vec<String> {
+    if root.join("ProjectSettings").is_dir() {
+        vec!["/Library/".to_string(), "/Temp/".to_string()]
+    } else {
+        Vec::new()
+    }
+}
+
+/// Patterns from `<root>/.animoriaignore` (blank lines and `#` comments dropped).
+pub fn read_animoriaignore(root: &Path) -> Vec<String> {
+    std::fs::read_to_string(root.join(".animoriaignore"))
+        .map(|content| {
+            content
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty() && !l.starts_with('#'))
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 struct Rule {
     matcher: GlobMatcher,
     negate: bool,
@@ -75,8 +101,22 @@ impl IgnoreRules {
                 continue;
             }
 
+            // gitignore semantics: a leading `/` anchors the pattern to the workspace root.
+            let (anchored, pattern) = match pattern.strip_prefix('/') {
+                Some(rest) => (true, rest),
+                None => (false, pattern),
+            };
             let is_dir = pattern.ends_with('/');
             let clean = pattern.trim_end_matches('/');
+
+            if anchored {
+                push_rule(&mut rules, clean, negate)?;
+                push_rule(&mut rules, &format!("{clean}/**"), negate)?;
+                // Absolute paths (`/Users/me/proj/dist/`) must keep matching as they always did.
+                push_rule(&mut rules, &format!("/{clean}"), negate)?;
+                push_rule(&mut rules, &format!("/{clean}/**"), negate)?;
+                continue;
+            }
 
             if is_dir {
                 push_rule(&mut rules, clean, negate)?;
@@ -199,5 +239,39 @@ mod tests {
 
         let unignored_rules = IgnoreRules::new(&["!docs/**".to_string()]).unwrap();
         assert!(!unignored_rules.is_ignored(&PathBuf::from("docs/screenshots/preview.png")));
+    }
+
+    #[test]
+    fn absolute_ignore_patterns_still_match_absolute_paths() {
+        let rules = IgnoreRules::new(&["/work/proj/dist/".to_string()]).unwrap();
+        assert!(rules.is_ignored(Path::new("/work/proj/dist/a.png")));
+        assert!(!rules.is_ignored(Path::new("/work/proj/src/a.png")));
+    }
+
+    #[test]
+    fn unity_generated_dirs_are_root_anchored_and_overridable() {
+        let plain = tempfile::tempdir().unwrap();
+        assert!(unity_generated_patterns(plain.path()).is_empty());
+
+        let unity = tempfile::tempdir().unwrap();
+        let root = unity.path();
+        std::fs::create_dir(root.join("ProjectSettings")).unwrap();
+        let ignored =
+            |rules: &IgnoreRules, rel: &str| rules.is_ignored_relative(&root.join(rel), root);
+
+        let defaults = IgnoreRules::new(&unity_generated_patterns(root)).unwrap();
+        assert!(ignored(&defaults, "Library/a.png"));
+        assert!(ignored(&defaults, "Library/PackageCache/x/b.png"));
+        assert!(ignored(&defaults, "Temp/c.png"));
+        assert!(!ignored(&defaults, "Assets/a.png"));
+        assert!(!ignored(&defaults, "Assets/UI/Library/icon.png"));
+        assert!(!ignored(&defaults, "Assets/Temp/d.png"));
+
+        // `.animoriarc.json` -> files.ignore is appended after the defaults, so it wins.
+        let mut patterns = unity_generated_patterns(root);
+        patterns.push("!/Library/Keep/".to_string());
+        let overridden = IgnoreRules::new(&patterns).unwrap();
+        assert!(ignored(&overridden, "Library/other.png"));
+        assert!(!ignored(&overridden, "Library/Keep/e.png"));
     }
 }

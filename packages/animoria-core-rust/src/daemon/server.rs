@@ -185,6 +185,12 @@ impl DaemonServer {
     /// `.animoria/trash/sessions.json` outlives any one process. Prefers an
     /// explicit path; falls back to `resolve_root`'s single-scanned-root
     /// case only when no path was given.
+    /// Canonical path of a workspace this daemon has scanned. File-moving methods are
+    /// confined to these roots, so a client cannot widen the boundary by naming `/`.
+    fn scanned_root_dir(&self, explicit: Option<&str>) -> Option<String> {
+        self.resolve_root(explicit).map(|(root, _)| root.clone())
+    }
+
     fn resolve_workspace_dir(&self, explicit: Option<&str>) -> Option<PathBuf> {
         if let Some(ws) = explicit {
             return Some(std::fs::canonicalize(ws).unwrap_or_else(|_| PathBuf::from(ws)));
@@ -702,16 +708,34 @@ impl DaemonServer {
             }
 
             "getLottieDocument" => {
+                let workspace_path = req
+                    .params
+                    .get("workspace_path")
+                    .or_else(|| req.params.get("workspacePath"))
+                    .and_then(|v| v.as_str());
                 let asset_path = req
                     .params
                     .get("assetPath")
                     .and_then(|v| v.as_str())
                     .unwrap_or_default();
+                // Only indexed assets are readable, never an arbitrary path from the client.
+                // Without a workspace_path any scanned root may own the asset (multi-root IDEs).
+                let owns_asset =
+                    |index: &AssetIndex| index.assets().iter().any(|a| a.path == asset_path);
+                let is_indexed_asset = match workspace_path {
+                    Some(_) => self
+                        .resolve_root(workspace_path)
+                        .is_some_and(|(_, index)| owns_asset(index)),
+                    None => self.indices.values().any(owns_asset),
+                };
 
                 let resp = DaemonResponse {
                     protocol: PROTOCOL_VERSION,
                     id: req.id,
-                    result: match preview::read_lottie_document(asset_path) {
+                    result: match is_indexed_asset
+                        .then(|| preview::read_lottie_document(asset_path))
+                        .flatten()
+                    {
                         Some(doc) => serde_json::to_value(serde_json::json!({
                             "animation": doc.animation,
                             "totalFrames": doc.total_frames,
@@ -782,8 +806,11 @@ impl DaemonServer {
                     .params
                     .get("workspace_path")
                     .or_else(|| req.params.get("workspacePath"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(".");
+                    .and_then(|v| v.as_str());
+                let Some(ws_root) = self.scanned_root_dir(ws_root) else {
+                    return (unscanned_workspace_error(req.id), false);
+                };
+                let ws_root = ws_root.as_str();
                 let asset_id = req
                     .params
                     .get("asset_id")
@@ -835,8 +862,15 @@ impl DaemonServer {
                     .params
                     .get("workspace_path")
                     .or_else(|| req.params.get("workspacePath"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(".");
+                    .and_then(|v| v.as_str());
+                // Restoring only moves a file from this workspace's own trash back into it
+                // (TrashManager enforces both ends), so it must work before the first scan,
+                // for example right after the daemon restarted.
+                let Some(ws_root) = self.resolve_workspace_dir(ws_root) else {
+                    return (no_workspace_error(req.id), false);
+                };
+                let ws_root = ws_root.to_string_lossy().to_string();
+                let ws_root = ws_root.as_str();
                 let item_val = req
                     .params
                     .get("trash_item")
@@ -897,12 +931,24 @@ impl DaemonServer {
                     .get("proposal")
                     .cloned()
                     .unwrap_or(serde_json::Value::Null);
-                let workspace_dir = self.resolve_workspace_dir(
+                // Only a scanned workspace, and only a line the scan actually traced: the
+                // original/proposed text comes from the client, so it cannot be trusted alone.
+                let scanned = self.resolve_root(
                     req.params
                         .get("workspace_path")
                         .or_else(|| req.params.get("workspacePath"))
                         .and_then(|v| v.as_str()),
                 );
+                let workspace_dir = scanned.map(|(root, _)| PathBuf::from(root));
+                let traced = |p: &crate::contracts::remediation::ReferenceRewriteProposal| {
+                    scanned.is_some_and(|(_, index)| {
+                        index.references().iter().any(|r| {
+                            r.file_path == p.file_path
+                                && r.line_number == p.line_number
+                                && r.line_content == p.original_line.trim()
+                        })
+                    })
+                };
 
                 match (
                     serde_json::from_value::<crate::contracts::remediation::ReferenceRewriteProposal>(
@@ -911,8 +957,12 @@ impl DaemonServer {
                     workspace_dir,
                 ) {
                     (Ok(proposal), Some(workspace_dir)) => {
-                        match crate::remediation::apply_reference_rewrite(&proposal, &workspace_dir)
-                        {
+                        let result = if traced(&proposal) {
+                            crate::remediation::apply_reference_rewrite(&proposal, &workspace_dir)
+                        } else {
+                            Err("refusing to rewrite a line the last scan did not trace".to_string())
+                        };
+                        match result {
                             Ok(()) => (
                                 DaemonResponse {
                                     protocol: PROTOCOL_VERSION,
@@ -957,7 +1007,7 @@ impl DaemonServer {
                             result: None,
                             error: Some(DaemonErrorPayload {
                                 code: "invalid-params".to_string(),
-                                message: "Could not resolve a workspace to apply this rewrite in."
+                                message: "The workspace is not a scanned root of this daemon; scan it first."
                                     .to_string(),
                                 detail: None,
                             }),
@@ -1505,6 +1555,20 @@ impl DaemonServer {
 /// The error returned when a method needs a scanned workspace and either
 /// none was given (with more than one root scanned, ambiguous) or the given
 /// path was never scanned — never silently guessed.
+fn unscanned_workspace_error(id: String) -> DaemonResponse {
+    DaemonResponse {
+        protocol: PROTOCOL_VERSION,
+        id,
+        result: None,
+        error: Some(DaemonErrorPayload {
+            code: "mutation-refused".to_string(),
+            message: "The workspace is not a scanned root of this daemon; scan it first."
+                .to_string(),
+            detail: None,
+        }),
+    }
+}
+
 fn no_workspace_error(id: String) -> DaemonResponse {
     DaemonResponse {
         protocol: PROTOCOL_VERSION,

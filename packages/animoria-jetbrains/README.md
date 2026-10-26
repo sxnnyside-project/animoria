@@ -42,7 +42,7 @@ Modern multi-module applications, mobile apps, and full-stack codebases constant
 * **Interactive Player:** Inspect timeline markers, animation layers, and frame-by-frame details directly inside your IDE tool window.
 
 ### 2. Multi-Syntax Code Reference Tracing
-* Click any asset to immediately see all source code references across Kotlin, Java, TypeScript, JavaScript, Swift, Dart, and Markdown.
+* Click any asset to immediately see all source code references across 70+ file types, including Kotlin, Java, TypeScript, JavaScript, Swift, Dart, Android `R.drawable`/`@drawable/`, iOS asset catalogs, Godot, Unity, and Markdown.
 * Click any reference line to jump directly to the target statement in the editor.
 
 ### 3. SHA-256 Duplicate Grouping & Resolution
@@ -50,7 +50,7 @@ Modern multi-module applications, mobile apps, and full-stack codebases constant
 * Pick a canonical copy to keep — Animoria automatically rewrites referencing import paths across your codebase and moves redundant copies to trash.
 
 ### 4. Automated Governance & Health Scoring
-* Enforces team rules (`no-unreferenced-assets`, `no-duplicate-content`, `max-file-size-kb`, `allowed-formats`, `no-gif`).
+* Enforces team rules (`no-unreferenced-assets`, `no-duplicate-content`, `max-file-size-kb`, `max-dimensions`, `allowed-formats`, `naming-convention`, `svg-sanitization`, `no-gif`).
 * Calculates an overall **Workspace Health Score** (0–100%) and surfaces findings with evidence and clear remediation steps.
 
 ### 5. Instant Framework Code Snippets

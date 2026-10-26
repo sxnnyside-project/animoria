@@ -27,6 +27,17 @@ export type { DaemonEvent, DaemonScanResult };
 /**
  * Client for communicating with the Animoria native daemon process over Protocol v1 (NDJSON).
  */
+const REQUEST_TIMEOUT_MS = 30_000;
+const ANALYSIS_TIMEOUT_MS = 300_000;
+
+/** The daemon answers one request at a time, so an analysis that outlives a short timeout
+ * would also time out every request queued behind it. Same methods as the daemon's scan path. */
+export function requestTimeoutMs(method: string): number {
+  return method === 'scan' || method === 'check' || method === 'analyze'
+    ? ANALYSIS_TIMEOUT_MS
+    : REQUEST_TIMEOUT_MS;
+}
+
 export class VsCodeDaemonClient {
   private process?: ChildProcess | undefined;
   private readline?: Interface | undefined;
@@ -119,7 +130,7 @@ export class VsCodeDaemonClient {
     }
 
     this.process = spawn(bin, ['daemon'], {
-      stdio: ['pipe', 'pipe', 'inherit'],
+      stdio: ['pipe', 'pipe', 'pipe'],
     });
 
     this.readline = createInterface({
@@ -223,6 +234,7 @@ export class VsCodeDaemonClient {
    * Sends a framed Protocol v1 request and awaits the correlated response.
    */
   private async request<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+    const timeoutMs = requestTimeoutMs(method);
     if (!this.isAlive()) {
       await this.start();
     }
@@ -241,11 +253,11 @@ export class VsCodeDaemonClient {
           this.pendingRequests.delete(id);
           reject(
             new Error(
-              `Timeout after 30000ms waiting for daemon response to '${method}' (request: ${id})`,
+              `Timeout after ${timeoutMs}ms waiting for daemon response to '${method}' (request: ${id})`,
             ),
           );
         }
-      }, 30000);
+      }, timeoutMs);
 
       this.pendingRequests.set(id, {
         resolve: (val: unknown) => {

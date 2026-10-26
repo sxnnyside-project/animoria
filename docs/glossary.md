@@ -13,6 +13,9 @@ This document serves as the canonical domain glossary for **Animoria**, establis
 | **Vector Asset** | An XML-based scalable vector graphic (SVG) containing vector instructions, attributes, and optional styling. | Handled by `parser::svg`. |
 | **Motion Asset** | An animated visual asset (Lottie JSON, Rive `.riv`, GIF) with timeline, frame count, fps, and duration metrics. | Handled by `parser::lottie` and `parser::rive`. |
 | **Dynamic Asset** | An asset loaded via computed or runtime paths, asset catalogs, or platform conventions where exact string literal matches cannot be statically traced. | Handled by `dynamic_collections` pattern matching. |
+| **Sidecar File** | A file an engine keeps next to an asset to hold its identity: Unity's `<asset>.meta` (GUID) and Godot's `<asset>.import` (uid). It moves into the trash with its asset and is restored with it. | Handled by `remediation::trash`. |
+| **Asset GUID** | Unity's 32-hex identifier stored in `<asset>.meta`. Scenes and prefabs reference an asset by GUID rather than by path, so a GUID match is a high-confidence reference. | Traced by `tracing::detector` (GUID pattern). |
+| **Anchored Pattern** | An ignore pattern with a leading `/` that matches only relative to the workspace root (`/Library/` ignores `<root>/Library/`, not `Assets/UI/Library/`). | Compiled by `scanner::ignore_rules`. |
 | **App Icon** | A platform-managed icon (iOS `.appiconset`, Android `mipmap-*`, PWA launcher) referenced by OS manifests rather than explicit source imports. | Classified by `governance::asset_matcher::is_app_icon`. |
 
 ---
@@ -47,6 +50,7 @@ This document serves as the canonical domain glossary for **Animoria**, establis
 | **Resolution Plan** | A pre-computed execution plan describing safe deletions, trash moves, or reference rewrites. | Produced before mutating workspace state. |
 | **Reference Rewrite** | An atomic, AST-aware or boundary-safe substitution of code imports redirecting obsolete asset paths to the canonical asset. | Executed by `remediation::reference_rewrite`. |
 | **Trash Directory** | A recoverable `.animoria/trash/` location where deleted files and manifest metadata are preserved for reversible cleanup. | Managed by `remediation::trash`. |
+| **Atomic Write** | Replacing a file by writing a temporary file and renaming it over the target, so an interrupted write never leaves an empty or half-written file. | Implemented by `remediation::write_atomic`. |
 | **Fuzz Testing** | Automated property-based testing feeding high-entropy and boundary-edge inputs to parsers and reference rewrite engines. | Implemented in `reference_rewrite_fuzz_test.rs`. |
 
 ---

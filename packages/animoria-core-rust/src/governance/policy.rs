@@ -256,25 +256,31 @@ impl GovernancePolicy {
         self
     }
 
-    pub fn load_from_workspace(root: &Path) -> Self {
+    /// Like `load_from_workspace`, but a config that exists and cannot be read or parsed is
+    /// an error, so a CI gate never silently falls back to default rules.
+    pub fn try_load_from_workspace(root: &Path) -> Result<Self, String> {
         let path = root.join(".animoriarc.json");
-        let alt_path = root.join(".animoriarc");
-
-        let target_file = if path.is_file() {
-            Some(path)
-        } else if alt_path.is_file() {
-            Some(alt_path)
+        let path = if path.is_file() {
+            path
         } else {
-            None
+            root.join(".animoriarc")
         };
-
-        if let Some(cfg_path) = target_file {
-            if let Ok(content) = fs::read_to_string(&cfg_path) {
-                return Self::parse_config_str(&content);
-            }
+        if !path.is_file() {
+            return Ok(Self::default());
         }
+        let content = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        serde_json::from_str::<RawAnimoriaConfig>(&content)
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        Ok(Self::parse_config_str(&content))
+    }
 
-        Self::default()
+    pub fn load_from_workspace(root: &Path) -> Self {
+        Self::try_load_from_workspace(root).unwrap_or_else(|e| {
+            warn_once(format!(
+                "[Config] Ignoring invalid config, using defaults: {e}"
+            ));
+            Self::default()
+        })
     }
 
     pub fn parse_config_str(content: &str) -> Self {
@@ -367,6 +373,19 @@ impl GovernancePolicy {
     }
 }
 
+/// The config is re-read on every scan (and per override), so each distinct warning is
+/// printed once per process instead of on every file change.
+fn warn_once(message: String) {
+    static SEEN: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+        std::sync::OnceLock::new();
+    let seen = SEEN.get_or_init(Default::default);
+    if let Ok(mut seen) = seen.lock() {
+        if seen.insert(message.clone()) {
+            eprintln!("{message}");
+        }
+    }
+}
+
 fn parse_preset(val: &serde_json::Value) -> GovernancePolicy {
     let preset_name = if let Some(s) = val.as_str() {
         Some(s)
@@ -380,7 +399,14 @@ fn parse_preset(val: &serde_json::Value) -> GovernancePolicy {
         Some("strict") | Some("animoria:strict") => GovernancePolicy::strict(),
         Some("relaxed") | Some("animoria:relaxed") => GovernancePolicy::relaxed(),
         Some("recommended") | Some("animoria:recommended") => GovernancePolicy::recommended(),
-        _ => GovernancePolicy::default(),
+        other => {
+            if other.is_some() {
+                warn_once(
+                    "[Config] Unknown preset in \"extends\"; using the default policy.".into(),
+                );
+            }
+            GovernancePolicy::default()
+        }
     }
 }
 
@@ -516,7 +542,10 @@ fn apply_rules_to_policy(
                     policy.svg_sanitization_severity = sev;
                 }
             }
-            _ => {}
+            "scan-docs" | "include-docs" => {}
+            unknown => warn_once(format!(
+                "[Config] Unknown rule '{unknown}' ignored (typo?)."
+            )),
         }
     }
 }
@@ -737,5 +766,31 @@ mod tests {
 
         let override_asset_policy = policy.policy_for_path("apps/marketing/hero.png");
         assert_eq!(override_asset_policy.max_file_size_kb, Some(2048));
+    }
+
+    #[test]
+    fn broken_config_is_an_error_for_strict_loading_but_defaults_for_lenient() {
+        let ws = tempfile::tempdir().unwrap();
+        assert!(GovernancePolicy::try_load_from_workspace(ws.path()).is_ok());
+
+        std::fs::write(
+            ws.path().join(".animoriarc.json"),
+            r#"{ "ci": { "minScore": 90, }, }"#,
+        )
+        .unwrap();
+        let err = GovernancePolicy::try_load_from_workspace(ws.path()).unwrap_err();
+        assert!(err.contains(".animoriarc.json"));
+        assert_eq!(
+            GovernancePolicy::load_from_workspace(ws.path()).ci_min_score,
+            None
+        );
+
+        std::fs::write(
+            ws.path().join(".animoriarc.json"),
+            r#"{ "ci": { "minScore": 90 } }"#,
+        )
+        .unwrap();
+        let ok = GovernancePolicy::try_load_from_workspace(ws.path()).unwrap();
+        assert_eq!(ok.ci_min_score, Some(90));
     }
 }

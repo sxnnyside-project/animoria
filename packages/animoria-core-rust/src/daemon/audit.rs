@@ -29,9 +29,19 @@ fn snapshots_log_path(workspace_root: &Path) -> std::path::PathBuf {
     workspace_root.join(".animoria").join("snapshots.jsonl")
 }
 
+/// One generation is kept: past this size the log moves to `<name>.old` and starts fresh.
+const MAX_AUDIT_LOG_BYTES: u64 = 5 * 1024 * 1024;
+
+fn rotated_path(path: &Path) -> std::path::PathBuf {
+    path.with_extension("jsonl.old")
+}
+
 fn append_line(path: &Path, line: &str) {
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
+    }
+    if fs::metadata(path).is_ok_and(|m| m.len() > MAX_AUDIT_LOG_BYTES) {
+        let _ = fs::rename(path, rotated_path(path));
     }
     if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
         let _ = writeln!(file, "{line}");
@@ -61,9 +71,11 @@ pub fn record_audit_event(
 /// Reads every recorded audit event, oldest first.
 pub fn read_audit_events(workspace_root: &Path) -> Vec<AuditEvent> {
     let path = audit_log_path(workspace_root);
-    let Ok(raw) = fs::read_to_string(&path) else {
-        return Vec::new();
-    };
+    let raw = [rotated_path(&path), path]
+        .iter()
+        .filter_map(|p| fs::read_to_string(p).ok())
+        .collect::<Vec<_>>()
+        .join("\n");
     raw.lines()
         .filter_map(|line| serde_json::from_str(line).ok())
         .collect()
@@ -101,7 +113,10 @@ pub fn record_analysis_snapshot(
         .map(serde_json::to_string)
         .collect::<Result<Vec<_>, _>>()
     {
-        let _ = fs::write(&path, body.join("\n") + "\n");
+        if let Err(e) = crate::remediation::write_atomic(&path, (body.join("\n") + "\n").as_bytes())
+        {
+            eprintln!("[Audit] Could not save the snapshot history: {e}");
+        }
     }
 
     snapshot
@@ -174,5 +189,35 @@ mod tests {
         let snapshots = read_analysis_snapshots(dir.path());
         assert_eq!(snapshots.len(), 3);
         assert_eq!(snapshots[0].analysis.root_id, "root");
+    }
+
+    #[test]
+    fn oversized_audit_log_rotates_and_both_generations_are_listed() {
+        let ws = tempfile::tempdir().unwrap();
+        let path = audit_log_path(ws.path());
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let first = record_audit_event(
+            ws.path(),
+            AuditEventKind::AssetStagedToTrash,
+            "test",
+            serde_json::json!({}),
+        );
+        // Pad the live log past the cap with a harmless blank-ish line.
+        let mut padded = std::fs::read_to_string(&path).unwrap();
+        padded.push_str(&" ".repeat(MAX_AUDIT_LOG_BYTES as usize + 1));
+        std::fs::write(&path, padded).unwrap();
+
+        record_audit_event(
+            ws.path(),
+            AuditEventKind::AssetStagedToTrash,
+            "test",
+            serde_json::json!({}),
+        );
+
+        assert!(rotated_path(&path).exists());
+        assert!(std::fs::metadata(&path).unwrap().len() < 1024);
+        let events = read_audit_events(ws.path());
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].event_id, first.event_id);
     }
 }
