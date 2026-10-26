@@ -1,7 +1,7 @@
 # Duplicate Asset Resolution
 
 > **Audience:** Core maintainers, governance engineers, IDE client developers
-> **Scope:** SHA-256 content-hash duplicate detection, canonical asset selection, plan-based resolution (trash staging only — no source rewriting today), daemon protocol surface
+> **Scope:** SHA-256 content-hash duplicate detection, canonical asset selection, plan-based resolution (trash staging, plus reviewable reference-rewrite proposals the host applies line by line), daemon protocol surface
 > **Status:** Authoritative
 > **Primary packages:** [`packages/animoria-core-rust`](../../packages/animoria-core-rust)
 
@@ -10,7 +10,7 @@
 This guide explains how Animoria detects byte-identical visual asset duplicates across a workspace and stages a plan-based resolution. The engine hashes every asset's content, groups identical hashes into `DuplicateGroup`s, nominates a canonical (keeper) asset per group, and builds an immutable `ResolutionPlan` that the caller can apply to move the non-canonical copies to `.animoria/trash`.
 
 > [!IMPORTANT]
-> Unlike the pre-v2.0.0 TypeScript engine, the current Rust engine's resolution plan **does not rewrite source code references**. There is no reference-rewriting module in `animoria-core-rust`, so the wire contract carries no field claiming otherwise: `ResolutionPlan`/`ResolutionResult` were trimmed of `references_to_rewrite`/`updatedReferenceCount` (previously always an empty list / `0`, including in a VS Code confirmation dialog that claimed "N reference(s) will be rewritten"). Applying a resolution plan only trashes the duplicate files; any source files that imported the removed paths are left untouched and must be fixed manually or by a separate tool.
+> A resolution plan never edits source files by itself. Applying it only moves the duplicate files to the trash. What it does carry is `proposed_reference_rewrites`: for every traced reference to a file the plan deletes, one reviewable `ReferenceRewriteProposal` (`file_path`, `line_number`, `original_line`, `proposed_line`) computed by `remediation/reference_rewrite.rs`. A host shows these to the user and applies each accepted one through the daemon's `applyReferenceRewrite`, which refuses any line that changed since the scan. The CLI (`animoria clean --apply`) does not rewrite: it keeps any duplicate that source code still references (see section 5).
 
 ## 2. Architecture
 
@@ -99,6 +99,7 @@ export type ResolutionPlan = {
   created_at_ms: bigint,
   duplicate_group_id: string | null,
   target_assets_to_delete: Array<string>,
+  proposed_reference_rewrites: Array<ReferenceRewriteProposal>,
 };
 ```
 
@@ -114,7 +115,7 @@ export type ResolutionPlan = {
 [`src/cli/commands/clean.rs`](../../packages/animoria-core-rust/src/cli/commands/clean.rs) scans the workspace, calls `index.duplicate_groups()`, builds a `ResolutionPlan` per group via `create_duplicate_resolution_plan`, and either previews or stages the deletions:
 
 - `animoria clean <path>` — **dry run by default**. Prints what would move to `.animoria/trash` without touching the filesystem or writing a trash session.
-- `animoria clean <path> --apply` — actually stages every non-canonical duplicate to `.animoria/trash` and records a trash session (via `record_trash_session`), printing the session id so it can be restored later with `animoria restore`.
+- `animoria clean <path> --apply` — actually stages every non-canonical duplicate to `.animoria/trash` and records a trash session (via `record_trash_session`), printing the session id so it can be restored later with `animoria restore`. Duplicates that source code still references are **kept** (reported as `Kept <path>`), because this command does not rewrite imports. If staging fails midway, everything already moved is still recorded in a session, and the error names the `animoria restore` command to undo it; if the session journal itself cannot be saved, the error lists where the moved files are.
 
 ### Daemon Protocol v1
 
@@ -122,6 +123,9 @@ export type ResolutionPlan = {
 |---|---|---|
 | `buildResolutionPlan` | `{ groupId, keepPath }` (plus an implicit workspace context) | `{ planId, rootId, rootName, plan: ResolutionPlan }` |
 | `applyResolutionPlan` | `{ planId, allowPartial }` | `ResolutionResult { status, removedAssetPaths, recoveredBytes, trashSessionId, error }` |
+| `applyReferenceRewrite` | `{ workspace_path, proposal }` | `{ applied: true }`, or `mutation-refused` |
+
+`applyReferenceRewrite` only acts on a workspace the daemon has scanned, only on a line that scan traced as an asset reference (same file, line number, and text), and only if the line still equals `original_line` (compared without surrounding whitespace). It preserves the line's indentation and line ending and writes through a temporary file and a rename.
 
 `applyResolutionPlan` removes the plan from the daemon's in-memory `resolution_plans` map when applied. If the plan id is not found, the daemon returns an `invalid-params` error rather than an error code named `stale-plan` (that code does not exist in this implementation).
 
@@ -163,8 +167,8 @@ cargo test -p animoria-core-rust deduplication
 cargo test -p animoria-core-rust remediation
 ```
 
-### How do I add reference rewriting?
-This is a genuine gap, not a planned-and-hidden feature: there is currently no module in `animoria-core-rust` that parses source files or rewrites import paths, and no field on the wire contract claiming otherwise (the previous `references_to_rewrite`/`updatedReferenceCount` fields, which were always empty/`0`, were removed in v2.0.0 rather than left as decoration). Implementing it for real would mean adding a new module (e.g. `remediation/reference_rewrite.rs`), adding a real `references_to_rewrite: Vec<String>` field back to `ResolutionPlan` and populating it from that module in `plan.rs`, and updating `apply_resolution_plan` in `daemon/cleanup.rs` to actually perform the rewrites before or alongside staging files to trash — at which point every host (VS Code, JetBrains, sandbox) would also need the field added back on their side of the wire.
+### How do reference rewrites work?
+`remediation/reference_rewrite.rs` has two halves. `propose_reference_rewrites` is pure: given the traced `UsageReference`s, it finds the whole path token around the old filename on each referencing line and recomputes it as a relative path to the canonical asset, keeping the token's `./`/`../`/bare style. `apply_reference_rewrite` performs one confirmed proposal. `build_resolution_plan` in `daemon/cleanup.rs` attaches the proposals to the `ResolutionPlan`; hosts apply them one at a time (VS Code through `daemon.applyReferenceRewrite`). Rewriting several references that share one line is not supported: after the first, the line no longer matches `original_line` and the rest are refused.
 
 ## 10. Files & Ownership
 
@@ -173,6 +177,7 @@ This is a genuine gap, not a planned-and-hidden feature: there is currently no m
 | Rust Core | [`packages/animoria-core-rust/src/deduplication/hasher.rs`](../../packages/animoria-core-rust/src/deduplication/hasher.rs) | Parallel, streaming SHA-256 hashing |
 | Rust Core | [`packages/animoria-core-rust/src/deduplication/cluster.rs`](../../packages/animoria-core-rust/src/deduplication/cluster.rs) | Duplicate grouping & canonical selection |
 | Rust Core | [`packages/animoria-core-rust/src/remediation/plan.rs`](../../packages/animoria-core-rust/src/remediation/plan.rs) | `ResolutionPlan` builder |
+| Rust Core | [`packages/animoria-core-rust/src/remediation/reference_rewrite.rs`](../../packages/animoria-core-rust/src/remediation/reference_rewrite.rs) | Rewrite proposals and the confirmed-line apply |
 | Rust Core | [`packages/animoria-core-rust/src/remediation/trash.rs`](../../packages/animoria-core-rust/src/remediation/trash.rs) | Trash staging/restore primitives (`TrashManager`) |
 | Rust Core | [`packages/animoria-core-rust/src/daemon/cleanup.rs`](../../packages/animoria-core-rust/src/daemon/cleanup.rs) | Plan/apply glue, trash session journal |
 | Rust CLI | [`packages/animoria-core-rust/src/cli/commands/clean.rs`](../../packages/animoria-core-rust/src/cli/commands/clean.rs) | `animoria clean` command |

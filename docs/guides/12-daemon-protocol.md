@@ -50,7 +50,7 @@ graph TD
 A daemon session follows this sequence, as implemented in `DaemonServer::run`:
 
 ```
-Spawn subprocess (`animoria daemon`, stdio: pipe/pipe/inherit)
+Spawn subprocess (`animoria daemon`, stdio: pipe/pipe/pipe)
 → Daemon writes a `ready` event (sequence 0) immediately, before reading any request
 → Client sends `hello` request (protocol: 1) — daemon replies with engine/version/methods
 → Client issues request methods (`scan`, `analyze`, `getUsageReferences`, etc.)

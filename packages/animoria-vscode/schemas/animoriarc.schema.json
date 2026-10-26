@@ -9,6 +9,13 @@
       "type": "string",
       "description": "JSON schema URL for editor validation and autocompletion."
     },
+    "extends": {
+      "description": "Built-in preset to start from; the rules below override it. When an array is given, the first entry is used.",
+      "oneOf": [
+        { "$ref": "#/definitions/preset" },
+        { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/preset" } }
+      ]
+    },
     "files": {
       "type": "object",
       "description": "Filesystem inclusion and ignore filters.",
@@ -21,7 +28,15 @@
         "ignore": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "List of glob patterns for files or folders to ignore during scans."
+          "description": "List of glob patterns for files or folders to ignore during scans. A leading / anchors a pattern to the workspace root; a leading ! re-includes a path (for example \"!/Library/Keep/\" in a Unity project)."
+        },
+        "ignoreDocs": {
+          "type": "boolean",
+          "description": "docs/ and doc/ are ignored by default. Set to false to scan them."
+        },
+        "includeDocs": {
+          "type": "boolean",
+          "description": "Set to true to scan docs/ and doc/ (same effect as ignoreDocs: false)."
         }
       },
       "additionalProperties": false
@@ -47,10 +62,38 @@
         },
         "ignoreComments": {
           "type": "boolean",
-          "description": "Whether to ignore references located inside code comments (default: true)."
+          "description": "Not read by the engine today: comment lines are always skipped, in the languages where they are comments."
+        },
+        "dynamicCollections": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Names of collections whose keys are built at runtime (for example icon maps), so assets under them are treated as dynamically referenced."
         }
       },
       "additionalProperties": false
+    },
+    "ci": {
+      "$ref": "#/definitions/ciGate"
+    },
+    "overrides": {
+      "type": "array",
+      "description": "Per-folder rule overrides for monorepos. Each entry applies its rules to assets matching its glob patterns.",
+      "items": {
+        "type": "object",
+        "required": ["files"],
+        "properties": {
+          "files": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string" },
+            "description": "Glob patterns of the assets this override applies to (for example \"apps/marketing/**\")."
+          },
+          "rules": {
+            "$ref": "#/properties/rules"
+          }
+        },
+        "additionalProperties": false
+      }
     },
     "governance": {
       "type": "object",
@@ -59,6 +102,9 @@
         "enabled": {
           "type": "boolean",
           "description": "Enable or disable governance policy evaluation globally."
+        },
+        "ci": {
+          "$ref": "#/definitions/ciGate"
         },
         "rules": {
           "$ref": "#/properties/rules"
@@ -83,7 +129,7 @@
           "$ref": "#/definitions/duplicateRule"
         },
         "no-duplicate-names": {
-          "description": "Compatibility stub for filename duplicate checks (handled via no-duplicate-content).",
+          "description": "Has no effect: the engine has no filename-based duplicate rule. Use no-duplicate-content (byte-identical files).",
           "$ref": "#/definitions/duplicateRule"
         },
         "max-file-size-kb": {
@@ -91,6 +137,16 @@
         },
         "allowed-formats": {
           "$ref": "#/definitions/allowedFormatsRule"
+        },
+        "max-dimensions": {
+          "$ref": "#/definitions/maxDimensionsRule"
+        },
+        "naming-convention": {
+          "$ref": "#/definitions/namingConventionRule"
+        },
+        "svg-sanitization": {
+          "description": "Flags SVGs containing scripts, XML entities, javascript: URIs, foreignObject, iframe, embed, or inline event handlers.",
+          "$ref": "#/definitions/severityOnly"
         }
       },
       "additionalProperties": {
@@ -100,6 +156,113 @@
   },
   "additionalProperties": false,
   "definitions": {
+    "preset": {
+      "type": "string",
+      "enum": [
+        "recommended",
+        "strict",
+        "relaxed",
+        "animoria:recommended",
+        "animoria:strict",
+        "animoria:relaxed"
+      ]
+    },
+    "ciGate": {
+      "type": "object",
+      "description": "CI quality gate for `animoria check`.",
+      "properties": {
+        "minScore": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Fail when the workspace health score is below this value."
+        },
+        "maxWarnings": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Fail (exit code 2) when the number of warnings exceeds this value."
+        }
+      },
+      "additionalProperties": false
+    },
+    "namingCase": {
+      "type": "string",
+      "enum": ["kebab-case", "snake_case", "camelCase", "PascalCase", "lowercase"]
+    },
+    "maxDimensionsRule": {
+      "description": "Flags images larger than the given pixel dimensions.",
+      "oneOf": [
+        { "$ref": "#/definitions/severity" },
+        { "type": "boolean" },
+        {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": [
+            { "$ref": "#/definitions/severity" },
+            {
+              "type": "object",
+              "properties": {
+                "maxWidth": { "type": "integer", "minimum": 1 },
+                "maxHeight": { "type": "integer", "minimum": 1 }
+              },
+              "additionalProperties": false
+            }
+          ],
+          "description": "[severity, { maxWidth, maxHeight }]"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "severity": { "$ref": "#/definitions/severity" },
+            "enabled": { "type": "boolean" },
+            "maxWidth": { "type": "integer", "minimum": 1 },
+            "maxHeight": { "type": "integer", "minimum": 1 }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "namingConventionRule": {
+      "description": "Requires asset file names to follow a casing or a custom regular expression. Density suffixes such as @2x are stripped first.",
+      "oneOf": [
+        { "$ref": "#/definitions/severity" },
+        { "type": "boolean" },
+        { "$ref": "#/definitions/namingCase" },
+        {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": [
+            { "$ref": "#/definitions/severity" },
+            {
+              "oneOf": [
+                { "$ref": "#/definitions/namingCase" },
+                {
+                  "type": "object",
+                  "properties": {
+                    "case": { "$ref": "#/definitions/namingCase" },
+                    "pattern": { "type": "string", "description": "Regular expression the file name must match." }
+                  },
+                  "additionalProperties": false
+                }
+              ]
+            }
+          ],
+          "description": "[severity, casing] or [severity, { case, pattern }]"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "severity": { "$ref": "#/definitions/severity" },
+            "enabled": { "type": "boolean" },
+            "case": { "$ref": "#/definitions/namingCase" },
+            "pattern": { "type": "string", "description": "Regular expression the file name must match." }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
     "severity": {
       "type": "string",
       "enum": ["error", "warning", "warn", "info", "off"]

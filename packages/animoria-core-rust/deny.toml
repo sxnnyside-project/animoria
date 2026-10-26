@@ -2,7 +2,13 @@
 targets = []
 
 [advisories]
-ignore = []
+ignore = [
+    # Animoria only uses ZipArchive to read and inspect dotLottie assets in memory via ZipArchive::by_name;
+    # it never invokes extract() or extracts files to the local file system.
+    "RUSTSEC-2026-0367",
+    "RUSTSEC-2026-0368",
+    "RUSTSEC-2026-0369",
+]
 
 [licenses]
 # Trimmed to the licenses the dependency graph actually carries today

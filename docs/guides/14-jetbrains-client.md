@@ -70,7 +70,7 @@ IntelliJ project open → Tool Window factory calls CoreProcessManager.start()
 ### Key Invariants & Rules
 
 1. **Zero Native Logic Reimplementation**: Kotlin MUST NEVER reimplement parsing, scanning, reference matching, or governance logic. `animoria-core-rust` is the single source of truth; Kotlin remains strictly a presentation and platform integration layer.
-2. **Structured protocol only**: State and commands travel exclusively as Protocol v1 NDJSON over the daemon subprocess's stdio — never via ad hoc JS injection into JCEF.
+2. **Structured protocol only**: State and commands travel exclusively as Protocol v1 NDJSON over the daemon subprocess's stdio — never via ad hoc JS injection into JCEF. The embedded page also ships a Content-Security-Policy with a per-load random nonce (`default-src 'none'`, scripts only by that nonce, images only as `data:`), built in `AnimoriaSharedUiPanel.documentHtml`, matching the VS Code webview.
 
 ### Native Binary Resolution & Extraction (`DaemonBinaryResolver.findBundledExecutable`)
 
@@ -158,7 +158,7 @@ JetBrains payload decoding uses `kotlinx.serialization` with `ignoreUnknownKeys 
 |---|---|---|
 | **No bundled binary for this platform/arch, and no dev-tree build** | `findBundledExecutable()` returns `null` | `onDaemonUnavailable` fires with a message pointing at `cargo build --release`; no daemon is spawned. |
 | **Protocol Mismatch** | Daemon's `protocol` field ≠ `PROTOCOL_VERSION` | `reportProtocolMismatch` logs once and calls `onDaemonUnavailable`; the plugin does not continue parsing further from that daemon. |
-| **Request Timeout** | No response within `timeoutMs` (default 10s) | `sendCommand` throws `TimeoutCancellationException`; the pending request is removed from `pendingRequests`. |
+| **Request Timeout** | No response within `timeoutMs` (default 10s; `analyze` uses `CoreProcessManager.ANALYZE_TIMEOUT_MS`, 300s, because the daemon answers one request at a time and a slow scan would otherwise stall everything queued behind it) | `sendCommand` throws `TimeoutCancellationException`; the pending request is removed from `pendingRequests`. |
 | **Stale bundled binary missing a required method** | Plugin upgraded, binary extraction was skipped/failed | `verifyDaemonCapabilities` logs the specific missing methods at handshake, once. |
 
 ## 13. Common Maintenance Tasks

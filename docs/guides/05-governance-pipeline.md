@@ -48,7 +48,7 @@ graph TD
 | **Rule Trait** | [`src/governance/rule.rs`](../../packages/animoria-core-rust/src/governance/rule.rs) | The `Rule` trait every governance rule implements: `id()` and `evaluate(ctx) -> Vec<RuleDiagnostic>`. |
 | **Analysis Context** | [`src/governance/context.rs`](../../packages/animoria-core-rust/src/governance/context.rs) | `AnalysisContext`: bundles assets, references, duplicate groups, and policy for one evaluation pass; provides `is_asset_referenced()`. |
 | **Policy** | [`src/governance/policy.rs`](../../packages/animoria-core-rust/src/governance/policy.rs) | `GovernancePolicy::load_from_workspace()`: reads `.animoriarc.json`/`.animoriarc` and applies defaults. |
-| **Built-in Rules** | [`src/governance/rules/`](../../packages/animoria-core-rust/src/governance/rules) | `allowed_formats.rs` (2 rules), `max_file_size.rs`, `no_duplicates.rs`, `no_unreferenced.rs` — 5 rules total. |
+| **Built-in Rules** | [`src/governance/rules/`](../../packages/animoria-core-rust/src/governance/rules) | `allowed_formats.rs` (2 rules), `max_dimensions.rs`, `max_file_size.rs`, `naming_convention.rs`, `no_duplicates.rs`, `no_unreferenced.rs`, `svg_sanitization.rs` — 8 rules total. |
 
 ## 3. Lifecycle
 

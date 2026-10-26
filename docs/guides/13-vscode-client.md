@@ -87,11 +87,16 @@ export class VsCodeDaemonClient {
     this.binaryPath = binaryPath ?? this.resolveBinaryPath(extensionPath);
   }
   public async start(): Promise<void> {
-    this.process = spawn(this.binaryPath!, ['daemon'], { stdio: ['pipe', 'pipe', 'inherit'] });
-    // ... readline over stdout, NDJSON request/response correlation by `id`
+    this.process = spawn(this.binaryPath!, ['daemon'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    // ... readline over stdout, NDJSON request/response correlation by `id`;
+    // stderr is piped and logged, so engine warnings (invalid config, unknown rules) are visible
   }
 }
 ```
+
+#### Request Timeouts (`requestTimeoutMs`)
+
+The daemon answers one request at a time, so a long scan that outlives its timeout would also make every request queued behind it time out. `requestTimeoutMs(method)` therefore gives `scan`, `check`, and `analyze` 300 seconds and every other method 30 seconds.
 
 #### Binary Resolution (`resolveBinaryPath`)
 
@@ -141,10 +146,10 @@ Commands registered in `extension.ts` (see `packages/animoria-vscode/package.jso
 | `animoria.viewFindings` / `animoria.viewDuplicates` | Opens `AnimoriaWorkspacePanel` on the `findings`/`duplicates` tab. |
 | `animoria.generateSnippet` | Copies a Core-generated integration snippet to the clipboard (via `generateSnippetsForAsset`), with a `QuickPick` when more than one framework matches. |
 | `animoria.toggleViewMode` | Toggles the tree view between flat and directory-tree modes. |
-| `animoria.deleteAsset` | Moves the asset to the OS/VS Code trash via `vscode.workspace.fs.delete(uri, { useTrash: true })` after a modal confirmation, then re-scans. |
+| `animoria.deleteAsset` | After a modal confirmation, stages the asset into `.animoria/trash/` of the workspace folder that owns it, through the daemon's `trash_asset` (restorable), then re-scans. |
 | `animoria.startCleanupReview` / `animoria.restoreCleanup` / `animoria.resolveDuplicates` | Opens `AnimoriaWorkspacePanel` on the `cleanup`/`duplicates` tab. |
 
-`animoria.deleteAsset` deletes directly through the OS/VS Code trash (`vscode.workspace.fs.delete(uri, { useTrash: true })`) rather than going through the daemon's `trash_asset` and `.animoria/trash/` staging. It does not produce a `ResolutionPlan` or a restorable trash session. This is inconsistent with the rest of the system's remediation model, which is plan-based and reversible (CLAUDE.md invariant 6): every other mutating path (`buildResolutionPlan`/`applyResolutionPlan`, `buildCleanupPlan`/`applyCleanupPlan`, `trash_asset`/`restore_asset`) stages through `.animoria/trash/` and can be undone via `listTrashSessions`/`restoreTrashSession`, but a single-asset delete from the tree view cannot.
+`animoria.deleteAsset` goes through the daemon's `trash_asset` and `.animoria/trash/` staging, like every other mutating path (`buildResolutionPlan`/`applyResolutionPlan`, `buildCleanupPlan`/`applyCleanupPlan`), so the move is reversible via `restore_asset`, and a Unity `.meta` or Godot `.import` next to the asset travels with it. It does not build a `ResolutionPlan` or record a trash session. `trash_asset` is accepted only for a workspace the daemon has scanned, and the file must be inside it, so the command passes the folder that contains the asset (`owningRoot` in `workspace-context/owning-root.ts`: the deepest root whose relative path to the file does not leave it, never a `startsWith` of the strings) and refuses an asset outside every candidate root. The candidates are the open folders, their symlink-resolved form (`resolveSymlinks`, so it works before the first scan finishes), and the roots the daemon scanned (`mergeRoots`), because the daemon reports canonical paths: a folder opened through a symlink (`/var/x` for `/private/var/x`) owns assets whose path starts with the scanned form. Copy Path, snippet generation, and trash-session restore pick their root the same way.
 
 ## 7. JetBrains
 

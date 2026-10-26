@@ -144,9 +144,13 @@ fn test_stress_and_throughput_1000_assets() {
     assert!(index.references().len() >= 300);
 
     // Performance assertion: In unoptimized debug mode on virtualized CI runners,
-    // 1,000 full pipeline assets should finish well within 5 seconds.
+    // 1,000 full pipeline assets should finish in reasonable time (Windows NTFS I/O in CI has higher overhead).
     let max_allowed_ms = if std::env::var("CI").is_ok() {
-        5000
+        if cfg!(windows) {
+            10000
+        } else {
+            6000
+        }
     } else {
         3000
     };

@@ -58,7 +58,7 @@ User selects an asset in the UI
 → animoria-asset-inspector sends `request-thumbnail` (and, for animated formats, `request-animation-data`)
 → Host (VS Code / JetBrains / sandbox) forwards to the daemon:
     generateThumbnail  { assetPath, workspacePath? }  → { assetPath, dataUri }
-    getLottieDocument  { assetPath }                  → { animation, totalFrames, frameRate }
+    getLottieDocument  { assetPath, workspacePath? }  → { animation, totalFrames, frameRate }
 → Host sends back `thumbnail` and/or `animation-data` HostInbound messages
 → animoria-asset-inspector calls buildAnimationPreview({ format, sourceUrl, stillUrl, animation, ... })
 → buildAnimationPreview() returns one of: { kind: 'lottie' }, { kind: 'image' }, { kind: 'still' }, or { kind: 'unsupported' }
@@ -97,7 +97,12 @@ if (input.stillUrl) {
 
 ```rust
 pub fn read_lottie_document(asset_path: &str) -> Option<LottieDocument> {
-    let raw = fs::read_to_string(asset_path).ok()?;
+    let path = Path::new(asset_path);
+    let raw = if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("lottie")) {
+        read_dotlottie_inner_document(path)?   // manifest.json -> animations/<id>.json in the ZIP
+    } else {
+        fs::read_to_string(path).ok()?
+    };
     let animation: serde_json::Value = serde_json::from_str(&raw).ok()?;
     let ip = animation.get("ip").and_then(|v| v.as_f64()).unwrap_or(0.0);
     let op = animation.get("op").and_then(|v| v.as_f64()).unwrap_or(0.0);
@@ -106,7 +111,7 @@ pub fn read_lottie_document(asset_path: &str) -> Option<LottieDocument> {
 }
 ```
 
-This reads the asset's file directly by path — it does **not** decompress a `.lottie` (dotLottie ZIP archive) and extract the inner animation JSON. The daemon handler passes `assetPath` through unchanged to `read_lottie_document`, which only ever calls `fs::read_to_string` on it, so a binary `.lottie` ZIP archive fails UTF-8 decoding and the method returns `None` (surfaced to hosts as `null`/zeroed fields, not an error). A dotLottie ZIP unpacker does exist in this codebase — `packages/animoria-core-rust/src/parser/dotlottie/mod.rs`'s `parse_dotlottie` opens the file with `ZipArchive`, reads `manifest.json` out of it, and populates `MotionMetadata` (animation count, generator, version, author) for the asset scanner. That unpacking path is used only to populate scan-time metadata; it is never called from `read_lottie_document` or anywhere in the preview flow. The dotLottie preview gap is real and current: opening a `.lottie` file in the inspector cannot play the animation today, because nothing on the preview path extracts the inner Lottie JSON from the ZIP the way `parse_dotlottie` does for metadata.
+A plain Lottie path is read as JSON text. A `.lottie` path is a dotLottie ZIP archive, so `read_dotlottie_inner_document` opens it with `ZipArchive`, reads `manifest.json`, and returns the first animation's `animations/<id>.json` — the same lookup `parser::dotlottie::parse_dotlottie` uses for scan-time metadata. If anything in that chain fails (not a ZIP, no manifest, no animation), the result is `None`, surfaced to hosts as `null`/zeroed fields, not as an error. The daemon handler only calls this for an `assetPath` that is in the index of a scanned workspace; any other path gets the same `null` answer without being read.
 
 ### `generateThumbnail` (`daemon/server.rs` + `daemon/preview.rs`)
 
@@ -129,14 +134,14 @@ The daemon looks up the requested asset's already-resolved `thumbnail_path` (com
 
 ```json
 { "protocol": 1, "id": "req-46", "method": "getLottieDocument",
-  "params": { "assetPath": "assets/spinner.json" } }
+  "params": { "assetPath": "assets/spinner.json", "workspacePath": "/path/to/root" } }
 ```
 ```json
 { "protocol": 1, "id": "req-46",
   "result": { "animation": { "v": "5.9.0", "fr": 60, "ip": 0, "op": 120, "...": "..." },
               "totalFrames": 120, "frameRate": 60 } }
 ```
-If the file cannot be read/parsed, `animation` is `null` and both frame fields are `0` — the handler never returns a protocol-level error for this case.
+If the file cannot be read/parsed, or is not an asset of a scanned workspace, `animation` is `null` and both frame fields are `0` — the handler never returns a protocol-level error for this case. `workspacePath` is optional: without it, any scanned root that owns the asset path answers (needed by multi-root IDE projects).
 
 ## 6. Shared UI Bridge
 
@@ -171,6 +176,7 @@ export type AnimationPreview =
 | Failure Mode | Root Cause | System Behavior |
 |---|---|---|
 | **Corrupt/invalid Lottie JSON** | Malformed asset file | `read_lottie_document` returns `None`; daemon responds with `animation: null, totalFrames: 0, frameRate: 0` rather than a protocol error. UI should fall through to `still`/`unsupported` via `buildAnimationPreview`. |
+| **Asset path is not in the index** | The client sent an arbitrary path, or the workspace was never scanned by this daemon | `getLottieDocument` answers `animation: null` and does not touch the file. |
 | **No thumbnail available** | Asset marked `is_valid: false`, or thumbnail directory unwritable | `thumbnail_path` is `None`; `generateThumbnail` responds with `dataUri: null`. |
 | **Rive asset requested for playback** | Rive has no bundled runtime in `@animoria/ui` | `buildAnimationPreview` always falls to `still`/`unsupported` for `rive`, never `lottie`, regardless of what the host sends. |
 

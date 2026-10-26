@@ -33,12 +33,21 @@ import {
 import * as vscode from 'vscode';
 import type { VsCodeDaemonClient } from '../daemon/daemon-client.js';
 import { buildIntegrationContext } from '../workspace-context/build-integration-context.js';
+import { owningRoot } from '../workspace-context/owning-root.js';
 
 export type { MultiRootAnalysis, CleanupPlan, CleanupExecutionResult };
 
+/** `scannedPath` is the folder with symlinks resolved, which is how the daemon names its files. */
+interface WorkspaceRoot {
+  readonly id: string;
+  readonly name: string;
+  readonly path: string;
+  readonly scannedPath?: string;
+}
+
 export interface WorkspaceSession {
   readonly identity: string;
-  readonly roots: readonly { readonly id: string; readonly name: string; readonly path: string }[];
+  readonly roots: readonly WorkspaceRoot[];
   getAnalysis(): MultiRootAnalysis;
   indexerForRoot(rootId: string): { getAnalysis(): WorkspaceAnalysis } | null;
   indexerForPath(path: string): { root: { path: string } } | null;
@@ -50,21 +59,11 @@ const logWarn = (category: string, source: string, message: string, details?: un
 };
 
 // Matches the longest root path so a nested root attributes to the more specific one; null (never cwd()) if none matches.
-function rootForPath(
-  roots: readonly { readonly id: string; readonly name: string; readonly path: string }[],
-  path: string,
-): { readonly id: string; readonly name: string; readonly path: string } | null {
-  let best: (typeof roots)[number] | null = null;
-  for (const root of roots) {
-    if (
-      path === root.path ||
-      path.startsWith(`${root.path}/`) ||
-      path.startsWith(`${root.path}\\`)
-    ) {
-      if (!best || root.path.length > best.path.length) best = root;
-    }
-  }
-  return best ?? roots[0] ?? null;
+export function rootForPath(roots: readonly WorkspaceRoot[], path: string): WorkspaceRoot | null {
+  const candidates = roots.flatMap((root) =>
+    [root.path, root.scannedPath ?? root.path].map((candidate) => ({ path: candidate, root })),
+  );
+  return owningRoot(candidates, path)?.root ?? roots[0] ?? null;
 }
 
 export interface ResolutionResult {
@@ -1298,10 +1297,11 @@ export class VsCodeHostBridge {
     );
   }
 
-  /** Best-effort root attribution for a restore call — the root whose path prefixes the asset's original path, falling back to the first root. */
+  /** Best-effort root attribution for a restore call — the root that owns the asset's original path (canonical-aware through the session), falling back to the first root. */
   private _workspacePathFor(originalPath: string, session: WorkspaceSession): string {
-    const owning = session.roots.find((r) => originalPath.startsWith(r.path));
-    return owning?.path ?? session.roots[0]?.path ?? process.cwd();
+    return (
+      session.indexerForPath(originalPath)?.root.path ?? session.roots[0]?.path ?? process.cwd()
+    );
   }
 }
 

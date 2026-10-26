@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -30,21 +30,39 @@ describe('package.json — platform citizenship (V5)', () => {
     expect(schema.properties.rules.properties).toHaveProperty('allowed-formats');
   });
 
-  it('every schema-listed rule id matches a real built-in rule', () => {
-    const realIds = new Set([
-      'no-unreferenced-assets',
-      'no-duplicate-content',
-      'no-duplicate-names',
-      'max-file-size-kb',
-      'allowed-formats',
-      'no-gif',
-    ]);
-
+  // The engine is the source of truth for rule ids: each `Rule::id` returns a string literal.
+  const engineRuleIds = (): Set<string> => {
+    const dir = resolve(ROOT, '../animoria-core-rust/src/governance/rules');
+    const ids = new Set<string>();
+    for (const file of readdirSync(dir).filter((f) => f.endsWith('.rs'))) {
+      const source = readFileSync(resolve(dir, file), 'utf-8');
+      for (const match of source.matchAll(/fn id\(&self\) -> &str \{\s*"([a-z0-9-]+)"/g)) {
+        ids.add(match[1] as string);
+      }
+    }
+    return ids;
+  };
+  const schemaRuleIds = (): string[] => {
     const schema = JSON.parse(
       readFileSync(resolve(ROOT, manifest.contributes.jsonValidation[0].url), 'utf-8'),
     );
-    for (const ruleId of Object.keys(schema.properties.rules.properties)) {
+    return Object.keys(schema.properties.rules.properties);
+  };
+
+  it('every schema-listed rule id matches a real built-in rule', () => {
+    // `no-duplicate-names` is the one documented compatibility stub: listed, but the engine has no such rule.
+    const realIds = new Set([...engineRuleIds(), 'no-duplicate-names']);
+    for (const ruleId of schemaRuleIds()) {
       expect(realIds.has(ruleId), ruleId).toBe(true);
+    }
+  });
+
+  it('every built-in rule the engine registers is described by the schema', () => {
+    const listed = new Set(schemaRuleIds());
+    const ids = engineRuleIds();
+    expect(ids.size).toBeGreaterThanOrEqual(8);
+    for (const ruleId of ids) {
+      expect(listed.has(ruleId), ruleId).toBe(true);
     }
   });
 

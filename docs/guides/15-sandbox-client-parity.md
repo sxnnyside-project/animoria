@@ -66,7 +66,7 @@ Run `just dev` (or the sandbox's own Vite dev command)
 
 1. **In `SandboxHost` itself** — every mutating `HostOutbound` message is refused before it reaches the daemon, with a reason string the console shows.
 2. **In the shared UI components** — `canMutate` disables the relevant control and renders the reason inline, so a reviewer sees the disabled state rather than a missing affordance.
-3. **In `vite.config.ts`** — every non-GET `/api/*` request returns HTTP 405 regardless of what any client sends, which is the one guarantee that survives someone editing `sandbox-host.ts` incorrectly.
+3. **In `vite.config.ts`** — every non-GET `/api/*` request returns HTTP 405 regardless of what any client sends, which is the one guarantee that survives someone editing `sandbox-host.ts` incorrectly. Path parameters are contained too: `/api/file` and `/api/lottie-document` resolve `path`/`assetPath` through `resolveWithinRoot` (`src/bridge/path-containment.ts`) and answer 403 for anything outside the fixture workspace, before the daemon is asked to read it.
 
 `canGenerateSnippet: true` and `canOpenReference: true` are deliberately left enabled: snippet generation is a read-only Core computation the UI needs to review, and reference navigation is the evidence panel's most important affordance — disabling either would hide real UI states from review, which defeats the sandbox's purpose.
 
@@ -150,6 +150,7 @@ Add the field to `HostCapabilities` in `packages/animoria-ui/src/bridge/`, set i
 |---|---|---|
 | **Native binary not found** | No dev-tree build, `ANIMORIA_BINARY_PATH` unset/invalid, not on `PATH` | `RustDaemonClient.start()` throws; the sandbox surfaces the error rather than falling back to any mock data. |
 | **Mutating request from the UI** | A component attempts a mutating `HostOutbound` message despite `canMutate: false` | Refused in `SandboxHost` before any network call, logged as `'refused'` in the harness's event console. |
+| **Path outside the fixture workspace** | `/api/file?path=` or `/api/lottie-document?assetPath=` names `../../etc/hosts` or an absolute path elsewhere | `resolveWithinRoot` returns `null` and the route answers 403 (the daemon also refuses to read a path that is not an indexed asset). |
 | **Mutating HTTP request directly** | A client bypasses the UI and calls `/api/*` with a non-GET method | `vite.config.ts` returns 405 unconditionally, independent of `SandboxHost`'s own refusal logic. |
 
 ## 13. Common Maintenance Tasks

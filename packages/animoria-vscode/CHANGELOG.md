@@ -18,6 +18,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - **Scan No Longer Times Out on Large Workspaces**: `scan`, `check`, and `analyze` now wait up to 5 minutes (other requests keep 30 seconds), so a slow scan no longer fails and stalls every request queued behind it.
+- **Multi-Root Windows Use the Right Folder**: Move to Trash, Copy Path, snippet generation, and trash-session restore now resolve the workspace folder that contains the asset instead of the first folder (Move to Trash failed for any asset outside it), compare by relative path so `/w/app` no longer claims `/w/app-extra/…`, and also match the daemon's canonical root for folders opened through a symlink, including before the first scan completes and when a cleanup or restore picks the root.
+- **JSON Schema Matches the Engine**: `animoriarc.schema.json` rejected `extends`, `ci`, `overrides`, `files.ignoreDocs`/`includeDocs`, and `tracing.dynamicCollections` — all valid in the engine — as unknown properties, and did not describe `max-dimensions`, `naming-convention`, or `svg-sanitization`. It now covers all of them, and a test keeps its rule list in step with the engine's.
 - **Daemon Warnings Reach the Log**: The daemon's standard error is now captured, so configuration warnings (invalid `.animoriarc.json`, unknown rules) and binary-scene warnings are visible instead of being dropped.
 
 ---

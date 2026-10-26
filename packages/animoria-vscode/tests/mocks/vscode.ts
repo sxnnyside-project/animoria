@@ -53,6 +53,11 @@ export enum ProgressLocation {
   Notification = 15,
 }
 
+export enum StatusBarAlignment {
+  Left = 1,
+  Right = 2,
+}
+
 export enum ViewColumn {
   Active = -1,
   Beside = -2,

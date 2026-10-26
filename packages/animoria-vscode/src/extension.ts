@@ -1,4 +1,4 @@
-import { basename, relative } from 'node:path';
+import { basename } from 'node:path';
 import type { Asset, DuplicateGroup, UsageReference, WorkspaceAnalysis } from '@animoria/contracts';
 import * as vscode from 'vscode';
 import { registerLanguageModelTools } from './ai/animoria-lm-tools.js';
@@ -29,6 +29,23 @@ import { AnimoriaFileWatcher } from './watchers/animoria-file-watcher.js';
 import { ActiveEditorTracker } from './workspace-context/active-editor-tracker.js';
 import { buildIntegrationContext } from './workspace-context/build-integration-context.js';
 import { ensureGitignoreContainsAnimoria } from './workspace-context/gitignore.js';
+import {
+  mergeRoots,
+  owningRoot,
+  relativeAssetPath,
+  resolveSymlinks,
+  trashInOwningRoot,
+} from './workspace-context/owning-root.js';
+
+/** Open folders plus the roots the daemon scanned, for `owningRoot` (see `mergeRoots`). */
+function openRoots(): { path: string }[] {
+  const folders = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
+  return mergeRoots(
+    folders,
+    folders.map(resolveSymlinks),
+    lastAnalysisRoots.map((a) => a.root_path),
+  );
+}
 
 export class GovernanceReportContentProvider implements vscode.TextDocumentContentProvider {
   private _content = '';
@@ -66,6 +83,7 @@ let codeLensProvider: AnimoriaCodeLensProvider | undefined;
 function createSessionAdapter(): WorkspaceSession {
   const folders = vscode.workspace.workspaceFolders ?? [];
   const rootPath = folders[0]?.uri.fsPath ?? process.cwd();
+  const lookupRoots = openRoots();
   const refCounts: Record<string, number> = {};
   for (const r of lastReferences) {
     const p = r.asset_id;
@@ -81,7 +99,12 @@ function createSessionAdapter(): WorkspaceSession {
 
   return {
     identity: 'root',
-    roots: folders.map((f, i) => ({ id: `root-${i}`, name: f.name, path: f.uri.fsPath })),
+    roots: folders.map((f, i) => ({
+      id: `root-${i}`,
+      name: f.name,
+      path: f.uri.fsPath,
+      scannedPath: resolveSymlinks(f.uri.fsPath),
+    })),
     getAnalysis: (): MultiRootAnalysis => ({
       roots: effectiveRoots,
       assets: allAssets,
@@ -102,9 +125,8 @@ function createSessionAdapter(): WorkspaceSession {
         : null;
     },
     indexerForPath: (path: string) => {
-      const match = folders.find((f) => path.startsWith(f.uri.fsPath));
       return {
-        root: { path: match?.uri.fsPath ?? rootPath },
+        root: { path: owningRoot(lookupRoots, path)?.path ?? rootPath },
         indexer: {
           usageReferencesFor: (assetPath: string) =>
             lastReferences.filter((r) => r.asset_id === assetPath),
@@ -276,9 +298,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
       if (!path) return;
 
-      const wsFolder = vscode.workspace.workspaceFolders?.[0];
-      const rel =
-        relPath || (wsFolder ? relative(wsFolder.uri.fsPath, path).replace(/\\/g, '/') : path);
+      const rel = relPath || relativeAssetPath(openRoots(), path);
 
       await vscode.env.clipboard.writeText(rel);
       void vscode.window.setStatusBarMessage(
@@ -410,19 +430,16 @@ export async function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      const folders = vscode.workspace.workspaceFolders ?? [];
-      const workspacePath = folders[0]?.uri.fsPath ?? process.cwd();
-
       try {
         const autoGitignore = vscode.workspace
           .getConfiguration('animoria')
           .get<boolean>('autoGitignore', true);
-        if (autoGitignore) {
-          void ensureGitignoreContainsAnimoria(workspacePath);
-        }
 
-        // Uses the daemon's plan-based trash (.animoria/trash/, restorable), not vscode.workspace.fs.delete.
-        await daemonClient.trashAsset(workspacePath, assetId, path);
+        // Uses the daemon's plan-based trash (.animoria/trash/, restorable), not vscode.workspace.fs.delete,
+        // in the workspace folder that owns the asset (a multi-root window has several).
+        await trashInOwningRoot(daemonClient, openRoots(), assetId, path, (rootPath) => {
+          if (autoGitignore) void ensureGitignoreContainsAnimoria(rootPath);
+        });
         void scanWorkspace();
         vscode.window.showInformationMessage('Animoria: Asset moved to trash.');
       } catch (err: unknown) {
@@ -763,7 +780,7 @@ async function viewGovernanceReport(): Promise<void> {
 }
 
 async function generateSnippet(asset: Asset): Promise<void> {
-  const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+  const folder = owningRoot(openRoots(), asset.path)?.path ?? '';
   const ctx = buildIntegrationContext(asset, folder, activeEditorTracker);
   const snippets = generateSnippetsForAsset(asset, ctx.importPath, folder);
 

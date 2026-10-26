@@ -303,11 +303,8 @@ jobs:
       - name: Restore native daemon executable permissions
         run: find native-daemon -type f -name animoria -exec chmod +x {} \;
 
-      - name: Package and publish VS Code extension per platform
+      - name: Package VS Code extension per platform
         working-directory: packages/animoria-vscode
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: |
           set -euo pipefail
           VERSION="${{ steps.version.outputs.VERSION }}"
@@ -317,8 +314,6 @@ jobs:
             cp -r "../../native-daemon/$target/." bin/
             VSIX="animoria-${VERSION}-${target}.vsix"
             vsce package --target "$target" --no-dependencies -o "$VSIX"
-            vsce publish --no-dependencies --packagePath "$VSIX"
-            ovsx publish "$VSIX" --target "$target" -p "$OVSX_PAT"
           done
 
       - name: Stage native daemon for the JetBrains plugin
@@ -361,18 +356,58 @@ jobs:
             exit 1
           fi
 
-      - name: Publish to JetBrains Marketplace
+      # Release Pipeline (strict sequence: crates > action > vscode > openvsx > jetbrains > release)
+      # 1. Crates.io (The CLI)
+      - name: 1. Publish CLI to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: cargo publish --manifest-path packages/animoria-core-rust/Cargo.toml
+
+      # 2. Action (action.yml for GitHub Marketplace)
+      - name: 2. Publish GitHub Action to Marketplace (update floating major tag)
+        run: |
+          set -euo pipefail
+          MAJOR="v$(echo '${{ steps.version.outputs.VERSION }}' | cut -d. -f1)"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -fa "$MAJOR" -m "Update $MAJOR tag to v${{ steps.version.outputs.VERSION }} for GitHub Action Marketplace"
+          git push origin "$MAJOR" --force
+
+      # 3. VS Code Marketplace
+      - name: 3. Publish to VS Code Marketplace
+        working-directory: packages/animoria-vscode
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          for target in linux-x64 linux-arm64 darwin-arm64 win32-x64; do
+            VSIX="animoria-${VERSION}-${target}.vsix"
+            vsce publish --no-dependencies --packagePath "$VSIX"
+          done
+
+      # 4. Open VSX Registry
+      - name: 4. Publish to Open VSX
+        working-directory: packages/animoria-vscode
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          for target in linux-x64 linux-arm64 darwin-arm64 win32-x64; do
+            VSIX="animoria-${VERSION}-${target}.vsix"
+            ovsx publish "$VSIX" --target "$target" -p "$OVSX_PAT"
+          done
+
+      # 5. JetBrains Marketplace
+      - name: 5. Publish to JetBrains Marketplace
         env:
           JETBRAINS_PUBLISH_TOKEN: ${{ secrets.JETBRAINS_PUBLISH_TOKEN }}
         run: |
           cd packages/animoria-jetbrains
           ./gradlew publishPlugin
 
-      - name: Publish to crates.io
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN || secrets.CRATES_IO_TOKEN }}
-        run: cargo publish --manifest-path packages/animoria-core-rust/Cargo.toml
-
+      # Final: Create GitHub Release with release assets
       - name: Create GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
