@@ -13,6 +13,16 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.3.2] — 2026-10-29
+
+### Added
+
+- **Online Rule Documentation Integration**:
+  - Problems view descriptions now include direct links to rule documentation hosted on `https://extensions.sxnnysideproject.com/en/animoria/rules/<rule-id>/`.
+  - Added an "Open Rule Documentation (<rule-id>)" Quick-Fix (`AnimoriaOpenRuleDocumentationQuickFix`) leveraging `BrowserUtil` to open the rule's reference page in the developer's default browser.
+
+---
+
 ## [2.3.1] — 2026-10-26
 
 ### Changed
@@ -119,7 +129,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.3.1...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.3.2...HEAD
+[2.3.2]: https://github.com/sxnnyside-project/animoria/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/sxnnyside-project/animoria/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/sxnnyside-project/animoria/compare/v2.2.1...v2.3.0
 [2.2.1]: https://github.com/sxnnyside-project/animoria/compare/v2.2.0...v2.2.1

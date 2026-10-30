@@ -13,6 +13,17 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.3.2] — 2026-10-29
+
+### Added
+
+- **Online Rule Documentation Integration**:
+  - Diagnostics in the Problems pane now bind rule IDs as clickable links pointing to `https://extensions.sxnnysideproject.com/en/animoria/rules/<rule-id>/` via `vscode.Diagnostic.code.target`.
+  - Added an "Open Documentation for '<rule-id>'" Lightbulb Quick-Fix (`AnimoriaCodeActionProvider`) to open the web documentation in one click.
+  - Linked rule IDs to online documentation in the Governance Tree view tooltips and Markdown reports.
+
+---
+
 ## [2.3.1] — 2026-10-26
 
 ### Fixed
@@ -161,7 +172,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.3.1...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.3.2...HEAD
+[2.3.2]: https://github.com/sxnnyside-project/animoria/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/sxnnyside-project/animoria/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/sxnnyside-project/animoria/compare/v2.2.1...v2.3.0
 [2.2.1]: https://github.com/sxnnyside-project/animoria/compare/v2.2.0...v2.2.1

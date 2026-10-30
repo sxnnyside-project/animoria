@@ -1,4 +1,4 @@
-use crate::cli::ui::{accent, brand, dim, error, title};
+use crate::cli::ui::{self, accent, brand, dim, error, title};
 
 pub struct RuleDoc {
     pub id: &'static str,
@@ -33,14 +33,14 @@ pub const ALL_RULES: &[RuleDoc] = &[
         config_example: r#""rules": { "no-unreferenced-assets": "warning" }"#,
     },
     RuleDoc {
-        id: "max-file-size",
+        id: "max-file-size-kb",
         name: "Maximum File Size",
         category: "Performance",
         default_severity: "warning",
-        summary: "Flags visual assets whose raw byte size exceeds a maximum allowable threshold (e.g. 2MB or 512KB).",
+        summary: "Flags visual assets whose raw byte size exceeds a maximum allowable threshold (e.g. 512KB).",
         why: "Excessively large assets degrade app startup speed, increase memory footprint, and slow down mobile network delivery.",
         how_to_fix: "Compress raster assets with modern encoders (WebP/AVIF) or optimize vector paths.",
-        config_example: r#""rules": { "max-file-size": ["warn", "2MB"] }"#,
+        config_example: r#""rules": { "max-file-size-kb": ["warning", 512] }"#,
     },
     RuleDoc {
         id: "max-dimensions",
@@ -98,7 +98,10 @@ pub fn execute_explain(rule_id: Option<&str>) -> anyhow::Result<i32> {
     match rule_id {
         Some(id) => {
             let normalized = id.trim().to_lowercase();
-            if let Some(rule) = ALL_RULES.iter().find(|r| r.id == normalized) {
+            if let Some(rule) = ALL_RULES.iter().find(|r| {
+                r.id == normalized || (r.id == "max-file-size-kb" && normalized == "max-file-size")
+            }) {
+                let url = ui::rule_url(rule.id);
                 println!("\n{} {}\n", brand("animoria explain"), title(rule.id));
                 println!("  {}: {}", accent("Name"), rule.name);
                 println!("  {}: {}", accent("Category"), rule.category);
@@ -106,6 +109,11 @@ pub fn execute_explain(rule_id: Option<&str>) -> anyhow::Result<i32> {
                     "  {}: {}",
                     accent("Default Severity"),
                     rule.default_severity
+                );
+                println!(
+                    "  {}: {}",
+                    accent("Documentation"),
+                    ui::hyperlink(&url, &url)
                 );
                 println!("\n  {}\n    {}", title("Summary:"), rule.summary);
                 println!("\n  {}\n    {}", title("Why this matters:"), rule.why);
@@ -134,9 +142,10 @@ pub fn execute_explain(rule_id: Option<&str>) -> anyhow::Result<i32> {
             );
             println!("  {}", "─".repeat(95));
             for r in ALL_RULES {
+                let rule_col = ui::hyperlink(&ui::rule_url(r.id), &accent(r.id));
                 println!(
                     "  {:<26}  {:<24}  {:<10}  {}",
-                    accent(r.id),
+                    rule_col,
                     dim(r.category),
                     r.default_severity,
                     r.summary

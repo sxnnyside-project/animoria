@@ -89,9 +89,9 @@ The original "Milestone 2: v1.2.0 — Static Asset Full Implementation" was writ
 
 **Objective:** Deliver direct, automated optimization pipelines, external registry integrations, and documentation infrastructure.
 
-- **Online Rule Documentation & Terminal Hyperlinks (Pending Website Sync):**
-  - Host dedicated online documentation pages for every rule (`https://animoria.dev/rules/<rule-id>`) outlining rationale, real-world examples, and remediation.
-  - Integrate terminal hyperlinks (OSC-8 or explicit URL references) in CLI diagnostics directing developers directly to web documentation once the website team publishes the route structure.
+- **Online Rule Documentation & Terminal Hyperlinks:** ✅ **Done.**
+  - Host dedicated online documentation pages for every rule (`https://extensions.sxnnysideproject.com/en/animoria/rules/<rule-id>/`) outlining rationale, real-world examples, and remediation.
+  - Integrate terminal hyperlinks (OSC-8 or explicit URL references) in CLI diagnostics and editor diagnostics directing developers directly to web documentation.
 - **Auto-Fix Remediations via Code Actions & CLI (`--fix`):**
   - Provide automated renaming for `naming-convention` violations and automated safe-stripping of forbidden elements (`<script>`, inline handlers) in `svg-sanitization`.
   - Provide standard IDE lightbulb quick-fixes (`CodeActionProvider`) to resolve lint errors, consolidate duplicate import strings, or strip orphaned references directly from active source code editors.

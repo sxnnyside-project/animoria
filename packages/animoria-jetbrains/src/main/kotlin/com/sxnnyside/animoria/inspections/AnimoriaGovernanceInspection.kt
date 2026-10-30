@@ -5,6 +5,7 @@ import com.intellij.codeInspection.LocalInspectionTool
 import com.intellij.codeInspection.LocalQuickFix
 import com.intellij.codeInspection.ProblemDescriptor
 import com.intellij.codeInspection.ProblemHighlightType
+import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiFile
 import com.sxnnyside.animoria.actions.AnimoriaActionHost
@@ -66,6 +67,7 @@ class AnimoriaGovernanceInspection : LocalInspectionTool() {
                 fixes.add(AnimoriaShowInGalleryQuickFix(assetPath))
             }
         }
+        fixes.add(AnimoriaOpenRuleDocumentationQuickFix(diagnostic.ruleId))
         return fixes.toTypedArray()
     }
 
@@ -82,6 +84,9 @@ class AnimoriaGovernanceInspection : LocalInspectionTool() {
             append("  [")
             append(diagnostic.ruleId)
             append(']')
+            append("\nDocumentation: https://extensions.sxnnysideproject.com/en/animoria/rules/")
+            append(diagnostic.ruleId)
+            append('/')
             if (diagnostic.evidence.summary.isNotBlank()) {
                 append("\n")
                 append(diagnostic.evidence.summary)
@@ -168,5 +173,23 @@ class AnimoriaShowInGalleryQuickFix(
         AnimoriaSharedUiPanel.of(project, "inspector")?.focus(
             AnimoriaSharedUiPanel.Focus(tab = "assets", assetPath = assetPath),
         )
+    }
+}
+
+/**
+ * Quick fix that opens the rule's online documentation in the default browser.
+ */
+class AnimoriaOpenRuleDocumentationQuickFix(
+    val ruleId: String,
+) : LocalQuickFix {
+    override fun getName(): String = "Open Rule Documentation ($ruleId)"
+
+    override fun getFamilyName(): String = "Animoria Governance"
+
+    override fun applyFix(
+        project: Project,
+        descriptor: ProblemDescriptor,
+    ) {
+        BrowserUtil.browse("https://extensions.sxnnysideproject.com/en/animoria/rules/$ruleId/")
     }
 }

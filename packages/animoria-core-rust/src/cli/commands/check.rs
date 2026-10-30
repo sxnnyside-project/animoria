@@ -152,7 +152,8 @@ pub fn execute_check(target_path: &Path, args: CheckArgs<'_>) -> anyhow::Result<
             let rel = target_file
                 .strip_prefix(&format!("{}/", canonical.display()))
                 .unwrap_or(target_file);
-            println!("  {} {}", error("✖"), error(&err.rule_id));
+            let rule_label = ui::hyperlink(&ui::rule_url(&err.rule_id), &error(&err.rule_id));
+            println!("  {} {}", error("✖"), rule_label);
             println!("    {}", err.message);
             println!("    {}\n", dim(&format!("at ./{}:{}:1", rel, target_line)));
         }
@@ -166,7 +167,8 @@ pub fn execute_check(target_path: &Path, args: CheckArgs<'_>) -> anyhow::Result<
             let rel = target_file
                 .strip_prefix(&format!("{}/", canonical.display()))
                 .unwrap_or(target_file);
-            println!("  {} {}", warning("▲"), warning(&warn.rule_id));
+            let rule_label = ui::hyperlink(&ui::rule_url(&warn.rule_id), &warning(&warn.rule_id));
+            println!("  {} {}", warning("▲"), rule_label);
             println!("    {}", warn.message);
             println!("    {}\n", dim(&format!("at ./{}:{}:1", rel, target_line)));
         }

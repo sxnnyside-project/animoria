@@ -86,6 +86,23 @@ pub fn accent(text: &str) -> String {
     colorize(CYAN, text)
 }
 
+pub const RULES_BASE_URL: &str = "https://extensions.sxnnysideproject.com/en/animoria/rules";
+
+pub fn rule_url(rule_id: &str) -> String {
+    format!("{RULES_BASE_URL}/{rule_id}/")
+}
+
+/// Generates an OSC-8 terminal hyperlink when standard output is an interactive
+/// terminal with ANSI colors/escape sequences enabled. If `NO_COLOR` is active,
+/// output is piped, or `--no-color` was requested, the plain text is returned.
+pub fn hyperlink(url: &str, text: &str) -> String {
+    if colors_enabled() {
+        format!("\x1b]8;;{url}\x1b\\{text}\x1b]8;;\x1b\\")
+    } else {
+        text.to_string()
+    }
+}
+
 /// `BOLD`/`RESET` used directly in a `println!` (rather than through one of
 /// the helpers above) so callers can build up a styled line piece by piece.
 /// Those still need to disappear under `NO_COLOR`/a non-terminal, so callers
@@ -172,4 +189,29 @@ pub fn grade_badge(grade: &str) -> String {
         _ => format!("{BOLD}{DIM}"),
     };
     colorize(&code, &format!(" Grade {upper} "))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rule_url_formatting() {
+        assert_eq!(
+            rule_url("no-unreferenced-assets"),
+            "https://extensions.sxnnysideproject.com/en/animoria/rules/no-unreferenced-assets/"
+        );
+        assert_eq!(
+            rule_url("svg-sanitization"),
+            "https://extensions.sxnnysideproject.com/en/animoria/rules/svg-sanitization/"
+        );
+    }
+
+    #[test]
+    fn test_hyperlink_under_no_color() {
+        configure(true, false, 0);
+        let url = rule_url("no-gif");
+        let link = hyperlink(&url, "no-gif");
+        assert_eq!(link, "no-gif");
+    }
 }

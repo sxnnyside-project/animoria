@@ -39,6 +39,8 @@ pub struct SarifRuleDefinition {
     pub id: String,
     pub name: String,
     pub short_description: SarifText,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub help_uri: Option<String>,
     pub default_configuration: SarifRuleConfig,
 }
 
@@ -110,6 +112,10 @@ impl SarifReport {
                     short_description: SarifText {
                         text: rule_description(&diag.rule_id).to_string(),
                     },
+                    help_uri: Some(format!(
+                        "https://extensions.sxnnysideproject.com/en/animoria/rules/{}/",
+                        diag.rule_id
+                    )),
                     default_configuration: SarifRuleConfig {
                         level: severity_to_sarif_level(diag.severity),
                     },
@@ -229,6 +235,7 @@ mod tests {
         let json = serde_json::to_string_pretty(&report).expect("sarif json serialization");
         assert!(json.contains("\"version\": \"2.1.0\""));
         assert!(json.contains("\"ruleId\": \"max-file-size-kb\""));
+        assert!(json.contains("\"helpUri\": \"https://extensions.sxnnysideproject.com/en/animoria/rules/max-file-size-kb/\""));
         assert!(json.contains("\"uri\": \"icon.png\""));
     }
 }

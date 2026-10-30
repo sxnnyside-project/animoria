@@ -7,9 +7,9 @@ branding:
 
 inputs:
   version:
-    description: 'Version of Animoria native CLI to use (defaults to 2.3.1)'
+    description: 'Version of Animoria native CLI to use (defaults to 2.3.2)'
     required: false
-    default: '2.3.1'
+    default: '2.3.2'
   path:
     description: 'Workspace directory path to analyze (defaults to .)'
     required: false
@@ -192,7 +192,7 @@ runs:
 
     - name: Upload SARIF to GitHub Code Scanning
       if: ${{ inputs.upload-sarif == 'true' && hashFiles(inputs.sarif-file) != '' && !cancelled() }}
-      uses: github/codeql-action/upload-sarif@ff0a06e83cb2de871e5a09832bc6a81e7276941f # v3.28.18
+      uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
       with:
         sarif_file: ${{ inputs.sarif-file }}
         category: 'animoria-governance'

@@ -17,7 +17,11 @@ export class AnimoriaCodeActionProvider implements vscode.CodeActionProvider {
     for (const diagnostic of context.diagnostics) {
       if (diagnostic.source !== 'Animoria') continue;
 
-      const ruleId = String(diagnostic.code ?? '');
+      const rawCode = diagnostic.code;
+      const ruleId =
+        typeof rawCode === 'object' && rawCode !== null
+          ? String(rawCode.value)
+          : String(rawCode ?? '');
 
       if (ruleId === 'no-duplicate-content') {
         const resolveAction = new vscode.CodeAction(
@@ -78,6 +82,24 @@ export class AnimoriaCodeActionProvider implements vscode.CodeActionProvider {
       };
       refreshAction.diagnostics = [diagnostic];
       actions.push(refreshAction);
+
+      if (ruleId) {
+        const docAction = new vscode.CodeAction(
+          `Animoria: Open Documentation for '${ruleId}'`,
+          vscode.CodeActionKind.QuickFix,
+        );
+        docAction.command = {
+          command: 'vscode.open',
+          title: 'Open Documentation',
+          arguments: [
+            vscode.Uri.parse(
+              `https://extensions.sxnnysideproject.com/en/animoria/rules/${ruleId}/`,
+            ),
+          ],
+        };
+        docAction.diagnostics = [diagnostic];
+        actions.push(docAction);
+      }
     }
 
     return actions;

@@ -394,7 +394,8 @@ export async function activate(context: vscode.ExtensionContext) {
           `**Total Findings:** ${lastAnalysis.diagnostics.length}`,
           '',
           ...lastAnalysis.diagnostics.map(
-            (d) => `- [${d.severity}] ${d.rule_id}: ${d.message} (\`${d.target_asset_path}\`)`,
+            (d) =>
+              `- [${d.severity}] [${d.rule_id}](https://extensions.sxnnysideproject.com/en/animoria/rules/${d.rule_id}/): ${d.message} (\`${d.target_asset_path}\`)`,
           ),
         ].join('\n');
         await vscode.workspace.fs.writeFile(uri, Buffer.from(content, 'utf8'));
@@ -756,7 +757,9 @@ async function viewGovernanceReport(): Promise<void> {
   if (lastAnalysis.diagnostics.length > 0) {
     lines.push('', '## Diagnostics', '');
     for (const d of lastAnalysis.diagnostics) {
-      lines.push(`- **[${d.severity}] ${d.rule_id}:** ${d.message} (\`${d.target_asset_path}\`)`);
+      lines.push(
+        `- **[${d.severity}] [${d.rule_id}](https://extensions.sxnnysideproject.com/en/animoria/rules/${d.rule_id}/):** ${d.message} (\`${d.target_asset_path}\`)`,
+      );
     }
   }
 

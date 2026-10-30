@@ -65,10 +65,12 @@ export class DiagnosticPublisher implements vscode.Disposable {
     diagnostic: RuleDiagnostic,
     range: vscode.Range = new vscode.Range(0, 0, 0, 0),
   ): vscode.Diagnostic {
+    const ruleUrl = `https://extensions.sxnnysideproject.com/en/animoria/rules/${diagnostic.rule_id}/`;
     const message = [
       diagnostic.message,
       '',
       `Rule: ${diagnostic.rule_id}`,
+      `Documentation: ${ruleUrl}`,
       `Severity: ${diagnostic.severity}`,
     ].join('\n');
 
@@ -81,7 +83,10 @@ export class DiagnosticPublisher implements vscode.Disposable {
     );
 
     result.source = 'Animoria';
-    result.code = diagnostic.rule_id;
+    result.code = {
+      value: diagnostic.rule_id,
+      target: vscode.Uri.parse(ruleUrl),
+    };
 
     if (diagnostic.rule_id === 'no-unreferenced-assets') {
       result.tags = [vscode.DiagnosticTag.Unnecessary];

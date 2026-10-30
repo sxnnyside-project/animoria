@@ -11,6 +11,19 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.3.2] — 2026-10-29
+
+### Added
+
+- **Online Rule Documentation Links & OSC-8 Terminal Hyperlinks**:
+  - Pointed rule documentation to `https://extensions.sxnnysideproject.com/en/animoria/rules/<rule-id>/` across CLI diagnostics, SARIF output, VS Code, and JetBrains.
+  - Native CLI diagnostics (`animoria check`) and `animoria explain` now emit clickable OSC-8 terminal hyperlinks on interactive terminals, while maintaining clean plain text for pipes and under `NO_COLOR`.
+  - SARIF reports include `helpUri` on rule definitions pointing to the online documentation.
+  - Editor diagnostics in VS Code attach clickable `code.target` URIs and provide an "Open Documentation" Lightbulb Quick-Fix.
+  - Editor inspections in JetBrains include rule documentation links in findings descriptions and provide an "Open Rule Documentation" Quick-Fix.
+
+---
+
 ## [2.3.1] — 2026-10-26
 
 ### Added
@@ -242,7 +255,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.3.1...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.3.2...HEAD
+[2.3.2]: https://github.com/sxnnyside-project/animoria/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/sxnnyside-project/animoria/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/sxnnyside-project/animoria/compare/v2.2.1...v2.3.0
 [2.2.1]: https://github.com/sxnnyside-project/animoria/compare/v2.2.0...v2.2.1

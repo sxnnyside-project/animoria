@@ -163,6 +163,10 @@ class AnimoriaGovernanceInspectionTest {
         val galleryFix = AnimoriaShowInGalleryQuickFix("/workspace/assets/hero.json")
         assertEquals("Show in Animoria Gallery", galleryFix.name)
         assertEquals("Animoria Governance", galleryFix.familyName)
+
+        val docFix = AnimoriaOpenRuleDocumentationQuickFix("no-unreferenced-assets")
+        assertEquals("Open Rule Documentation (no-unreferenced-assets)", docFix.name)
+        assertEquals("Animoria Governance", docFix.familyName)
     }
 
     @Test

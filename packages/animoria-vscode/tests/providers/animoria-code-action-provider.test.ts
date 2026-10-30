@@ -86,5 +86,39 @@ describe('AnimoriaCodeActionProvider', () => {
     const findingsAction = actions.find((a) => a.title.includes('Inspect Governance Findings'));
     expect(findingsAction).toBeDefined();
     expect(findingsAction?.command?.command).toBe('animoria.viewFindings');
+
+    const docAction = actions.find((a) =>
+      a.title.includes("Open Documentation for 'naming-kebab-case'"),
+    );
+    expect(docAction).toBeDefined();
+    expect(docAction?.command?.command).toBe('vscode.open');
+  });
+
+  it('handles diagnostic code when provided as an object with value and target', () => {
+    const diag = new vscode.Diagnostic(range, 'Duplicate content found');
+    diag.source = 'Animoria';
+    diag.code = {
+      value: 'no-duplicate-content',
+      target: vscode.Uri.parse(
+        'https://extensions.sxnnysideproject.com/en/animoria/rules/no-duplicate-content/',
+      ),
+    };
+
+    const context: vscode.CodeActionContext = {
+      diagnostics: [diag],
+      triggerKind: 1 as vscode.CodeActionTriggerKind,
+      only: undefined,
+    };
+
+    const actions = provider.provideCodeActions(
+      fakeDocument,
+      range,
+      context,
+      {} as vscode.CancellationToken,
+    );
+    const docAction = actions.find((a) =>
+      a.title.includes("Open Documentation for 'no-duplicate-content'"),
+    );
+    expect(docAction).toBeDefined();
   });
 });

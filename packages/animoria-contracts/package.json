@@ -1,6 +1,6 @@
 {
   "name": "@animoria/contracts",
-  "version": "2.3.1",
+  "version": "2.3.2",
   "description": "Shared canonical data types, protocol definitions, and UI contracts for Animoria.",
   "type": "module",
   "main": "./src/index.ts",

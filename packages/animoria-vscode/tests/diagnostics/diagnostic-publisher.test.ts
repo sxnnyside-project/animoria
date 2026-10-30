@@ -149,4 +149,31 @@ describe('DiagnosticPublisher', () => {
     const diagnostics = collection().get({ fsPath: subject.path } as never);
     expect(diagnostics?.[0]?.tags).toEqual([1]); // DiagnosticTag.Unnecessary = 1
   });
+
+  it('attaches web documentation url to diagnostic code target and message', () => {
+    const subject = buildAsset();
+    publisher.publish(
+      buildAnalysis({
+        assets: [subject],
+        diagnostics: [
+          buildDiagnostic({
+            target_asset_path: subject.path,
+            rule_id: 'no-duplicate-content',
+          }),
+        ],
+      }),
+    );
+
+    const diagnostics = collection().get({ fsPath: subject.path } as never);
+    const diag = diagnostics?.[0];
+    expect(diag).toBeDefined();
+    const codeObj = diag?.code as { value: string; target: { toString(): string } };
+    expect(codeObj.value).toBe('no-duplicate-content');
+    expect(codeObj.target.toString()).toBe(
+      'https://extensions.sxnnysideproject.com/en/animoria/rules/no-duplicate-content/',
+    );
+    expect(diag?.message).toContain(
+      'https://extensions.sxnnysideproject.com/en/animoria/rules/no-duplicate-content/',
+    );
+  });
 });

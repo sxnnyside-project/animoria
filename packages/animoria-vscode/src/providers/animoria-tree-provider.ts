@@ -177,15 +177,18 @@ export class AnimoriaGovernanceIssueItem extends vscode.TreeItem {
     super(stem, vscode.TreeItemCollapsibleState.None);
 
     this.diagnostic = diagnostic;
-    this.tooltip = new vscode.MarkdownString(
+    const ruleUrl = `https://extensions.sxnnysideproject.com/en/animoria/rules/${diagnostic.rule_id}/`;
+    const tooltip = new vscode.MarkdownString(
       [
-        `**${diagnostic.rule_id}** · ${diagnostic.severity}`,
+        `**[${diagnostic.rule_id}](${ruleUrl})** · ${diagnostic.severity}`,
         '',
         diagnostic.message,
         '',
         diagnostic.target_asset_path,
       ].join('\n'),
     );
+    tooltip.isTrusted = true;
+    this.tooltip = tooltip;
 
     this.contextValue =
       diagnostic.rule_id === 'no-duplicate-content'
