@@ -1,4 +1,3 @@
-import type { WorkspaceAnalysis } from '@animoria/contracts';
 import * as vscode from 'vscode';
 import type { VsCodeDaemonClient } from '../daemon/daemon-client.js';
 import {

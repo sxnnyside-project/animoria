@@ -33,7 +33,7 @@ describe('registerLanguageModelTools', () => {
       { invoke: (opts: unknown, token: unknown) => Promise<{ content: { value: string }[] }> }
     >();
 
-    const spy = vi.spyOn(vscode.lm, 'registerTool').mockImplementation((name, tool) => {
+    vi.spyOn(vscode.lm, 'registerTool').mockImplementation((name, tool) => {
       registeredTools.set(name, tool as never);
       return new vscode.Disposable(() => {});
     });

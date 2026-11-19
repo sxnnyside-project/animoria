@@ -1,4 +1,3 @@
-import type { Asset, RuleDiagnostic } from '@animoria/contracts';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { DiagnosticPublisher } from '../../src/diagnostics/diagnostic-publisher.js';
 import { DiagnosticSeverity, languages } from '../mocks/vscode.js';

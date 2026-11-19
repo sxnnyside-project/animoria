@@ -105,7 +105,7 @@ export class RustDaemonClient {
 
   private handleLine(line: string): void {
     const trimmed = line.trim();
-    if (!trimmed || !trimmed.startsWith('{')) return;
+    if (!trimmed?.startsWith('{')) return;
     try {
       const response = JSON.parse(trimmed) as DaemonResponseEnvelope;
       const pending = this.pendingRequests.get(response.id);

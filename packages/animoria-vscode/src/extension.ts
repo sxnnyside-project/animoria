@@ -1,4 +1,3 @@
-import { basename } from 'node:path';
 import type { Asset, DuplicateGroup, UsageReference, WorkspaceAnalysis } from '@animoria/contracts';
 import * as vscode from 'vscode';
 import { registerLanguageModelTools } from './ai/animoria-lm-tools.js';

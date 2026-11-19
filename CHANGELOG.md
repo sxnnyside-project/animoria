@@ -9,6 +9,18 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **Vite, Vitest & Node Types Upgrade** (`vite` 8.2.2 → 8.3.8, `vitest` 4.1.11 → 5.1.1, `@types/node` 26.6.5 → 26.6.6):
+  - Applied across `@animoria/ui`, `animoria-vscode` and `animoria-sandbox`. No test changes were needed (168 tests pass).
+  - Vitest 5 requires Node `^22.12 || ^24 || >=26` (CI already resolves `node-version: 22` to the latest 22.x).
+  - `pnpm install` alone keeps the old versions because of the `vite` / `vitest` overrides in `pnpm-workspace.yaml`; use `pnpm update -r vite vitest` to move them.
+- **Biome 2 Toolchain Upgrade** (`@biomejs/biome` 1.9.4 → 2.6.8):
+  - `biome.json` migrated to the v2 schema (`files.ignore` → `files.includes` with `!` exclusions, `rules.recommended` → `rules.preset`). SVG files are excluded to keep the v1 behavior, since v2 now lints them.
+  - Removed useless escapes in the hover token regexes of `asset-resolver.ts` and reflowed a long `--animoria-font-family` declaration in `tokens.css` to match the v2 formatter. No behavior change.
+  - Cleaned up the 16 new Biome 2 findings by hand: removed unused imports, simplified two `!x || !x.startsWith()` checks to optional chains, prefixed interface-mandated unused parameters with `_` and dropped an unused test spy binding.
+  - 3 warnings remain (`noUnusedPrivateClassMembers`: `_selectedRootId`, `_resolutionRootName`, `_duplicateGroups`). They are written but never read; they do not fail `just lint`. Do not apply them with `biome lint --write --unsafe`: it deletes the declarations but leaves the assignments and breaks the `@animoria/ui` typecheck. Decide by hand whether to remove or use them.
+
 ---
 
 ## [2.3.3] — 2026-11-19

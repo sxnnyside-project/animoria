@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import type { Asset, DuplicateGroup, WorkspaceAnalysis } from '@animoria/contracts';
+import type { Asset } from '@animoria/contracts';
 import type { HostInbound } from '@animoria/ui/bridge';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { VsCodeDaemonClient } from '../../src/daemon/daemon-client.js';

@@ -1,10 +1,4 @@
-import type {
-  Asset,
-  DuplicateGroup,
-  ResolutionPlan,
-  UsageReference,
-  WorkspaceAnalysis,
-} from '@animoria/contracts';
+import type { Asset, ResolutionPlan, UsageReference, WorkspaceAnalysis } from '@animoria/contracts';
 import { LitElement, css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { cache } from 'lit/directives/cache.js';
@@ -30,7 +24,6 @@ import type {
 import {
   ALL_ROOTS,
   buildAnalysisViewModel,
-  formatBytes,
   referenceStateOf,
 } from '../view-model/analysis-view-model.js';
 import type { AnimoriaAssetCard } from './animoria-asset-card.js';

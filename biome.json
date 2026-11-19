@@ -1,26 +1,28 @@
 {
-  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
     "useIgnoreFile": true
   },
   "files": {
-    "ignore": [
-      "**/dist/**",
-      "packages/animoria-vscode/media/**",
-      "**/node_modules/**",
-      "**/build/**",
-      "**/fixtures/**",
-      "**/assets/**",
-      "packages/animoria-contracts/src/generated/**",
-      "**/*.json",
-      "**/*.md",
-      "**/*.yaml",
-      "**/*.yml",
-      "packages/animoria-jetbrains/**",
-      ".animoria/**",
-      ".turbo/**"
+    "includes": [
+      "**",
+      "!**/dist",
+      "!**/packages/animoria-vscode/media",
+      "!**/node_modules",
+      "!**/build",
+      "!**/fixtures",
+      "!**/assets",
+      "!**/packages/animoria-contracts/src/generated",
+      "!**/*.json",
+      "!**/*.md",
+      "!**/*.yaml",
+      "!**/*.yml",
+      "!**/*.svg",
+      "!**/packages/animoria-jetbrains",
+      "!**/.animoria",
+      "!**/.turbo"
     ]
   },
   "formatter": {
@@ -32,7 +34,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "style": {
         "noNonNullAssertion": "off"
       },

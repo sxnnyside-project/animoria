@@ -37,7 +37,8 @@
      so the font silently never applied in either IDE, and the sandbox was
      the only surface that ever rendered the intended typeface. The stack is
      system fonts, which are present everywhere by definition. */
-  --animoria-font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --animoria-font-family:
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --animoria-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   /* ── Type scale ──────────────────────────────────────────────────────
      Relative to the host's own base size, not fixed pixels.

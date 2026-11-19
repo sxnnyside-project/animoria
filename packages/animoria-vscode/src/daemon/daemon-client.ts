@@ -4,7 +4,6 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { type Interface, createInterface } from 'node:readline';
 import {
-  type DaemonErrorPayload,
   type DaemonEvent,
   type DaemonRequest,
   type DaemonResponse,
@@ -15,7 +14,6 @@ import {
   type ReferenceRewriteProposal,
   type ResolutionPlan,
   type TrashItem,
-  type UsageReference,
   type WorkspaceAnalysis,
 } from '@animoria/contracts';
 
@@ -180,7 +178,7 @@ export class VsCodeDaemonClient {
 
   private handleLine(line: string) {
     const trimmed = line.trim();
-    if (!trimmed || !trimmed.startsWith('{')) return;
+    if (!trimmed?.startsWith('{')) return;
 
     try {
       const json = JSON.parse(trimmed) as Record<string, unknown>;

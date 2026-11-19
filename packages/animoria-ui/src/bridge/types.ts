@@ -4,7 +4,6 @@ import type {
   DuplicateGroup,
   SessionManifest as GeneratedSessionManifest,
   ResolutionPlan,
-  RuleDiagnostic,
   SnippetOption,
   UsageReference,
   WorkspaceAnalysis,

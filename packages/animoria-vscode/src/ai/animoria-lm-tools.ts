@@ -12,7 +12,7 @@ export interface SearchAssetsToolParameters {
  * visual asset inventory and audit workspace governance health.
  */
 export function registerLanguageModelTools(
-  context: vscode.ExtensionContext,
+  _context: vscode.ExtensionContext,
   getAnalysis: () => WorkspaceAnalysis | null,
   getDuplicateGroups: () => readonly DuplicateGroup[] = () => [],
 ): vscode.Disposable {

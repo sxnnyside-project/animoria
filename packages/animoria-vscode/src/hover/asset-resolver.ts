@@ -85,11 +85,11 @@ function extractTokensAtCursor(line: string, charPos: number): string[] {
 
   // 2. Word/filename bounds around cursor
   let start = charPos;
-  while (start > 0 && /[^'"\`\s<>()\[\]{},;=]/.test(line[start - 1] ?? '')) {
+  while (start > 0 && /[^'"`\s<>()[\]{},;=]/.test(line[start - 1] ?? '')) {
     start--;
   }
   let end = charPos;
-  while (end < line.length && /[^'"\`\s<>()\[\]{},;=]/.test(line[end] ?? '')) {
+  while (end < line.length && /[^'"`\s<>()[\]{},;=]/.test(line[end] ?? '')) {
     end++;
   }
   if (end > start) {

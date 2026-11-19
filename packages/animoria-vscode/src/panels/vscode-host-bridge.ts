@@ -1,5 +1,5 @@
 import { promises as fs, existsSync } from 'node:fs';
-import { basename, extname, join } from 'node:path';
+import { extname, join } from 'node:path';
 import type {
   Asset,
   DuplicateGroup,
@@ -18,7 +18,6 @@ import type {
   HostInbound,
   HostOutbound,
   MultiRootAnalysis,
-  RestoreResult,
   ReviewableCleanupProposal,
   SessionManifest,
   UiPreferences,
@@ -643,7 +642,7 @@ export class VsCodeHostBridge {
     this._post({ type: 'analysis', analysis: toWireAnalysis(analysis) });
   }
 
-  publishRoots(analysis: MultiRootAnalysis): void {
+  publishRoots(_analysis: MultiRootAnalysis): void {
     this._post({
       type: 'roots-changed',
       roots: [{ id: 'root', name: 'Workspace', path: process.cwd() }],
