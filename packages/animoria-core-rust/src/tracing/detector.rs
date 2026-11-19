@@ -6,8 +6,9 @@ use std::path::PathBuf;
 
 use super::patterns::{
     asset_matches_dynamic_pattern, asset_matches_path_token, extract_dynamic_patterns,
-    extract_path_token, extract_quoted_tokens, is_line_comment_or_url, is_source_file_extension,
-    is_valid_exact_filename_reference, is_valid_stem_reference, lua_long_comment,
+    extract_exported_identifier, extract_path_token, extract_quoted_tokens, is_line_comment_or_url,
+    is_source_file_extension, is_valid_exact_filename_reference, is_valid_stem_reference,
+    is_word_boundary, lua_long_comment,
 };
 use crate::contracts::asset::Asset;
 use crate::contracts::usage::UsageReference;
@@ -510,7 +511,141 @@ impl AssetReferenceDetector {
             }
         }
 
-        references
+        self.prune_dead_barrel_exports(assets, references, &source_files)
+    }
+
+    /// Prunes references where an asset is ONLY referenced inside export statements
+    /// (e.g. `export const adoreAnimation = require('./adore.json')` in barrel files)
+    /// and the exported identifier is never imported or used anywhere else in the workspace.
+    fn prune_dead_barrel_exports(
+        &self,
+        _assets: &[Asset],
+        references: Vec<UsageReference>,
+        source_files: &[PathBuf],
+    ) -> Vec<UsageReference> {
+        if references.is_empty() || source_files.is_empty() {
+            return references;
+        }
+
+        // Map: asset key -> references
+        let mut refs_by_asset: std::collections::HashMap<String, Vec<&UsageReference>> =
+            std::collections::HashMap::new();
+        for r in &references {
+            refs_by_asset.entry(r.asset_id.clone()).or_default().push(r);
+        }
+
+        // Only consider assets whose EVERY reference in the workspace is an export statement
+        let mut candidate_symbols: std::collections::HashMap<
+            String,
+            (std::collections::HashSet<String>, Vec<&UsageReference>),
+        > = std::collections::HashMap::new();
+
+        for (_asset_key, asset_refs) in refs_by_asset {
+            let all_are_exports = asset_refs
+                .iter()
+                .all(|r| extract_exported_identifier(&r.line_content).is_some());
+
+            if all_are_exports {
+                for r in asset_refs {
+                    if let Some(id) = extract_exported_identifier(&r.line_content) {
+                        if id.len() >= 2 {
+                            let entry = candidate_symbols.entry(id).or_default();
+                            entry.0.insert(r.file_path.clone());
+                            entry.0.insert(r.relative_file_path.clone());
+                            entry.1.push(r);
+                        }
+                    }
+                }
+            }
+        }
+
+        if candidate_symbols.is_empty() {
+            return references;
+        }
+
+        let symbol_names: Vec<String> = candidate_symbols.keys().cloned().collect();
+        let ac = match AhoCorasickBuilder::new()
+            .match_kind(MatchKind::Standard)
+            .build(&symbol_names)
+        {
+            Ok(ac) => ac,
+            Err(_) => return references,
+        };
+
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let symbol_used: Vec<AtomicBool> = (0..symbol_names.len())
+            .map(|_| AtomicBool::new(false))
+            .collect();
+
+        source_files.par_iter().for_each(|source_path| {
+            let content = match fs::read_to_string(source_path) {
+                Ok(c) => c,
+                Err(_) => return,
+            };
+            let source_str = source_path.to_string_lossy();
+
+            for (line_idx, line) in content.lines().enumerate() {
+                let line_num = (line_idx + 1) as u32;
+                for mat in ac.find_overlapping_iter(line) {
+                    let sym_idx = mat.pattern().as_usize();
+                    if symbol_used[sym_idx].load(Ordering::Relaxed) {
+                        continue;
+                    }
+                    if !is_word_boundary(line, mat.start(), mat.end()) {
+                        continue;
+                    }
+
+                    let sym_name = &symbol_names[sym_idx];
+                    if let Some((defining_files, defining_refs)) = candidate_symbols.get(sym_name) {
+                        let is_in_defining_file = defining_files.iter().any(|df| {
+                            source_str == *df
+                                || source_str.ends_with(df)
+                                || source_path
+                                    .strip_prefix(&self.root_path)
+                                    .map(|p| p.to_string_lossy() == *df)
+                                    .unwrap_or(false)
+                        });
+
+                        if !is_in_defining_file {
+                            symbol_used[sym_idx].store(true, Ordering::Relaxed);
+                        } else {
+                            // In defining file: used if it appears on a line other than the export line
+                            let is_on_export_line =
+                                defining_refs.iter().any(|r| r.line_number == line_num);
+                            if !is_on_export_line {
+                                symbol_used[sym_idx].store(true, Ordering::Relaxed);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Filter out dead references
+        let mut dead_refs: std::collections::HashSet<(String, String, u32)> =
+            std::collections::HashSet::new();
+
+        for (sym_idx, sym_name) in symbol_names.iter().enumerate() {
+            let is_used = symbol_used[sym_idx].load(Ordering::Relaxed);
+            if !is_used {
+                if let Some((_, refs)) = candidate_symbols.get(sym_name) {
+                    for r in refs {
+                        dead_refs.insert((r.asset_id.clone(), r.file_path.clone(), r.line_number));
+                    }
+                }
+            }
+        }
+
+        if dead_refs.is_empty() {
+            references
+        } else {
+            references
+                .into_iter()
+                .filter(|r| {
+                    !dead_refs.contains(&(r.asset_id.clone(), r.file_path.clone(), r.line_number))
+                })
+                .collect()
+        }
     }
 }
 
@@ -970,5 +1105,159 @@ mod tests {
         assert_eq!(refs[0].asset_id, char_abs.to_string_lossy().to_string());
         assert_eq!(refs[0].confidence, "high");
         assert!(refs[0].line_content.contains("dynamicCollections matched"));
+    }
+
+    #[test]
+    fn test_alias_at_slash_import_nexo_finance() {
+        let dir = tempdir().unwrap();
+        let ws_root = dir.path();
+
+        let clock_rel = "client/src/assets/lottie/clock.json";
+        let clock_abs = ws_root.join(clock_rel);
+        fs::create_dir_all(clock_abs.parent().unwrap()).unwrap();
+        fs::write(&clock_abs, b"{}").unwrap();
+
+        let dead_rel = "client/src/assets/lottie/dead.json";
+        let dead_abs = ws_root.join(dead_rel);
+        fs::create_dir_all(dead_abs.parent().unwrap()).unwrap();
+        fs::write(&dead_abs, b"{}").unwrap();
+
+        let src_file = ws_root.join("client/src/lib/lottieAnimations.ts");
+        fs::create_dir_all(src_file.parent().unwrap()).unwrap();
+        fs::write(
+            &src_file,
+            "import clockAnim from '@/assets/lottie/clock.json';\n",
+        )
+        .unwrap();
+
+        let clock_asset = make_test_asset(
+            &clock_abs.to_string_lossy(),
+            &clock_abs.to_string_lossy(),
+            clock_rel,
+            "clock.json",
+            "clock",
+        );
+        let dead_asset = make_test_asset(
+            &dead_abs.to_string_lossy(),
+            &dead_abs.to_string_lossy(),
+            dead_rel,
+            "dead.json",
+            "dead",
+        );
+
+        let detector = AssetReferenceDetector::new(ws_root.to_path_buf(), &[]).unwrap();
+        let refs = detector.detect_references(&[clock_asset, dead_asset]);
+
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].asset_id, clock_abs.to_string_lossy().to_string());
+    }
+
+    #[test]
+    fn test_import_without_json_extension_scholarly_admin() {
+        let dir = tempdir().unwrap();
+        let ws_root = dir.path();
+
+        let loading_rel = "src/assets/lottie/loading.json";
+        let loading_abs = ws_root.join(loading_rel);
+        fs::create_dir_all(loading_abs.parent().unwrap()).unwrap();
+        fs::write(&loading_abs, b"{}").unwrap();
+
+        let src_file = ws_root.join("src/App.jsx");
+        fs::create_dir_all(src_file.parent().unwrap()).unwrap();
+        fs::write(
+            &src_file,
+            "import loadingAnim from './assets/lottie/loading';\n",
+        )
+        .unwrap();
+
+        let loading_asset = make_test_asset(
+            &loading_abs.to_string_lossy(),
+            &loading_abs.to_string_lossy(),
+            loading_rel,
+            "loading.json",
+            "loading",
+        );
+
+        let detector = AssetReferenceDetector::new(ws_root.to_path_buf(), &[]).unwrap();
+        let refs = detector.detect_references(&[loading_asset]);
+
+        assert_eq!(refs.len(), 1);
+        assert_eq!(refs[0].asset_id, loading_abs.to_string_lossy().to_string());
+    }
+
+    #[test]
+    fn test_barrel_dead_exports_sticknet() {
+        let dir = tempdir().unwrap();
+        let ws_root = dir.path();
+
+        let adore_rel = "assets/lottie/adore.json";
+        let adore_abs = ws_root.join(adore_rel);
+        fs::create_dir_all(adore_abs.parent().unwrap()).unwrap();
+        fs::write(&adore_abs, b"{}").unwrap();
+
+        let like_rel = "assets/lottie/like.json";
+        let like_abs = ws_root.join(like_rel);
+        fs::create_dir_all(like_abs.parent().unwrap()).unwrap();
+        fs::write(&like_abs, b"{}").unwrap();
+
+        let used_rel = "assets/lottie/used.json";
+        let used_abs = ws_root.join(used_rel);
+        fs::create_dir_all(used_abs.parent().unwrap()).unwrap();
+        fs::write(&used_abs, b"{}").unwrap();
+
+        // Barrel index.ts exports all three
+        let index_file = ws_root.join("assets/lottie/index.ts");
+        fs::create_dir_all(index_file.parent().unwrap()).unwrap();
+        fs::write(
+            &index_file,
+            r#"export const adoreAnimation = require('./adore.json');
+export const likeAnimation = require('./like.json');
+export const usedAnimation = require('./used.json');
+"#,
+        )
+        .unwrap();
+
+        // Another file only imports and uses `usedAnimation`
+        let app_file = ws_root.join("src/App.tsx");
+        fs::create_dir_all(app_file.parent().unwrap()).unwrap();
+        fs::write(
+            &app_file,
+            r#"import { usedAnimation } from '../assets/lottie';
+export function Component() {
+    return <Lottie source={usedAnimation} />;
+}
+"#,
+        )
+        .unwrap();
+
+        let adore_asset = make_test_asset(
+            &adore_abs.to_string_lossy(),
+            &adore_abs.to_string_lossy(),
+            adore_rel,
+            "adore.json",
+            "adore",
+        );
+        let like_asset = make_test_asset(
+            &like_abs.to_string_lossy(),
+            &like_abs.to_string_lossy(),
+            like_rel,
+            "like.json",
+            "like",
+        );
+        let used_asset = make_test_asset(
+            &used_abs.to_string_lossy(),
+            &used_abs.to_string_lossy(),
+            used_rel,
+            "used.json",
+            "used",
+        );
+
+        let detector = AssetReferenceDetector::new(ws_root.to_path_buf(), &[]).unwrap();
+        let refs = detector.detect_references(&[adore_asset, like_asset, used_asset]);
+
+        // Only used.json should have references surviving dead export pruning
+        // (adore.json and like.json are pruned because their exports are never consumed)
+        assert_eq!(refs.len(), 1); // 1 surviving reference in index.ts
+        assert_eq!(refs[0].asset_id, used_abs.to_string_lossy().to_string());
     }
 }

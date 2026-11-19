@@ -11,6 +11,30 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.3.3] — 2026-11-19
+
+### Fixed
+
+- **Path Alias `@/` and `~/` Import Resolution**:
+  - Module resolution aliases like `@/assets/lottie/clock.json` or `~/assets/hero.json` are now correctly resolved instead of misidentifying as Android resource tokens, fixing false-positive unreferenced asset warnings across Vite, Next.js, and TypeScript workspaces (e.g. `nexo.finance`).
+- **Extensionless Asset Imports**:
+  - Traced asset imports that omit the file extension (e.g. `import loadingAnim from "./assets/lottie/loading"` or `require('@/assets/lottie/loading')`) now properly resolve to their corresponding `.json` asset, preventing false orphan reports (e.g. `Scholarly-Admin`).
+- **Dead Barrel Export Pruning**:
+  - Re-exports in barrel files (e.g. `assets/lottie/index.ts` with `export const adoreAnimation = require('./adore.json')`) are no longer counted as valid usages if the exported symbol is never consumed anywhere else in the workspace. Unconsumed barrel exports now accurately surface their underlying assets as unreferenced (e.g. `Sticknet`).
+- **Platform Application Icons & Favicons Governance**:
+  - Default policy (`GovernancePolicy::default`) now enables `no_unreferenced_ignore_app_icons: true` and `no_duplicate_ignore_app_icons: true`, so unconfigured repositories are not penalized for standard platform assets.
+  - Extended icon detection to recognize `App-Icon-*.png` (iOS asset catalogs with hyphenated naming), `android-icon-*.png`, `android-chrome-*.png`, `favicon_io/` directories, and `.webmanifest` manifest files (e.g. `SpendSmart`, `hippoapp`, `Agro-Sync`, `Codecurator`).
+
+### Changed
+
+- **Crate & CI Dependencies**:
+  - Upgraded native Rust `zip` dependency to `9.7` resolving security advisories RUSTSEC-2026-0429, RUSTSEC-2026-0545, and RUSTSEC-2026-0548.
+  - Bumped `turbo` to `2.11.11`, `@vscode/vsce` to `4.1.1`, `@rive-app/canvas` to `2.50.0`.
+  - Bumped JetBrains Gradle wrapper to `9.9.1`, `org.jetbrains.intellij.platform` to `2.20.1`, `kotlinx-serialization-json` to `1.13.0`.
+  - Bumped and SHA-pinned CI actions `pnpm/action-setup` to v6.1.1, `actions/setup-java` to v6.2.0, `taiki-e/install-action` to v2.90.3, `softprops/action-gh-release` to v3.0.4, and `github/codeql-action/upload-sarif` to v4.39.3.
+
+---
+
 ## [2.3.2] — 2026-10-29
 
 ### Added
@@ -255,7 +279,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.3.2...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.3.3...HEAD
+[2.3.3]: https://github.com/sxnnyside-project/animoria/compare/v2.3.2...v2.3.3
 [2.3.2]: https://github.com/sxnnyside-project/animoria/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/sxnnyside-project/animoria/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/sxnnyside-project/animoria/compare/v2.2.1...v2.3.0

@@ -18,6 +18,16 @@
         </ul>
     ]]></description>
 
+    <change-notes><![CDATA[
+        <h4>2.3.3</h4>
+        <ul>
+            <li>Fixed path alias resolution for <code>@/</code> and <code>~/</code> imports in web and mobile codebases.</li>
+            <li>Supported extensionless imports (e.g. <code>./assets/lottie/loading</code> resolving to <code>loading.json</code>).</li>
+            <li>Added barrel export pruning in <code>index.ts</code> so unconsumed exports correctly mark underlying assets as unreferenced.</li>
+            <li>Whitelisted native app icons and favicons (iOS <code>AppIcon.appiconset</code>, Android <code>android-icon-*</code>, and web <code>favicon_io/*</code>) to avoid false-positive orphan findings.</li>
+        </ul>
+    ]]></change-notes>
+
     <depends>com.intellij.modules.platform</depends>
 
     <extensions defaultExtensionNs="com.intellij">

@@ -1,6 +1,40 @@
-# animoria-core-rust
+# Animoria
 
-The native engine. Every other package in this monorepo — the CLI, the VS Code extension, the JetBrains plugin, the sandbox — is a client of this crate; none of them compute governance semantics themselves. If you're adding a rule, a parser, or changing how assets are discovered, this is the package you touch.
+![banner](https://raw.githubusercontent.com/sxnnyside-project/animoria/main/docs/assets/animoria-banner.png)
+
+High-performance Rust core engine and CLI for visual asset discovery, format parsing, usage tracing, and governance.
+
+### Install
+
+```bash
+cargo add animoria
+```
+
+Or install the standalone CLI:
+
+```bash
+cargo install animoria
+```
+
+### Usage
+
+```rust
+use animoria_core::indexer::AssetIndex;
+use std::path::Path;
+
+fn main() {
+    let index = AssetIndex::build(Path::new("."));
+    println!("Found {} assets in workspace", index.assets.len());
+}
+```
+
+### Feature flags
+
+| Feature | Default | Description |
+|---|---|---|
+| `ts-rs` | `false` | Enables TypeScript contract generation bindings via ts-rs |
+
+---
 
 ## What it owns
 

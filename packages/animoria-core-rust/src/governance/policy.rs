@@ -154,12 +154,12 @@ impl Default for GovernancePolicy {
         Self {
             no_unreferenced_assets: true,
             no_unreferenced_severity: DiagnosticSeverity::Warning,
-            no_unreferenced_ignore_app_icons: false,
+            no_unreferenced_ignore_app_icons: true,
             no_unreferenced_ignore: Vec::new(),
 
             no_duplicate_content: true,
             no_duplicate_severity: DiagnosticSeverity::Error,
-            no_duplicate_ignore_app_icons: false,
+            no_duplicate_ignore_app_icons: true,
             no_duplicate_ignore: Vec::new(),
 
             max_file_size_kb: Some(512),

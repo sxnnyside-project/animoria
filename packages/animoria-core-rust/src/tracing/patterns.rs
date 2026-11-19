@@ -84,6 +84,8 @@ pub const SOURCE_EXTENSIONS: &[&str] = &[
     // Roblox / Rojo: Luau and Lua scripts
     "luau",
     "lua",
+    // Web manifest formats
+    "webmanifest",
 ];
 
 pub fn is_source_file_extension(ext: &str) -> bool {
@@ -177,10 +179,16 @@ pub fn is_valid_stem_reference(line_lower: &str, stem_lower: &str) -> bool {
             return true;
         }
 
-        // 6. Path / import reference: './stem', '../stem', '/stem.'
+        // 6. Path / import reference: './stem', '../stem', '@/stem', '~/stem', '/stem'
         if before.ends_with("./")
             || before.ends_with("../")
-            || (before.ends_with('/') && after.starts_with('.'))
+            || before.ends_with("@/")
+            || before.ends_with("~/")
+            || (before.ends_with('/')
+                && (after.starts_with('.')
+                    || after.starts_with('"')
+                    || after.starts_with('\'')
+                    || after.starts_with('`')))
             || ((before.ends_with('"') || before.ends_with('\'') || before.ends_with('`'))
                 && (after.starts_with(".json\"")
                     || after.starts_with(".json'")
@@ -343,14 +351,33 @@ pub fn asset_matches_path_token(
         .strip_prefix('@')
         .and_then(|t| t.split_once('/'))
     {
-        let asset_p = std::path::Path::new(&asset_clean);
-        return asset_p.file_stem().and_then(|s| s.to_str()) == Some(name)
-            && asset_p
-                .components()
-                .any(|c| c.as_os_str().to_string_lossy().starts_with(kind));
+        if !kind.is_empty()
+            && !name.contains('/')
+            && matches!(
+                kind,
+                "drawable" | "mipmap" | "raw" | "color" | "anim" | "animator" | "layout" | "string"
+            )
+        {
+            let asset_p = std::path::Path::new(&asset_clean);
+            return asset_p.file_stem().and_then(|s| s.to_str()) == Some(name)
+                && asset_p
+                    .components()
+                    .any(|c| c.as_os_str().to_string_lossy().starts_with(kind));
+        }
     }
+
     let clean_suffix = clean_token.trim_start_matches(['.', '/']);
     let asset_p = std::path::Path::new(&asset_clean);
+
+    // Path alias support (e.g. "@/assets/lottie/clock.json", "~/assets/image.png")
+    if clean_token.starts_with("@/") || clean_token.starts_with("~/") {
+        let remainder = clean_token.trim_start_matches(['@', '~', '/']);
+        let asset_clean_no_ext = asset_p
+            .with_extension("")
+            .to_string_lossy()
+            .replace('\\', "/");
+        return asset_clean.ends_with(remainder) || asset_clean_no_ext.ends_with(remainder);
+    }
 
     if clean_token.starts_with("./") || clean_token.starts_with("../") {
         let source_clean = source_path.to_string_lossy().replace('\\', "/");
@@ -368,15 +395,22 @@ pub fn asset_matches_path_token(
                 }
             }
             let norm_str = normalized.to_string_lossy().replace('\\', "/");
-            if norm_str == asset_clean {
+            let asset_clean_no_ext = asset_p
+                .with_extension("")
+                .to_string_lossy()
+                .replace('\\', "/");
+
+            if norm_str == asset_clean || norm_str == asset_clean_no_ext {
                 return true;
             }
             if !clean_suffix.contains('/') {
                 // e.g. "./icon.png": must reside in target directory
                 return normalized.parent() == asset_p.parent()
-                    && asset_clean.ends_with(clean_suffix);
+                    && (asset_clean.ends_with(clean_suffix)
+                        || asset_clean_no_ext.ends_with(clean_suffix));
             } else {
-                return asset_clean.ends_with(clean_suffix);
+                return asset_clean.ends_with(clean_suffix)
+                    || asset_clean_no_ext.ends_with(clean_suffix);
             }
         }
     } else if clean_token.starts_with("http://") || clean_token.starts_with("https://") {
@@ -598,6 +632,86 @@ pub fn asset_matches_dynamic_pattern(
     }
 
     true
+}
+
+/// Checks whether a character range in `text` is bounded by word boundaries.
+pub fn is_word_boundary(text: &str, start: usize, end: usize) -> bool {
+    let bytes = text.as_bytes();
+    let before_ok = if start == 0 {
+        true
+    } else {
+        let b = bytes[start - 1];
+        !b.is_ascii_alphanumeric() && b != b'_' && b != b'$'
+    };
+    let after_ok = if end >= bytes.len() {
+        true
+    } else {
+        let b = bytes[end];
+        !b.is_ascii_alphanumeric() && b != b'_' && b != b'$'
+    };
+    before_ok && after_ok
+}
+
+/// Extracts an exported symbol identifier from a source line if the line is an export declaration.
+/// Supports `export const/let/var x = ...`, `export { default as x }`, `export { x }`,
+/// `exports.x = ...`, and `module.exports.x = ...`.
+pub fn extract_exported_identifier(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    if let Some(rest) = trimmed
+        .strip_prefix("export const ")
+        .or_else(|| trimmed.strip_prefix("export let "))
+        .or_else(|| trimmed.strip_prefix("export var "))
+    {
+        let id: String = rest
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '$')
+            .collect();
+        if !id.is_empty() {
+            return Some(id);
+        }
+    }
+    if let Some(rest) = trimmed.strip_prefix("exports.") {
+        let id: String = rest
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '$')
+            .collect();
+        if !id.is_empty() {
+            return Some(id);
+        }
+    }
+    if let Some(rest) = trimmed.strip_prefix("module.exports.") {
+        let id: String = rest
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '$')
+            .collect();
+        if !id.is_empty() {
+            return Some(id);
+        }
+    }
+    if trimmed.starts_with("export {") {
+        if let Some(as_pos) = trimmed.find(" as ") {
+            let after_as = trimmed[as_pos + 4..].trim_start();
+            let id: String = after_as
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '$')
+                .collect();
+            if !id.is_empty() {
+                return Some(id);
+            }
+        } else if let Some(open) = trimmed.find('{') {
+            if let Some(close) = trimmed.find('}') {
+                let inside = trimmed[open + 1..close].trim();
+                let id: String = inside
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '$')
+                    .collect();
+                if !id.is_empty() {
+                    return Some(id);
+                }
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]

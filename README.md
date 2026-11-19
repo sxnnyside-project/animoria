@@ -1,10 +1,15 @@
 # Animoria
 
-![Animoria Banner](https://raw.githubusercontent.com/sxnnyside-project/animoria/main/docs/banner.png)
+![Animoria banner](docs/assets/animoria-banner.png)
 
-![Version](https://img.shields.io/badge/version-2.3.2-blue)
+![Version](https://img.shields.io/badge/version-2.3.3-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
-[![CI](https://github.com/sxnnyside-project/animoria/workflows/CI/badge.svg)](https://github.com/sxnnyside-project/animoria/actions)
+[![CI](https://github.com/sxnnyside-project/animoria/actions/workflows/ci.yml/badge.svg)](https://github.com/sxnnyside-project/animoria/actions/workflows/ci.yml)
+![MSRV](https://img.shields.io/badge/MSRV-1.88-orange)
+[![crates.io](https://img.shields.io/crates/v/animoria)](https://crates.io/crates/animoria)
+[![Open VSX](https://img.shields.io/open-vsx/v/SxnnysideProject/animoria-vscode)](https://open-vsx.org/extension/SxnnysideProject/animoria-vscode)
+[![JetBrains](https://img.shields.io/jetbrains/plugin/v/com.sxnnyside.animoria)](https://plugins.jetbrains.com/plugin/com.sxnnyside.animoria)
+[![Discord](https://img.shields.io/badge/Discord-join-5865F2)](https://discord.gg/h3hhNY8VTE)
 
 <p align="center">
   <strong>Workspace-aware ✦ Governance-first ✦ Offline-first</strong><br>
@@ -34,7 +39,7 @@ Animoria indexes your workspace in a single linear pass, validates files by bina
 
 > _"See every asset. Forget none."_
 
-Animoria is a Sxnnyside Project tool, part of the developer tooling initiative.
+Part of the Sxnnyside Project ecosystem.
 
 ## Features
 
@@ -118,6 +123,6 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 ---
 
 <p align="center">
-  <strong>Animoria</strong> — A Sxnnyside Project Tool<br>
+  <strong>Animoria</strong> — A Sxnnyside Project<br>
   <em>&copy; 2026 Sxnnyside Project</em>
 </p>

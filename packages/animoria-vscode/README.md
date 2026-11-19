@@ -1,6 +1,6 @@
 # Animoria — Visual Asset Governance for VS Code
 
-![Animoria Banner](https://raw.githubusercontent.com/sxnnyside-project/animoria/main/docs/banner.png)
+![Animoria Banner](https://raw.githubusercontent.com/sxnnyside-project/animoria/main/docs/assets/animoria-banner.png)
 
 <p align="center">
   <strong>Discover ✦ Audit ✦ Trace ✦ Clean Up</strong><br>
@@ -117,6 +117,40 @@ Animoria is **zero-config by default**. If your team wants to enforce specific p
 ```
 
 To exclude specific paths (e.g. test fixtures), create an [`.animoriaignore`](https://github.com/sxnnyside-project/animoria/blob/main/docs/CONFIGURATION.md) file.
+
+---
+
+### Requirements
+
+- VS Code 1.85.0 or newer.
+- No external runtime, Chromium, or cloud dependencies required.
+
+### Commands
+
+| Command | Description |
+|---|---|
+| `animoria.refresh` | Refresh visual asset gallery |
+| `animoria.openWorkspace` | Open full workspace gallery view |
+| `animoria.search` | Search animations and assets by name or path |
+| `animoria.runGovernance` | Run visual asset governance analysis |
+| `animoria.viewGovernanceReport` | View interactive governance health report |
+| `animoria.exportGovernanceReport` | Export governance report to file |
+
+### Extension Settings
+
+| Setting | Default | Description |
+|---|---|---|
+| `animoria.enableThumbnails` | `true` | Generate native thumbnail previews for assets |
+| `animoria.enableAuditLog` | `false` | Persist scan snapshots to `.animoria/audit-log.jsonl` |
+| `animoria.autoGitignore` | `true` | Automatically ensure `.animoria/` is in `.gitignore` |
+
+### Known Issues
+
+None currently known. To report an issue, please visit the [GitHub issue tracker](https://github.com/sxnnyside-project/animoria/issues).
+
+### Release Notes
+
+See [CHANGELOG](https://github.com/sxnnyside-project/animoria/blob/main/CHANGELOG.md).
 
 ---
 

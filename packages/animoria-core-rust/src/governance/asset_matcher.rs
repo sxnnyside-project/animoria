@@ -9,6 +9,7 @@ pub fn is_app_icon(asset_rel_path: &str, asset_name: &str) -> bool {
 
     // 1. Directory hints for platform asset catalogs, IDE plugins, and density buckets
     if path_lower.contains(".appiconset/")
+        || path_lower.contains("appicon.appiconset")
         || path_lower.contains("/mipmap-")
         || path_lower.contains("/drawable-")
         || path_lower.contains("android/app/src/main/res/")
@@ -16,6 +17,8 @@ pub fn is_app_icon(asset_rel_path: &str, asset_name: &str) -> bool {
         || path_lower.contains("/res/mipmap")
         || path_lower.contains("resources/icons/")
         || path_lower.contains("meta-inf/icons/")
+        || path_lower.contains("favicon_io/")
+        || path_lower.contains("/favicon_io")
     {
         return true;
     }
@@ -23,11 +26,17 @@ pub fn is_app_icon(asset_rel_path: &str, asset_name: &str) -> bool {
     // 2. Specific icon naming conventions (mobile, web, IDE plugins)
     if name_lower.starts_with("ic_launcher")
         || name_lower.starts_with("appicon")
+        || name_lower.starts_with("app-icon")
+        || name_lower.starts_with("app_icon")
+        || name_lower.starts_with("android-icon")
+        || name_lower.starts_with("android-chrome")
         || name_lower.starts_with("pluginicon")
         || name_lower.starts_with("plugin_icon")
         || name_lower.starts_with("apple-touch-icon")
+        || name_lower.starts_with("apple-icon")
         || name_lower.starts_with("favicon")
         || name_lower.starts_with("maskable_icon")
+        || name_lower.starts_with("mstile-")
     {
         return true;
     }
@@ -95,6 +104,10 @@ mod tests {
             "ios/AppIcon.appiconset/icon-60@2x.png",
             "icon-60@2x.png"
         ));
+        assert!(is_app_icon(
+            "ios/SpendSmart/Images.xcassets/AppIcon.appiconset/App-Icon-1024x1024@1x.png",
+            "App-Icon-1024x1024@1x.png"
+        ));
     }
 
     #[test]
@@ -102,6 +115,10 @@ mod tests {
         assert!(is_app_icon(
             "android/app/src/main/res/mipmap-hdpi/ic_launcher.png",
             "ic_launcher.png"
+        ));
+        assert!(is_app_icon(
+            "android/app/src/main/res/drawable/android-icon-48x48.png",
+            "android-icon-48x48.png"
         ));
     }
 
@@ -114,6 +131,14 @@ mod tests {
             "apple-touch-icon.png"
         ));
         assert!(is_app_icon("public/icon-192x192.png", "icon-192x192.png"));
+        assert!(is_app_icon(
+            "public/favicon_io/android-chrome-192x192.png",
+            "android-chrome-192x192.png"
+        ));
+        assert!(is_app_icon(
+            "website/favicon_io/apple-touch-icon.png",
+            "apple-touch-icon.png"
+        ));
     }
 
     #[test]

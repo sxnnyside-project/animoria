@@ -235,7 +235,7 @@ mod tests {
     fn docs_directory_is_ignored_by_default_and_can_be_unignored_via_negation() {
         let default_rules = IgnoreRules::new(&[]).unwrap();
         assert!(default_rules.is_ignored(&PathBuf::from("docs/screenshots/preview.png")));
-        assert!(default_rules.is_ignored(&PathBuf::from("docs/banner.png")));
+        assert!(default_rules.is_ignored(&PathBuf::from("docs/assets/animoria-banner.png")));
 
         let unignored_rules = IgnoreRules::new(&["!docs/**".to_string()]).unwrap();
         assert!(!unignored_rules.is_ignored(&PathBuf::from("docs/screenshots/preview.png")));

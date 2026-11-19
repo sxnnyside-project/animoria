@@ -89,3 +89,7 @@ This project uses [Conventional Commits](https://www.conventionalcommits.org/en/
 ```
 
 Accepted types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`.
+
+---
+
+*Animoria — A Sxnnyside Project. Part of the [Sxnnyside Project](https://sxnnysideproject.com) ecosystem.*

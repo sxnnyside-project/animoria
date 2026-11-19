@@ -1,6 +1,6 @@
 # Animoria — Visual Asset Governance for JetBrains
 
-![Animoria Banner](https://raw.githubusercontent.com/sxnnyside-project/animoria/main/docs/banner.png)
+![Animoria Banner](https://raw.githubusercontent.com/sxnnyside-project/animoria/main/docs/assets/animoria-banner.png)
 
 <p align="center">
   <strong>Trace ✦ Audit ✦ Deduplicate ✦ Clean Up</strong><br>
