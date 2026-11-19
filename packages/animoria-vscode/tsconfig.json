@@ -2,11 +2,12 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "target": "ES2022",
-    "module": "commonjs",
-    "moduleResolution": "node",
+    "module": "preserve",
+    "moduleResolution": "bundler",
     "lib": [
       "ES2022"
     ],
+    "types": ["node", "vscode"],
     "experimentalDecorators": true,
     "useDefineForClassFields": false,
     "paths": {

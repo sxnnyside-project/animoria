@@ -11,6 +11,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **CI Actions Bump** (SHA-pinned, `ci.yml` and `release.yml`):
+  - `actions/setup-java` v6.2.0 → v6.3.0 (6 usages) and `taiki-e/install-action` v2.90.3 → v2.90.5 (2 usages). Supersedes Dependabot PRs #80 and #78.
 - **Vite, Vitest & Node Types Upgrade** (`vite` 8.2.2 → 8.3.8, `vitest` 4.1.11 → 5.1.1, `@types/node` 26.6.5 → 26.6.6):
   - Applied across `@animoria/ui`, `animoria-vscode` and `animoria-sandbox`. No test changes were needed (168 tests pass).
   - Vitest 5 requires Node `^22.12 || ^24 || >=26` (CI already resolves `node-version: 22` to the latest 22.x).
@@ -20,6 +22,13 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - Removed useless escapes in the hover token regexes of `asset-resolver.ts` and reflowed a long `--animoria-font-family` declaration in `tokens.css` to match the v2 formatter. No behavior change.
   - Cleaned up the 16 new Biome 2 findings by hand: removed unused imports, simplified two `!x || !x.startsWith()` checks to optional chains, prefixed interface-mandated unused parameters with `_` and dropped an unused test spy binding.
   - 3 warnings remain (`noUnusedPrivateClassMembers`: `_selectedRootId`, `_resolutionRootName`, `_duplicateGroups`). They are written but never read; they do not fail `just lint`. Do not apply them with `biome lint --write --unsafe`: it deletes the declarations but leaves the assignments and breaks the `@animoria/ui` typecheck. Decide by hand whether to remove or use them.
+- **TypeScript 7 Upgrade** (`typescript` 5.9.3 → 7.0.2, native compiler):
+  - `animoria-vscode/tsconfig.json`: `moduleResolution: node` (node10) was removed in TS 7, so it now uses `module: preserve` + `moduleResolution: bundler` (the extension is bundled by Vite and `tsc` only typechecks). `node16` was rejected because the `ts-rs` generated contracts use extensionless relative imports.
+  - TS 7 no longer auto-includes every `@types/*` package, so `animoria-vscode` declares `"types": ["node", "vscode"]` explicitly.
+  - `animoria-sandbox`: added `src/vite-env.d.ts` (`vite/client`) so the side-effect import of `@animoria/ui/tokens.css` typechecks.
+- **VS Code Types Refresh** (`@types/vscode` lockfile 1.134.0 → 1.146.0):
+  - The declared range stays `^1.85.0` and `engines.vscode` is unchanged, so the minimum supported VS Code is still 1.85. `vsce` rejects a declared `@types/vscode` range newer than `engines.vscode`, so do not let `pnpm update` rewrite the range.
+  - Caveat: the code is now typechecked against the 1.146 API, so `tsc` will not flag use of APIs newer than 1.85.
 
 ---
 
