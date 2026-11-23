@@ -22,7 +22,7 @@ export class AnimoriaRootBadge extends LitElement {
   /** Set from `isSingleRoot`: there is nothing to disambiguate. */
   @property({ type: Boolean }) override hidden = false;
   /** Renders in the muted style used inside dense rows. */
-  @property({ type: Boolean }) quiet = false;
+  @property({ type: Boolean }) isQuiet = false;
 
   static override styles = css`
     :host {
@@ -58,11 +58,7 @@ export class AnimoriaRootBadge extends LitElement {
   override render() {
     if (this.hidden || this.rootName.length === 0) return nothing;
 
-    return html`<span
-      class="badge ${this.quiet ? 'quiet' : ''}"
-      title=${`Workspace root: ${this.rootName}`}
-      >${this.rootName}</span
-    >`;
+    return html`<span class="badge ${this.isQuiet ? 'quiet' : ''}">${this.rootName}</span>`;
   }
 }
 

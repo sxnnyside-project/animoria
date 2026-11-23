@@ -17,10 +17,10 @@ function analysisStub(overrides: Partial<WorkspaceAnalysis> = {}): WorkspaceAnal
     generation: 1,
     durationMs: 1,
     readiness: {
-      assetsIndexed: true,
-      referencesResolved: true,
-      duplicatesResolved: true,
-      complete: true,
+      isAssetsIndexed: true,
+      isReferencesResolved: true,
+      isDuplicatesResolved: true,
+      isComplete: true,
     },
     assets: [],
     coverage: null,
@@ -125,7 +125,7 @@ describe('VS Code host — a dismissed confirmation settles the operation', () =
     // The developer dismisses the native modal.
     mockVscodeState.warningMessageResult = undefined;
     posted.length = 0;
-    await bridge.handle({ type: 'apply-cleanup-plan', planId: 'nope', allowPartial: false });
+    await bridge.handle({ type: 'apply-cleanup-plan', planId: 'nope', canAllowPartial: false });
 
     // Even an unknown id must answer: the UI is disabled either way.
     expect(
@@ -138,7 +138,7 @@ describe('VS Code host — a dismissed confirmation settles the operation', () =
     const { bridge, posted } = makeBridge();
     mockVscodeState.warningMessageResult = undefined;
 
-    await bridge.handle({ type: 'apply-resolution-plan', planId: 'nope', allowPartial: false });
+    await bridge.handle({ type: 'apply-resolution-plan', planId: 'nope', canAllowPartial: false });
 
     expect(posted.length).toBeGreaterThan(0);
   });
@@ -148,7 +148,7 @@ describe('VS Code host — a dismissed confirmation settles the operation', () =
     // Rendering it as an error banner tells them something went wrong when nothing
     // did — which is why the reason, not the status, is what the UI reads.
     const { bridge, posted } = makeBridge();
-    await bridge.handle({ type: 'apply-cleanup-plan', planId: 'unknown', allowPartial: false });
+    await bridge.handle({ type: 'apply-cleanup-plan', planId: 'unknown', canAllowPartial: false });
 
     const answer = posted[posted.length - 1];
     expect(answer).toBeDefined();
@@ -300,7 +300,7 @@ describe('VS Code host — cleanup dismissal', () => {
     await bridge.handle({
       type: 'dismiss-cleanup-candidate',
       assetPath: '/workspace/keep-me.json',
-      dismissed: true,
+      isDismissed: true,
     });
 
     expect(memento.get<string[]>('animoria.dismissedCleanupPaths', [])).toContain(
@@ -315,8 +315,8 @@ describe('VS Code host — cleanup dismissal', () => {
     const { bridge, memento } = makeBridge();
     const path = '/workspace/keep-me.json';
 
-    await bridge.handle({ type: 'dismiss-cleanup-candidate', assetPath: path, dismissed: true });
-    await bridge.handle({ type: 'dismiss-cleanup-candidate', assetPath: path, dismissed: false });
+    await bridge.handle({ type: 'dismiss-cleanup-candidate', assetPath: path, isDismissed: true });
+    await bridge.handle({ type: 'dismiss-cleanup-candidate', assetPath: path, isDismissed: false });
 
     expect(memento.get<string[]>('animoria.dismissedCleanupPaths', [])).not.toContain(path);
   });
@@ -333,7 +333,7 @@ describe('VS Code host — usage references', () => {
     expect(answer!.type === 'usage-references' && answer!.assetPath).toBe('/workspace/a.json');
     // An empty list from an unfinished scan is not the finding "used nowhere", and
     // the flag is what lets the UI say which one it is.
-    expect(answer!.type === 'usage-references' && typeof answer!.complete).toBe('boolean');
+    expect(answer!.type === 'usage-references' && typeof answer!.isComplete).toBe('boolean');
     // Core's locations, forwarded — not a count the client would have to expand.
     expect(answer!.type === 'usage-references' && answer!.references.length).toBe(1);
   });

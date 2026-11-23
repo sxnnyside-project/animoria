@@ -4,13 +4,13 @@ import { LitElement, css, html } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { classMap } from 'lit/directives/class-map.js';
 import { styleMap } from 'lit/directives/style-map.js';
-import { confidenceLabel } from '../view-model/analysis-view-model.js';
+import { confidenceLabel } from '../../view-model/analysis-view-model.js';
 
 @customElement('animoria-confidence-badge')
 export class AnimoriaConfidenceBadge extends LitElement {
   @property({ type: String }) confidence: Confidence = 'moderate';
   /** Renders the level as a dot only. For dense lists where the word does not fit. */
-  @property({ type: Boolean }) compact = false;
+  @property({ type: Boolean }) isCompact = false;
 
   static override styles = css`
     :host {
@@ -62,12 +62,12 @@ export class AnimoriaConfidenceBadge extends LitElement {
 
     return html`
       <span
-        class=${classMap({ badge: true, compact: this.compact })}
+        class=${classMap({ badge: true, compact: this.isCompact })}
         style=${styleMap({ '--level-color': color })}
         title=${label}
       >
         <span class="dot"></span>
-        ${this.compact ? '' : label}
+        ${this.isCompact ? '' : label}
       </span>
     `;
   }

@@ -109,7 +109,7 @@ export class SandboxHost {
     this._emit({
       type: 'error',
       message: SANDBOX_CAPABILITIES.mutationUnavailableReason ?? 'Unavailable in the Sandbox.',
-      recoverable: true,
+      isRecoverable: true,
     });
   }
 
@@ -185,20 +185,20 @@ export class SandboxHost {
       case 'request-usage-references': {
         const response = await this._get<{
           references: readonly UsageReference[];
-          complete: boolean;
+          isComplete?: boolean;
         }>(`/api/usage-references?assetPath=${encodeURIComponent(message.assetPath)}`);
         this._emit({
           type: 'usage-references',
           assetPath: message.assetPath,
           references: response?.references ?? [],
-          complete: response?.complete ?? false,
+          isComplete: response?.isComplete ?? false,
         });
         return;
       }
 
       case 'dismiss-cleanup-candidate':
         // View state, not a workspace mutation.
-        if (message.dismissed) this._dismissed.add(message.assetPath);
+        if (message.isDismissed) this._dismissed.add(message.assetPath);
         else this._dismissed.delete(message.assetPath);
         writeStored('animoria.sandbox.dismissed', [...this._dismissed]);
         await this._handle({ type: 'request-cleanup-proposal' });
@@ -272,7 +272,7 @@ export class SandboxHost {
           this._emit({
             type: 'error',
             message: 'No snippet generator supports this asset.',
-            recoverable: true,
+            isRecoverable: true,
           });
         }
         return;
@@ -304,21 +304,21 @@ export class SandboxHost {
   /** The asset Core attributed to this path, or `null`. Never re-derived from the path. */
   private _assetFor(assetPath: string): Asset | null {
     if (!this._analysis) return null;
-    for (const item of this._analysis.assets as readonly unknown[]) {
-      if (!item || typeof item !== 'object') continue;
+    for (const assetEntry of this._analysis.assets as readonly unknown[]) {
+      if (!assetEntry || typeof assetEntry !== 'object') continue;
       if (
-        'path' in item &&
-        typeof (item as Asset).path === 'string' &&
-        (item as Asset).path === assetPath
+        'path' in assetEntry &&
+        typeof (assetEntry as Asset).path === 'string' &&
+        (assetEntry as Asset).path === assetPath
       ) {
-        return item as Asset;
+        return assetEntry as Asset;
       }
       if (
-        'asset' in item &&
-        (item as { asset?: { path?: string } }).asset &&
-        (item as { asset: Asset }).asset.path === assetPath
+        'asset' in assetEntry &&
+        (assetEntry as { asset?: { path?: string } }).asset &&
+        (assetEntry as { asset: Asset }).asset.path === assetPath
       ) {
-        return (item as { asset: Asset }).asset;
+        return (assetEntry as { asset: Asset }).asset;
       }
     }
     return null;
@@ -332,10 +332,10 @@ export class SandboxHost {
     this._emit({
       type: 'analysis-progress',
       readiness: {
-        assetsIndexed: false,
-        referencesResolved: false,
-        duplicatesResolved: false,
-        complete: false,
+        isAssetsIndexed: false,
+        isReferencesResolved: false,
+        isDuplicatesResolved: false,
+        isComplete: false,
       },
       message: 'Indexing the fixture workspace…',
     });
@@ -356,7 +356,7 @@ export class SandboxHost {
         this._emit({
           type: 'error',
           message: `${url} responded ${response.status}. Is the dev bridge running?`,
-          recoverable: true,
+          isRecoverable: true,
         });
         return null;
       }
@@ -365,7 +365,7 @@ export class SandboxHost {
       this._emit({
         type: 'error',
         message: err instanceof Error ? err.message : String(err),
-        recoverable: true,
+        isRecoverable: true,
       });
       return null;
     }

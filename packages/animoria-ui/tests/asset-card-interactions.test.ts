@@ -1,7 +1,7 @@
 import type { Asset } from '@animoria/contracts';
 import { describe, expect, it } from 'vitest';
-import '../src/components/animoria-asset-card.js';
-import { AnimoriaAssetCard } from '../src/components/animoria-asset-card.js';
+import '../src/components/gallery/animoria-asset-card.js';
+import { AnimoriaAssetCard } from '../src/components/gallery/animoria-asset-card.js';
 
 const SAMPLE_ASSET: Asset = {
   id: 'asset-1',

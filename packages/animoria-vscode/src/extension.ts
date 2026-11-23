@@ -109,7 +109,7 @@ function createSessionAdapter(): WorkspaceSession {
       assets: allAssets,
       duplicateGroups: lastDuplicateGroups,
       referenceCounts: refCounts,
-      readiness: { referencesResolved: true },
+      readiness: { isReferencesResolved: true },
     }),
     indexerForRoot: (id: string) => {
       const index = Number(id.replace('root-', ''));
@@ -705,7 +705,7 @@ async function performScanWorkspace(): Promise<void> {
       assets: combinedAnalysis.assets,
       duplicateGroups: allDuplicateGroups,
       referenceCounts: refCounts,
-      readiness: { referencesResolved: true },
+      readiness: { isReferencesResolved: true },
     });
 
     const rootSummary =

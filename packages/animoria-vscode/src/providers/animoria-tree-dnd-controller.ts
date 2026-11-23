@@ -22,11 +22,15 @@ export class AnimoriaTreeDragAndDropController
   ): void {
     const assets: Asset[] = [];
 
-    for (const item of source) {
-      if (item instanceof AnimoriaTreeItem && item.asset) {
-        assets.push(item.asset);
-      } else if (item && 'asset' in item && typeof (item as { asset: Asset }).asset === 'object') {
-        assets.push((item as { asset: Asset }).asset);
+    for (const treeItem of source) {
+      if (treeItem instanceof AnimoriaTreeItem && treeItem.asset) {
+        assets.push(treeItem.asset);
+      } else if (
+        treeItem &&
+        'asset' in treeItem &&
+        typeof (treeItem as { asset: Asset }).asset === 'object'
+      ) {
+        assets.push((treeItem as { asset: Asset }).asset);
       }
     }
 

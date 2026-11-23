@@ -49,16 +49,16 @@ export function createPostMessageBridge(options: PostMessageBridgeOptions): Host
   const listeners = new Set<(message: HostInbound) => void>();
 
   const handle = (event: Event): void => {
-    const data = (event as MessageEvent).data;
-    const result = validateInbound(data);
+    const eventPayload = (event as MessageEvent).data;
+    const result = validateInbound(eventPayload);
     if (!result.ok) {
       // Reported, never silently dropped. A host that renames a field or invents a
       // message shape must produce a diagnostic here, because the alternative is the
       // failure mode this bridge exists to remove: the panel simply never updates,
       // and nothing anywhere says why. `onInvalid` overrides the default; it does not
       // enable it.
-      if (options.onInvalid) options.onInvalid(result.reason, data);
-      else console.error(`[animoria] rejected an inbound message — ${result.reason}`, data);
+      if (options.onInvalid) options.onInvalid(result.reason, eventPayload);
+      else console.error(`[animoria] rejected an inbound message — ${result.reason}`, eventPayload);
       return;
     }
     for (const listener of listeners) listener(result.message);

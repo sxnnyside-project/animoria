@@ -5,8 +5,9 @@ export type AnalysisLifecycleState =
   | 'stale'
   | 'incomplete'
   | 'failed';
-import { LitElement, css, html, nothing } from 'lit';
+import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
+import { AnimoriaElement } from '../common/events.js';
 
 /**
  * The six lifecycle states, as one component.
@@ -18,7 +19,7 @@ import { customElement, property } from 'lit/decorators.js';
  * exclusivity structural.
  *
  * ## Why each state looks different
- * Every client previously rendered `loading: boolean`, which meant an unindexed
+ * Every client previously rendered an `isLoading` state, which meant an unindexed
  * workspace, a failed scan, and an empty workspace were the same picture — and that
  * picture said "no animated assets", a claim two of the three had not earned. Each
  * state below has its own icon, colour token and wording precisely so a developer
@@ -31,7 +32,7 @@ import { customElement, property } from 'lit/decorators.js';
  * result is noise.
  */
 @customElement('animoria-state-panel')
-export class AnimoriaStatePanel extends LitElement {
+export class AnimoriaStatePanel extends AnimoriaElement {
   @property({ type: String }) state: AnalysisLifecycleState | 'empty' = 'initializing';
   /** The reason, from `AnalysisLifecycle.summary`. Never composed here. */
   @property({ type: String }) summary = '';
@@ -146,34 +147,44 @@ export class AnimoriaStatePanel extends LitElement {
   private static readonly PRESENTATION: Readonly<
     Record<
       AnalysisLifecycleState | 'empty',
-      { glyph: string; title: string; color: string; spin: boolean }
+      { glyph: string; title: string; color: string; isSpinning: boolean }
     >
   > = {
     initializing: {
       glyph: '·',
       title: 'Starting up',
       color: 'var(--animoria-state-initializing)',
-      spin: true,
+      isSpinning: true,
     },
     analyzing: {
       glyph: '',
       title: 'Analyzing workspace',
       color: 'var(--animoria-state-analyzing)',
-      spin: true,
+      isSpinning: true,
     },
-    ready: { glyph: '✓', title: 'Up to date', color: 'var(--animoria-state-ready)', spin: false },
-    stale: { glyph: '↻', title: 'Out of date', color: 'var(--animoria-state-stale)', spin: false },
+    ready: {
+      glyph: '✓',
+      title: 'Up to date',
+      color: 'var(--animoria-state-ready)',
+      isSpinning: false,
+    },
+    stale: {
+      glyph: '↻',
+      title: 'Out of date',
+      color: 'var(--animoria-state-stale)',
+      isSpinning: false,
+    },
     incomplete: {
       glyph: '!',
       title: 'Incomplete analysis',
       color: 'var(--animoria-state-incomplete)',
-      spin: false,
+      isSpinning: false,
     },
     failed: {
       glyph: '×',
       title: 'Analysis failed',
       color: 'var(--animoria-state-failed)',
-      spin: false,
+      isSpinning: false,
     },
     // Not a lifecycle state — a `ready` analysis with nothing in it. Separated
     // because "no animated assets here" is a fact about the workspace and every
@@ -182,12 +193,12 @@ export class AnimoriaStatePanel extends LitElement {
       glyph: '∅',
       title: 'No animated assets',
       color: 'var(--animoria-state-initializing)',
-      spin: false,
+      isSpinning: false,
     },
   };
 
   private _onAction(): void {
-    this.dispatchEvent(new CustomEvent('state-action', { bubbles: true, composed: true }));
+    this.emit('state-action');
   }
 
   override render() {
@@ -197,7 +208,7 @@ export class AnimoriaStatePanel extends LitElement {
     return html`
       <div class="panel" role="status" aria-live="polite">
         <div
-          class="glyph ${presentation.spin ? 'spin' : ''}"
+          class="glyph ${presentation.isSpinning ? 'spin' : ''}"
           style="--state-color: ${presentation.color}"
           aria-hidden="true"
         >

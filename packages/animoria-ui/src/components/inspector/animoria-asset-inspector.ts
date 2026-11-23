@@ -1,34 +1,35 @@
 import type { Asset, UsageReference } from '@animoria/contracts';
-import { LitElement, css, html, nothing } from 'lit';
+import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import type {
   AnimationPreview,
   GeneratedSnippet,
   HostCapabilities,
   UiPreferences,
-} from '../bridge/types.js';
-import { DEFAULT_PREFERENCES } from '../bridge/types.js';
-import type { ReferenceState } from '../view-model/analysis-view-model.js';
-import { referenceExplanation, referenceLabel } from '../view-model/analysis-view-model.js';
-import { factGroupsFor } from '../view-model/asset-facts.js';
+} from '../../bridge/types.js';
+import { DEFAULT_PREFERENCES } from '../../bridge/types.js';
+import type { ReferenceState } from '../../view-model/analysis-view-model.js';
+import { referenceExplanation, referenceLabel } from '../../view-model/analysis-view-model.js';
+import { factGroupsFor } from '../../view-model/asset-facts.js';
+import '../badges/animoria-root-badge.js';
+import { AnimoriaElement } from '../common/events.js';
 import './animoria-asset-stage.js';
 import './animoria-snippet-panel.js';
-import './animoria-root-badge.js';
 
 @customElement('animoria-asset-inspector')
-export class AnimoriaAssetInspector extends LitElement {
+export class AnimoriaAssetInspector extends AnimoriaElement {
   @property({ attribute: false }) asset: Asset | null = null;
   @property({ attribute: false }) capabilities: HostCapabilities | null = null;
   /** Core's attribution for this asset. Never derived here from the path. */
   @property({ type: String }) rootId = '';
   @property({ type: String }) rootName = '';
-  @property({ type: Boolean }) hideRoot = false;
+  @property({ type: Boolean }) shouldHideRoot = false;
   @property({ type: Number }) referenceCount = 0;
   @property({ type: String }) referenceState: ReferenceState = 'unavailable';
 
   /** `null` while the host has not answered `request-animation-data` yet. */
   @property({ attribute: false }) preview: AnimationPreview | null = null;
-  @property({ type: Boolean }) previewLoading = false;
+  @property({ type: Boolean }) isPreviewLoading = false;
   @property({ type: String }) previewError = '';
 
   /** Persisted by the host. Playback speed and background apply to the stage below. */
@@ -36,13 +37,9 @@ export class AnimoriaAssetInspector extends LitElement {
 
   /**
    * Where this asset is used, or `null` while the host has not answered.
-   *
-   * `null`, `[]` and `[] with referencesComplete === false` are three different
-   * statements — "not asked yet", "used nowhere", and "we do not know yet" — and the
-   * third is the one a developer must never see rendered as the second.
    */
   @property({ attribute: false }) references: readonly UsageReference[] | null = null;
-  @property({ type: Boolean }) referencesComplete = false;
+  @property({ type: Boolean }) isReferencesComplete = false;
 
   /** Snippets Core generated for this asset. Shown in place, not announced in a toast. */
   @property({ attribute: false }) snippets: readonly GeneratedSnippet[] = [];
@@ -60,114 +57,63 @@ export class AnimoriaAssetInspector extends LitElement {
       display: flex;
       flex-direction: column;
       gap: var(--animoria-space-3);
+      font-family: var(--animoria-font-family);
+      font-size: var(--animoria-font-size-sm);
     }
 
     .title {
       display: flex;
-      align-items: baseline;
+      align-items: center;
       gap: var(--animoria-space-2);
       flex-wrap: wrap;
     }
 
     .name {
       font-weight: 600;
+      font-size: var(--animoria-font-size-base);
       color: var(--animoria-text-strong);
-      word-break: break-all;
     }
 
     .path {
       font-family: var(--animoria-font-mono);
       font-size: var(--animoria-font-size-xs);
       color: var(--animoria-text-muted);
-      word-break: break-all;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
-    .stage {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 160px;
-      border: 1px solid var(--animoria-border);
-      border-radius: var(--animoria-radius-sm);
-      background: var(--animoria-bg-secondary);
-      padding: var(--animoria-space-2);
-    }
-
-    .stage img {
-      max-width: 100%;
-      max-height: 240px;
-      image-rendering: auto;
-    }
-
-    .stage-note {
-      font-size: var(--animoria-font-size-xs);
-      color: var(--animoria-text-muted);
-      line-height: var(--animoria-line-height);
-      text-align: center;
-      max-width: 40ch;
-    }
-
-    .stage-note.failed {
-      color: var(--animoria-danger);
-    }
-
-    .still-wrap {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: var(--animoria-space-2);
-    }
-
-    /*
-     * Two columns of groups where there is room, one where there is not.
-     *
-     * The inspector opens beside the editor, so its width is whatever the developer
-     * left it. auto-fit means the groups sit side by side in a wide column and stack
-     * in a narrow one, without a media query guessing at the split.
-     */
     .facts {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       gap: var(--animoria-space-3);
     }
 
-    .facts section {
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-      min-width: 0;
-    }
-
-    .facts h3 {
-      margin: 0;
+    section h3 {
       font-size: var(--animoria-font-size-xs);
       font-weight: 600;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.04em;
       color: var(--animoria-text-muted);
-      padding-bottom: 3px;
-      border-bottom: 1px solid var(--animoria-border);
+      margin: 0 0 var(--animoria-space-1) 0;
     }
 
     dl {
-      display: grid;
-      grid-template-columns: max-content 1fr;
-      gap: 3px var(--animoria-space-3);
       margin: 0;
-      font-size: var(--animoria-font-size-sm);
-      align-items: baseline;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: var(--animoria-space-1) var(--animoria-space-2);
+      font-size: var(--animoria-font-size-xs);
     }
 
     dt {
-      color: var(--animoria-text-muted);
-      white-space: nowrap;
+      color: var(--animoria-text-secondary);
     }
 
     dd {
       margin: 0;
-      color: var(--animoria-text-primary);
-      min-width: 0;
-      overflow-wrap: anywhere;
+      font-weight: 500;
+      color: var(--animoria-text-strong);
     }
 
     dd.attention {
@@ -176,83 +122,87 @@ export class AnimoriaAssetInspector extends LitElement {
 
     .actions {
       display: flex;
+      gap: var(--animoria-space-1);
       flex-wrap: wrap;
-      gap: var(--animoria-space-2);
+      padding-top: var(--animoria-space-2);
+      border-top: 1px solid var(--animoria-border);
     }
 
-    button {
+    .actions button {
+      padding: var(--animoria-space-1) var(--animoria-space-2);
+      font-size: var(--animoria-font-size-xs);
+      border-radius: var(--animoria-radius-sm);
+      border: 1px solid var(--animoria-border);
       background: var(--animoria-bg-secondary);
       color: var(--animoria-text-primary);
-      border: 1px solid var(--animoria-border);
-      border-radius: var(--animoria-radius-sm);
-      padding: 4px 10px;
-      font-family: inherit;
-      font-size: var(--animoria-font-size-sm);
       cursor: pointer;
+      font-family: inherit;
     }
 
-    button.primary {
+    .actions button.primary {
       background: var(--animoria-accent);
-      color: var(--animoria-text-on-accent);
-      border-color: transparent;
+      color: var(--animoria-accent-contrast);
+      border-color: var(--animoria-accent);
     }
 
-    button:disabled {
-      opacity: 0.45;
+    .actions button:hover:not(:disabled) {
+      filter: brightness(1.08);
+    }
+
+    .actions button:disabled {
+      opacity: 0.4;
       cursor: not-allowed;
     }
 
     .reason {
       font-size: var(--animoria-font-size-xs);
       color: var(--animoria-text-muted);
-      line-height: var(--animoria-line-height);
+      font-style: italic;
     }
 
-    .stage-controls {
+    .stage {
+      min-height: 140px;
       display: flex;
       align-items: center;
-      gap: var(--animoria-space-3);
-      font-size: var(--animoria-font-size-xs);
+      justify-content: center;
+      background: var(--animoria-bg-primary);
+      border-radius: var(--animoria-radius-sm);
+    }
+
+    .stage-note {
       color: var(--animoria-text-muted);
-      flex-wrap: wrap;
-    }
-
-    .stage-controls label {
-      display: flex;
-      align-items: center;
-      gap: 6px;
+      font-size: var(--animoria-font-size-xs);
     }
 
     .references {
       display: flex;
       flex-direction: column;
-      gap: 2px;
+      gap: var(--animoria-space-1);
     }
 
     .reference {
       display: flex;
-      gap: var(--animoria-space-2);
       align-items: baseline;
-      background: none;
-      border: none;
+      gap: var(--animoria-space-2);
+      padding: var(--animoria-space-1) var(--animoria-space-2);
+      background: var(--animoria-bg-secondary);
+      border: 1px solid var(--animoria-border);
       border-radius: var(--animoria-radius-sm);
-      padding: 3px 6px;
-      margin: 0;
+      color: var(--animoria-text-primary);
+      cursor: pointer;
       font-family: inherit;
       font-size: var(--animoria-font-size-xs);
-      color: var(--animoria-text-primary);
       text-align: left;
-      cursor: pointer;
-      width: 100%;
     }
 
     .reference:hover:not(:disabled) {
       background: var(--animoria-bg-hover);
+      border-color: var(--animoria-focus-ring);
     }
 
     .reference:disabled {
+      opacity: 0.6;
       cursor: default;
-      opacity: 0.7;
     }
 
     .reference-where {
@@ -269,38 +219,20 @@ export class AnimoriaAssetInspector extends LitElement {
     }
   `;
 
-  private _emit(name: string, detail: unknown): void {
-    this.dispatchEvent(new CustomEvent(name, { detail, bubbles: true, composed: true }));
-  }
-
-  /**
-   * The preview stage — a real player, delegated to `animoria-asset-stage`.
-   *
-   * Split out because playback has genuine state of its own (current frame, zoom, the
-   * `lottie-web` instance and its teardown), and folding that into the inspector made
-   * the inspector responsible for a lifecycle it does not own.
-   */
   private _renderStage() {
     return html`
       <animoria-asset-stage
         .preview=${this.preview}
         .preferences=${this.preferences}
-        .loading=${this.previewLoading}
+        .isLoading=${this.isPreviewLoading}
         .error=${this.previewError}
         .assetPath=${this.asset?.path ?? ''}
         @preferences-change=${(event: CustomEvent<{ preferences: UiPreferences }>) =>
-          this._emit('save-preferences', event.detail)}
+          this.emit('save-preferences', event.detail)}
       ></animoria-asset-stage>
     `;
   }
 
-  /**
-   * Where this asset is used.
-   *
-   * The answer to the only question an "unreferenced asset" finding raises, and the
-   * capability `getUsageReferences` was declared for and never implemented. Each row
-   * navigates through the host, which is why they are buttons rather than text.
-   */
   private _renderReferences() {
     if (this.references === null) {
       return html`<span class="reason">Looking for usages…</span>`;
@@ -309,7 +241,7 @@ export class AnimoriaAssetInspector extends LitElement {
     if (this.references.length === 0) {
       return html`<span class="reason">
         ${
-          this.referencesComplete
+          this.isReferencesComplete
             ? 'Animoria found no usage of this asset in the files it scanned.'
             : 'The usage scan has not finished — this is not yet an answer.'
         }
@@ -321,7 +253,7 @@ export class AnimoriaAssetInspector extends LitElement {
     return html`
       <div class="references">
         <span class="reason">
-          ${this.references.length} usage(s)${this.referencesComplete ? '' : ' so far'}
+          ${this.references.length} usage(s)${this.isReferencesComplete ? '' : ' so far'}
         </span>
         ${this.references.map(
           (reference) => html`
@@ -331,7 +263,7 @@ export class AnimoriaAssetInspector extends LitElement {
               ?disabled=${!canOpen}
               title=${canOpen ? reference.file_path : 'This host cannot open a source file.'}
               @click=${() =>
-                this._emit('open-reference', {
+                this.emit('open-reference', {
                   file: reference.file_path,
                   line: reference.line_number,
                   rootId: this.rootId,
@@ -401,9 +333,9 @@ export class AnimoriaAssetInspector extends LitElement {
       <div class="title">
         <span class="name">${asset.name}</span>
         ${
-          this.hideRoot
+          this.shouldHideRoot
             ? nothing
-            : html`<animoria-root-badge quiet .rootName=${this.rootName}></animoria-root-badge>`
+            : html`<animoria-root-badge .isQuiet=${true} .rootName=${this.rootName}></animoria-root-badge>`
         }
       </div>
       <span class="path">${asset.path}</span>
@@ -424,7 +356,7 @@ export class AnimoriaAssetInspector extends LitElement {
         <button
           type="button"
           class="primary"
-          @click=${() => this._emit('open-asset', { assetPath: asset.path, rootId: this.rootId })}
+          @click=${() => this.emit('open-asset', { assetPath: asset.path, rootId: this.rootId })}
         >
           Open in editor
         </button>
@@ -433,7 +365,7 @@ export class AnimoriaAssetInspector extends LitElement {
           type="button"
           ?disabled=${!capabilities?.canRevealInFileManager}
           title=${capabilities?.canRevealInFileManager ? '' : 'This host cannot reveal files.'}
-          @click=${() => this._emit('reveal-asset', { assetPath: asset.path, rootId: this.rootId })}
+          @click=${() => this.emit('reveal-asset', { assetPath: asset.path, rootId: this.rootId })}
         >
           Reveal in file manager
         </button>
@@ -442,7 +374,7 @@ export class AnimoriaAssetInspector extends LitElement {
           type="button"
           ?disabled=${!capabilities?.canCopyToClipboard}
           title=${capabilities?.canCopyToClipboard ? '' : 'This host has no clipboard.'}
-          @click=${() => this._emit('copy-to-clipboard', { text: asset.relative_path || asset.path, label: 'Relative asset path' })}
+          @click=${() => this.emit('copy-to-clipboard', { text: asset.relative_path || asset.path, label: 'Relative asset path' })}
         >
           Copy relative path
         </button>
@@ -451,7 +383,7 @@ export class AnimoriaAssetInspector extends LitElement {
           type="button"
           ?disabled=${!capabilities?.canGenerateSnippet}
           title=${capabilities?.canGenerateSnippet ? '' : 'This host cannot generate snippets.'}
-          @click=${() => this._emit('generate-snippet', { assetPath: asset.path })}
+          @click=${() => this.emit('generate-snippet', { assetPath: asset.path })}
         >
           Generate snippet
         </button>

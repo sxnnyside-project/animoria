@@ -1,26 +1,29 @@
 import type { RuleDiagnostic } from '@animoria/contracts';
-import { LitElement, css, html, nothing } from 'lit';
-import { customElement, property } from 'lit/decorators.js';
+import { css, html, nothing } from 'lit';
+import { customElement, property, state } from 'lit/decorators.js';
 import { classMap } from 'lit/directives/class-map.js';
 import { styleMap } from 'lit/directives/style-map.js';
-import './animoria-confidence-badge.js';
-import './animoria-coverage-summary.js';
-import './animoria-evidence-panel.js';
-import './animoria-root-badge.js';
+import '../badges/animoria-confidence-badge.js';
+import '../badges/animoria-coverage-summary.js';
+import '../badges/animoria-root-badge.js';
+import { AnimoriaElement } from '../common/events.js';
+import '../inspector/animoria-evidence-panel.js';
 
 /**
  * Renders a single rule diagnostic finding, its target asset, severity, message, and evidence.
  */
 @customElement('animoria-finding')
-export class AnimoriaFinding extends LitElement {
+export class AnimoriaFinding extends AnimoriaElement {
   @property({ type: Object }) diagnostic: RuleDiagnostic | null = null;
   /** Root attribution, carried from Core. See `animoria-root-badge`. */
   @property({ type: String }) rootId = '';
   @property({ type: String }) rootName = '';
-  @property({ type: Boolean }) hideRoot = false;
-  @property({ type: Boolean }) selected = false;
+  @property({ type: Boolean }) shouldHideRoot = false;
+  @property({ type: Boolean }) isSelected = false;
   /** Collapses evidence and remediation by default. For dense problem lists. */
-  @property({ type: Boolean }) compact = false;
+  @property({ type: Boolean }) isCompact = false;
+
+  @state() private _isExpanded = false;
 
   static override styles = css`
     :host {
@@ -110,8 +113,6 @@ export class AnimoriaFinding extends LitElement {
     }
   `;
 
-  private _expanded = false;
-
   private static readonly SEVERITY_COLORS: Readonly<Record<string, string>> = {
     error: 'var(--animoria-danger)',
     warning: 'var(--animoria-warning)',
@@ -120,32 +121,28 @@ export class AnimoriaFinding extends LitElement {
 
   private _openAsset(): void {
     if (!this.diagnostic) return;
-    this.dispatchEvent(
-      new CustomEvent('open-asset', {
-        detail: { assetPath: this.diagnostic.target_asset_path, rootId: this.rootId },
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    this.emit('open-asset', {
+      assetPath: this.diagnostic.target_asset_path,
+      rootId: this.rootId,
+    });
   }
 
   private _toggle(): void {
-    this._expanded = !this._expanded;
-    this.requestUpdate();
+    this._isExpanded = !this._isExpanded;
   }
 
   override render() {
     const diagnostic = this.diagnostic;
     if (!diagnostic) return nothing;
 
-    const showDetail = !this.compact || this._expanded;
+    const showDetail = !this.isCompact || this._isExpanded;
     const severityColor =
       AnimoriaFinding.SEVERITY_COLORS[diagnostic.severity] ?? 'var(--animoria-border-strong)';
     const assetName = diagnostic.target_asset_path.split('/').pop() || diagnostic.target_asset_path;
 
     return html`
       <div
-        class=${classMap({ finding: true, selected: this.selected })}
+        class=${classMap({ finding: true, selected: this.isSelected })}
         style=${styleMap({ '--severity-color': severityColor })}
       >
         <div class="top">
@@ -160,7 +157,7 @@ export class AnimoriaFinding extends LitElement {
           <span class="badges">
             <animoria-root-badge
               .rootName=${this.rootName}
-              ?hidden=${this.hideRoot}
+              ?shouldHide=${this.shouldHideRoot}
             ></animoria-root-badge>
           </span>
         </div>
@@ -180,9 +177,9 @@ export class AnimoriaFinding extends LitElement {
         }
 
         ${
-          this.compact && diagnostic.evidence_file
+          this.isCompact && diagnostic.evidence_file
             ? html`<button class="toggle" type="button" @click=${this._toggle}>
-              ${this._expanded ? 'Hide evidence' : 'Show evidence'}
+              ${this._isExpanded ? 'Hide evidence' : 'Show evidence'}
             </button>`
             : nothing
         }

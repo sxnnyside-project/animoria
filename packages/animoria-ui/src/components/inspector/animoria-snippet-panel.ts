@@ -1,9 +1,10 @@
-import { LitElement, css, html, nothing } from 'lit';
+import { css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
-import type { GeneratedSnippet } from '../bridge/types.js';
+import type { GeneratedSnippet } from '../../bridge/types.js';
+import { AnimoriaElement } from '../common/events.js';
 
 @customElement('animoria-snippet-panel')
-export class AnimoriaSnippetPanel extends LitElement {
+export class AnimoriaSnippetPanel extends AnimoriaElement {
   /** Every target Core generated for this asset. Never collapsed to one. */
   @property({ attribute: false }) snippets: readonly GeneratedSnippet[] = [];
   @property({ type: String }) assetName = '';
@@ -133,13 +134,10 @@ export class AnimoriaSnippetPanel extends LitElement {
   }
 
   private _copy(snippet: GeneratedSnippet, index: number): void {
-    this.dispatchEvent(
-      new CustomEvent('copy-to-clipboard', {
-        detail: { text: this._fullText(snippet), label: `${snippet.label} snippet` },
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    this.emit('copy-to-clipboard', {
+      text: this._fullText(snippet),
+      label: `${snippet.label} snippet`,
+    });
 
     // Confirmed on the button that was pressed, not in a toast: the developer's eyes
     // are already on the block they clicked.

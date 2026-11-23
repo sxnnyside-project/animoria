@@ -1,7 +1,8 @@
-import { LitElement, css, html, nothing } from 'lit';
+import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
-import type { RootFilter, RootSummary } from '../view-model/analysis-view-model.js';
+import type { RootFilter, RootSummary } from '../../view-model/analysis-view-model.js';
+import { AnimoriaElement } from '../common/events.js';
 
 /**
  * Narrows the workspace to one root.
@@ -23,7 +24,7 @@ import type { RootFilter, RootSummary } from '../view-model/analysis-view-model.
  * them try each one.
  */
 @customElement('animoria-root-selector')
-export class AnimoriaRootSelector extends LitElement {
+export class AnimoriaRootSelector extends AnimoriaElement {
   @property({ type: Array }) roots: readonly RootSummary[] = [];
   @property({ attribute: false }) filter: RootFilter = { kind: 'all' };
   /** What the counts describe. Findings by default; assets on the asset tab. */
@@ -100,9 +101,7 @@ export class AnimoriaRootSelector extends LitElement {
   `;
 
   private _select(filter: RootFilter): void {
-    this.dispatchEvent(
-      new CustomEvent('root-filter-change', { detail: filter, bubbles: true, composed: true }),
-    );
+    this.emit('root-filter-change', filter);
   }
 
   private _countFor(summary: RootSummary): number {

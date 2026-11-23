@@ -1,40 +1,30 @@
-import type { CleanupEntry, CleanupPlan, CleanupReason, CleanupRefusal } from '../bridge/types.js';
+import type {
+  CleanupEntry,
+  CleanupPlan,
+  CleanupReason,
+  CleanupRefusal,
+} from '../../bridge/types.js';
 export type CleanupPlanSafety = 'safe' | 'partial' | 'unavailable';
-import { LitElement, css, html, nothing } from 'lit';
+import { css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
 import { styleMap } from 'lit/directives/style-map.js';
-import { cleanupReasonLabel, formatBytes } from '../view-model/analysis-view-model.js';
-import './animoria-confidence-badge.js';
+import { cleanupReasonLabel, formatBytes } from '../../view-model/analysis-view-model.js';
+import '../badges/animoria-confidence-badge.js';
+import { AnimoriaElement } from '../common/events.js';
 
 /**
  * The preview of a cleanup plan, and the only place it is confirmed.
- *
- * ## The invariant this component protects
- * It renders a `CleanupPlan` and emits `apply-cleanup-plan` carrying that plan's
- * **id**. It never builds an entry list, never filters one, and never derives what
- * will happen — so "what you saw is what ran" holds structurally. The previous
- * design had the panel hold a mutable session, mutate decisions into it, and hand
- * the mutated object to an executor that re-derived the removal set; there were two
- * derivations and nothing forced them to agree.
- *
- * ## Why `partial` needs a second gesture
- * A plan that refuses part of the selection is not a plan the developer approved.
- * The refusals are shown, and the apply button stays disabled until the developer
- * explicitly acknowledges them — `allowPartial` on the message is then a statement
- * that they saw the list, which is exactly what `executeCleanupPlan` requires
- * before it will proceed. Silently applying the safe subset would be a downgrade
- * the developer never agreed to.
  */
 @customElement('animoria-cleanup-preview')
-export class AnimoriaCleanupPreview extends LitElement {
+export class AnimoriaCleanupPreview extends AnimoriaElement {
   @property({ type: Object }) plan: CleanupPlan | null = null;
   /** False in a read-only host. The apply control renders disabled with a reason. */
   @property({ type: Boolean }) canMutate = true;
   @property({ type: String }) mutationUnavailableReason = '';
-  @property({ type: Boolean }) applying = false;
+  @property({ type: Boolean }) isApplying = false;
 
-  @state() private _partialAcknowledged = false;
+  @state() private _isPartialAcknowledged = false;
 
   static override styles = css`
     :host {
@@ -51,34 +41,43 @@ export class AnimoriaCleanupPreview extends LitElement {
     }
 
     .safety {
-      border: 1px solid var(--safety-color);
-      border-left-width: 3px;
-      border-radius: var(--animoria-radius-sm);
-      background: var(--animoria-bg-raised);
+      border-left: 3px solid var(--safety-color);
       padding: var(--animoria-space-2) var(--animoria-space-3);
-      display: flex;
-      flex-direction: column;
-      gap: var(--animoria-space-1);
+      background: var(--animoria-neutral-quiet);
+      border-radius: var(--animoria-radius-sm);
     }
 
     .safety-title {
       font-weight: 600;
-      color: var(--safety-color);
+      color: var(--animoria-text-strong);
+      margin-bottom: 2px;
     }
 
     .safety-body {
+      font-size: var(--animoria-font-size-xs);
+      color: var(--animoria-text-secondary);
       line-height: var(--animoria-line-height);
     }
 
     .totals {
       display: flex;
-      gap: var(--animoria-space-4);
+      gap: var(--animoria-space-3);
       font-size: var(--animoria-font-size-sm);
-      color: var(--animoria-text-muted);
+      color: var(--animoria-text-secondary);
+      padding: var(--animoria-space-2) 0;
+      border-bottom: 1px solid var(--animoria-border);
     }
 
     .totals strong {
       color: var(--animoria-text-strong);
+    }
+
+    .section-title {
+      font-size: var(--animoria-font-size-xs);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--animoria-text-muted);
     }
 
     ul {
@@ -88,110 +87,126 @@ export class AnimoriaCleanupPreview extends LitElement {
       display: flex;
       flex-direction: column;
       gap: var(--animoria-space-1);
-      max-height: 260px;
+      max-height: 280px;
       overflow-y: auto;
     }
 
     li {
       display: flex;
-      align-items: center;
       justify-content: space-between;
-      gap: var(--animoria-space-2);
-      padding: var(--animoria-space-2);
-      border: 1px solid var(--animoria-border);
+      align-items: center;
+      padding: var(--animoria-space-1) var(--animoria-space-2);
       border-radius: var(--animoria-radius-sm);
       background: var(--animoria-bg-secondary);
+      font-size: var(--animoria-font-size-xs);
     }
 
     li.refused {
-      border-color: var(--animoria-danger);
-      background: var(--animoria-danger-quiet);
+      background: var(--animoria-neutral-quiet);
+      border-left: 2px solid var(--animoria-warning);
     }
 
     .entry-main {
-      min-width: 0;
       display: flex;
       flex-direction: column;
-      gap: 2px;
+      min-width: 0;
     }
 
     .entry-name {
       font-weight: 600;
-      word-break: break-all;
+      color: var(--animoria-text-strong);
     }
 
-    .entry-meta,
-    .refusal-why {
-      font-size: var(--animoria-font-size-xs);
+    .entry-meta {
       color: var(--animoria-text-muted);
-      line-height: var(--animoria-line-height);
+      display: flex;
+      align-items: center;
+      gap: var(--animoria-space-1);
     }
 
     .reasons {
       display: flex;
       gap: var(--animoria-space-1);
-      flex-wrap: wrap;
+      margin-top: 2px;
     }
 
     .reason {
-      font-size: var(--animoria-font-size-xs);
-      padding: 0 5px;
-      border-radius: 3px;
+      font-size: 10px;
+      padding: 0 4px;
+      border-radius: var(--animoria-radius-sm);
       background: var(--animoria-neutral-quiet);
-      color: var(--animoria-text-muted);
+      color: var(--animoria-text-secondary);
     }
 
-    .section-title {
-      font-size: var(--animoria-font-size-sm);
-      font-weight: 600;
-      color: var(--animoria-text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
+    .refusal-why {
+      font-size: 11px;
+      color: var(--animoria-text-secondary);
+      line-height: var(--animoria-line-height);
     }
 
     .acknowledge {
       display: flex;
       align-items: flex-start;
       gap: var(--animoria-space-2);
-      font-size: var(--animoria-font-size-sm);
-      line-height: var(--animoria-line-height);
+      font-size: var(--animoria-font-size-xs);
+      color: var(--animoria-text-primary);
+      padding: var(--animoria-space-2);
+      background: var(--animoria-neutral-quiet);
+      border-radius: var(--animoria-radius);
+      border: 1px solid var(--animoria-border);
+      cursor: pointer;
+    }
+
+    .acknowledge input {
+      margin-top: 2px;
+      cursor: pointer;
     }
 
     .actions {
       display: flex;
-      align-items: center;
       gap: var(--animoria-space-2);
+      margin-top: var(--animoria-space-2);
     }
 
-    button {
+    .actions button {
+      padding: var(--animoria-space-2) var(--animoria-space-3);
+      border-radius: var(--animoria-radius);
+      font-size: var(--animoria-font-size-sm);
       font-family: inherit;
-      font-size: var(--animoria-font-size);
-      border-radius: var(--animoria-radius-sm);
-      padding: 7px 14px;
       cursor: pointer;
-      border: 1px solid transparent;
+      border: 1px solid var(--animoria-border);
+      transition: all 120ms ease;
     }
 
-    .apply {
+    .actions button.apply {
       background: var(--animoria-danger);
-      color: var(--animoria-text-on-accent);
+      color: #fff;
+      border-color: var(--animoria-danger);
+      font-weight: 600;
     }
 
-    .apply:disabled {
-      opacity: 0.45;
+    .actions button.apply:hover:not(:disabled) {
+      filter: brightness(1.1);
+    }
+
+    .actions button.apply:disabled {
+      opacity: 0.4;
       cursor: not-allowed;
     }
 
-    .cancel {
-      background: transparent;
-      border-color: var(--animoria-border-strong);
+    .actions button.cancel {
+      background: var(--animoria-bg-secondary);
       color: var(--animoria-text-primary);
     }
 
+    .actions button.cancel:hover {
+      background: var(--animoria-bg-hover);
+    }
+
     .disabled-reason {
-      font-size: var(--animoria-font-size-sm);
-      color: var(--animoria-warning);
-      line-height: var(--animoria-line-height);
+      font-size: var(--animoria-font-size-xs);
+      color: var(--animoria-text-muted);
+      font-style: italic;
     }
   `;
 
@@ -206,30 +221,27 @@ export class AnimoriaCleanupPreview extends LitElement {
     unavailable: { color: 'var(--animoria-danger)', title: 'This cleanup cannot run' },
   };
 
-  private get _blocked(): boolean {
+  private get _isBlocked(): boolean {
     const plan = this.plan;
     if (!plan) return true;
     if (!this.canMutate) return true;
-    if (this.applying) return true;
+    if (this.isApplying) return true;
     if (plan.safety === 'unavailable') return true;
-    if (plan.safety === 'partial' && !this._partialAcknowledged) return true;
+    if (plan.safety === 'partial' && !this._isPartialAcknowledged) return true;
     return false;
   }
 
   private _apply(): void {
     const plan = this.plan;
-    if (!plan || this._blocked) return;
-    this.dispatchEvent(
-      new CustomEvent('apply-cleanup-plan', {
-        detail: { planId: plan.planId, allowPartial: plan.safety === 'partial' },
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    if (!plan || this._isBlocked) return;
+    this.emit('apply-cleanup-plan', {
+      planId: plan.planId,
+      canAllowPartial: plan.safety === 'partial',
+    });
   }
 
   private _cancel(): void {
-    this.dispatchEvent(new CustomEvent('cancel-cleanup', { bubbles: true, composed: true }));
+    this.emit('cancel-cleanup');
   }
 
   override render() {
@@ -324,9 +336,9 @@ export class AnimoriaCleanupPreview extends LitElement {
               <label class="acknowledge">
                 <input
                   type="checkbox"
-                  .checked=${this._partialAcknowledged}
+                  .checked=${this._isPartialAcknowledged}
                   @change=${(e: Event) => {
-                    this._partialAcknowledged = (e.target as HTMLInputElement).checked;
+                    this._isPartialAcknowledged = (e.target as HTMLInputElement).checked;
                   }}
                 />
                 <span
@@ -344,8 +356,8 @@ export class AnimoriaCleanupPreview extends LitElement {
         }
 
         <div class="actions">
-          <button class="apply" type="button" ?disabled=${this._blocked} @click=${this._apply}>
-            ${this.applying ? 'Moving to trash…' : `Move ${plan.entries.length} to trash`}
+          <button class="apply" type="button" ?disabled=${this._isBlocked} @click=${this._apply}>
+            ${this.isApplying ? 'Moving to trash…' : `Move ${plan.entries.length} to trash`}
           </button>
           <button class="cancel" type="button" @click=${this._cancel}>Cancel</button>
         </div>

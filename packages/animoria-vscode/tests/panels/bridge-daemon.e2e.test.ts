@@ -34,7 +34,7 @@ describe('VsCodeHostBridge — real daemon data through the real bridge', () => 
         acc[ref.asset_id] = (acc[ref.asset_id] ?? 0) + 1;
         return acc;
       }, {}),
-      readiness: { referencesResolved: true },
+      readiness: { isReferencesResolved: true },
     };
 
     const session: WorkspaceSession = {

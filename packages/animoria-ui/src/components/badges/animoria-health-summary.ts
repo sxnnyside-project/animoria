@@ -20,7 +20,7 @@ export function describeHealthState(score: number): HealthState {
 export class AnimoriaHealthSummary extends LitElement {
   @property({ type: Object }) outcome: HealthScoreOutcome | null = null;
   /** Renders one line instead of the panel. For toolbars. */
-  @property({ type: Boolean }) compact = false;
+  @property({ type: Boolean }) isCompact = false;
 
   static override styles = css`
     :host {
@@ -123,7 +123,7 @@ export class AnimoriaHealthSummary extends LitElement {
 
     if (outcome.status === 'unavailable') {
       const color = 'var(--animoria-state-initializing)';
-      if (this.compact) {
+      if (this.isCompact) {
         return html`<span class="compact-line" style="--state-color: ${color}"
           ><span class="compact-dot"></span>Health score not available</span
         >`;
@@ -145,7 +145,7 @@ export class AnimoriaHealthSummary extends LitElement {
     const stateLabel = AnimoriaHealthSummary.STATE_LABELS[state];
     const score = Math.round(report.score);
 
-    if (this.compact) {
+    if (this.isCompact) {
       return html`<span class="compact-line" style="--state-color: ${color}"
         ><span class="compact-dot"></span>Health score ${score}/100 · Grade ${report.grade}</span
       >`;

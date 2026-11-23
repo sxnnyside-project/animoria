@@ -234,7 +234,6 @@ export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElem
   private _thumbnails = new Map<string, string>();
   private _diagnostics: readonly RuleDiagnostic[] = [];
   private _health: HealthScoreReport | null = null;
-  private _duplicateGroups: readonly DuplicateGroup[] = [];
   private _references: readonly UsageReference[] = [];
 
   private _onDidChangeTreeData = new vscode.EventEmitter<AnyTreeElement | undefined | undefined>();
@@ -404,13 +403,12 @@ export class AnimoriaTreeProvider implements vscode.TreeDataProvider<AnyTreeElem
   updateAnalysis(
     analysis: WorkspaceAnalysis,
     references: UsageReference[] = [],
-    duplicateGroups: DuplicateGroup[] = [],
+    _duplicateGroups: DuplicateGroup[] = [],
   ): void {
     this._assets = analysis.assets;
     this._diagnostics = analysis.diagnostics;
     this._health = analysis.health_score ?? null;
     this._references = references;
-    this._duplicateGroups = duplicateGroups;
     this._workspacePath = analysis.root_path;
     this._onDidChangeTreeData.fire(undefined);
   }

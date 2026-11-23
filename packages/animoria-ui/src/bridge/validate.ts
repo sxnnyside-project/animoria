@@ -55,13 +55,13 @@ const OUTBOUND_SHAPE: Readonly<
   'request-usage-references': [['assetPath', isString]],
   'dismiss-cleanup-candidate': [
     ['assetPath', isString],
-    ['dismissed', isBoolean],
+    ['isDismissed', isBoolean],
   ],
   'request-cleanup-proposal': [],
   'request-cleanup-plan': [['assetPaths', isStringArray]],
   'apply-cleanup-plan': [
     ['planId', isString],
-    ['allowPartial', isBoolean],
+    ['canAllowPartial', isBoolean],
   ],
   'request-resolution-plan': [
     ['groupId', isString],
@@ -69,7 +69,7 @@ const OUTBOUND_SHAPE: Readonly<
   ],
   'apply-resolution-plan': [
     ['planId', isString],
-    ['allowPartial', isBoolean],
+    ['canAllowPartial', isBoolean],
   ],
   'request-trash-sessions': [],
   'restore-session': [['sessionId', isString]],
@@ -84,7 +84,7 @@ const INBOUND_SHAPE: Readonly<
   'usage-references': [
     ['assetPath', isString],
     ['references', Array.isArray],
-    ['complete', isBoolean],
+    ['isComplete', isBoolean],
   ],
   focus: [
     ['tab', isString],
@@ -124,7 +124,7 @@ const INBOUND_SHAPE: Readonly<
   ],
   error: [
     ['message', isString],
-    ['recoverable', isBoolean],
+    ['isRecoverable', isBoolean],
   ],
 };
 

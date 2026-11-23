@@ -1,13 +1,14 @@
 import type { Asset, DuplicateGroup, ResolutionPlan } from '@animoria/contracts';
-import { LitElement, css, html, nothing } from 'lit';
+import { css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { classMap } from 'lit/directives/class-map.js';
 import { ifDefined } from 'lit/directives/if-defined.js';
 import { repeat } from 'lit/directives/repeat.js';
-import { formatBytes } from '../view-model/analysis-view-model.js';
+import { formatBytes } from '../../view-model/analysis-view-model.js';
+import { AnimoriaElement } from '../common/events.js';
 
 @customElement('animoria-duplicate-group')
-export class AnimoriaDuplicateGroupView extends LitElement {
+export class AnimoriaDuplicateGroupView extends AnimoriaElement {
   @property({ type: Object }) group: DuplicateGroup | null = null;
   @property({ type: Object }) assetsById: ReadonlyMap<string, Asset> = new Map();
   @property({ type: Object }) plan: ResolutionPlan | null = null;
@@ -16,7 +17,7 @@ export class AnimoriaDuplicateGroupView extends LitElement {
   @property({ type: String }) rootName = '';
   @property({ type: Boolean }) isCrossRoot = false;
   @property({ type: Boolean }) canMutate = false;
-  @property({ type: Boolean }) resolving = false;
+  @property({ type: Boolean }) isResolving = false;
 
   @state() private _selectedKeepId: string | null = null;
 
@@ -149,29 +150,23 @@ export class AnimoriaDuplicateGroupView extends LitElement {
   }
 
   private _selectKeep(assetId: string): void {
-    if (!this.canMutate || this.resolving) return;
+    if (!this.canMutate || this.isResolving) return;
     this._selectedKeepId = assetId;
     const group = this.group;
     if (!group) return;
     const keepAsset = this.assetsById.get(assetId);
-    this.dispatchEvent(
-      new CustomEvent('request-resolution-plan', {
-        detail: { groupId: group.id, keepPath: keepAsset?.path ?? assetId },
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    this.emit('request-resolution-plan', {
+      groupId: group.id,
+      keepPath: keepAsset?.path ?? assetId,
+    });
   }
 
   private _apply(): void {
     if (!this.plan || !this.planId) return;
-    this.dispatchEvent(
-      new CustomEvent('apply-resolution-plan', {
-        detail: { planId: this.planId, allowPartial: false },
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    this.emit('apply-resolution-plan', {
+      planId: this.planId,
+      canAllowPartial: false,
+    });
   }
 
   private _renderPlanPreview() {
@@ -194,16 +189,14 @@ export class AnimoriaDuplicateGroupView extends LitElement {
             : nothing
         }
         <div class="plan-actions">
-          <button class="primary" ?disabled=${this.resolving} @click=${() => this._apply()}>
-            ${this.resolving ? 'Resolving…' : 'Resolve Duplicates'}
+          <button class="primary" ?disabled=${this.isResolving} @click=${() => this._apply()}>
+            ${this.isResolving ? 'Resolving…' : 'Resolve Duplicates'}
           </button>
           <button
-            ?disabled=${this.resolving}
+            ?disabled=${this.isResolving}
             @click=${() => {
               this._selectedKeepId = null;
-              this.dispatchEvent(
-                new CustomEvent('cancel-resolution-plan', { bubbles: true, composed: true }),
-              );
+              this.emit('cancel-resolution-plan');
             }}
           >
             Cancel
@@ -239,7 +232,7 @@ export class AnimoriaDuplicateGroupView extends LitElement {
                   ${
                     this.canMutate
                       ? html`<button
-                        ?disabled=${this.resolving || isSelected}
+                        ?disabled=${this.isResolving || isSelected}
                         @click=${() => this._selectKeep(id)}
                       >
                         ${isSelected ? 'Keeping this' : 'Keep this copy'}

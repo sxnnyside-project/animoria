@@ -155,7 +155,7 @@ export default defineConfig({
                   assets: result.analysis.assets,
                   duplicateGroups: result.duplicate_groups,
                   referenceCounts: refCounts,
-                  readiness: { referencesResolved: true },
+                  readiness: { isReferencesResolved: true },
                 }),
               );
             } catch (err) {

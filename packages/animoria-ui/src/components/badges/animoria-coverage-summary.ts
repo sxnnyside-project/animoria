@@ -23,7 +23,7 @@ export const COVERAGE_LABELS: Record<CoverageStatus, string> = {
 @customElement('animoria-coverage-summary')
 export class AnimoriaCoverageSummary extends LitElement {
   @property({ type: Object }) coverage: ScanCoverage | null = null;
-  @property({ type: Boolean }) inline = false;
+  @property({ type: Boolean }) isInline = false;
 
   static override styles = css`
     :host {
@@ -128,7 +128,7 @@ export class AnimoriaCoverageSummary extends LitElement {
     const coverage = this.coverage;
     if (!coverage) return nothing;
 
-    if (this.inline) {
+    if (this.isInline) {
       return html`
         <span class="inline-badge ${coverage.status}">
           ${COVERAGE_LABELS[coverage.status] ?? coverage.status}

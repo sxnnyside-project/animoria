@@ -11,10 +11,10 @@ import type {
 
 export type AnimatedFormat = AssetFormat;
 export interface AnalysisReadiness {
-  readonly assetsIndexed: boolean;
-  readonly referencesResolved: boolean;
-  readonly duplicatesResolved: boolean;
-  readonly complete: boolean;
+  readonly isAssetsIndexed: boolean;
+  readonly isReferencesResolved: boolean;
+  readonly isDuplicatesResolved: boolean;
+  readonly isComplete: boolean;
 }
 export interface CleanupReason {
   readonly code: string;
@@ -56,7 +56,7 @@ export interface MultiRootAnalysis {
   readonly duplicateGroups: readonly DuplicateGroup[];
   readonly assets: readonly Asset[];
   readonly referenceCounts?: ReadonlyMap<string, number> | Record<string, number>;
-  readonly readiness?: { readonly referencesResolved: boolean };
+  readonly readiness?: { readonly isReferencesResolved: boolean };
 }
 
 export interface ReviewableCleanupProposal {
@@ -66,7 +66,7 @@ export interface ReviewableCleanupProposal {
     readonly sizeBytes?: number;
     readonly referenceCount?: number;
     readonly eligibility?: {
-      readonly eligible: boolean;
+      readonly isEligible: boolean;
       readonly reason?: string;
       readonly explanation?: string;
     };
@@ -241,7 +241,7 @@ export type AnimationPreview =
    * A `data:` URI or a host-served URL. The host must not send a filesystem path: a
    * webview cannot read one, and every host that tried produced a broken image.
    */
-  | { readonly kind: 'image'; readonly source: string; readonly animates: boolean }
+  | { readonly kind: 'image'; readonly source: string; readonly isAnimated: boolean }
   /** A rendered still, with the reason playback is not offered here. */
   | { readonly kind: 'still'; readonly source: string; readonly reason: string }
   /** No frame could be produced at all, with the reason. */
@@ -297,10 +297,10 @@ export function buildAnimationPreview(input: {
     STATIC_IMAGE_FORMATS.includes(formatLower as (typeof STATIC_IMAGE_FORMATS)[number]) &&
     (input.sourceUrl || input.stillUrl)
   ) {
-    return { kind: 'image', source: (input.sourceUrl || input.stillUrl)!, animates: false };
+    return { kind: 'image', source: (input.sourceUrl || input.stillUrl)!, isAnimated: false };
   }
   if (BROWSER_ANIMATED_FORMATS.includes(input.format as AnimatedFormat) && input.sourceUrl) {
-    return { kind: 'image', source: input.sourceUrl, animates: true };
+    return { kind: 'image', source: input.sourceUrl, isAnimated: true };
   }
   if (input.stillUrl) {
     return {
@@ -370,7 +370,7 @@ export type HostOutbound =
   | {
       readonly type: 'dismiss-cleanup-candidate';
       readonly assetPath: string;
-      readonly dismissed: boolean;
+      readonly isDismissed: boolean;
     }
   | { readonly type: 'request-cleanup-plan'; readonly assetPaths: readonly string[] }
   /** Applies one root's plan. Several plans mean several messages, each confirmed. */
@@ -378,7 +378,7 @@ export type HostOutbound =
       readonly type: 'apply-cleanup-plan';
       readonly planId: string;
       /** Explicit opt-in for a `partial` plan. The UI may only set this having shown the refusals. */
-      readonly allowPartial: boolean;
+      readonly canAllowPartial: boolean;
     }
   // ── Duplicate resolution: plan → apply ──
   | {
@@ -389,7 +389,7 @@ export type HostOutbound =
   | {
       readonly type: 'apply-resolution-plan';
       readonly planId: string;
-      readonly allowPartial: boolean;
+      readonly canAllowPartial: boolean;
     }
   // ── Trash ──
   | { readonly type: 'request-trash-sessions' }
@@ -412,7 +412,7 @@ export type HostInbound =
       readonly type: 'usage-references';
       readonly assetPath: string;
       readonly references: readonly UsageReference[];
-      readonly complete: boolean;
+      readonly isComplete: boolean;
     }
   /**
    * Where the developer asked to be, and about what.
@@ -510,7 +510,7 @@ export type HostInbound =
       readonly assetPath: string;
       readonly snippets: readonly GeneratedSnippet[];
     }
-  | { readonly type: 'error'; readonly message: string; readonly recoverable: boolean };
+  | { readonly type: 'error'; readonly message: string; readonly isRecoverable: boolean };
 
 // ── The bridge ────────────────────────────────────────────────────────────────
 

@@ -1,6 +1,7 @@
-import { LitElement, css, html, nothing } from 'lit';
+import { css, html, nothing } from 'lit';
 import { customElement, property, query, state } from 'lit/decorators.js';
-import type { AnimationPreview, UiPreferences } from '../bridge/types.js';
+import type { AnimationPreview, UiPreferences } from '../../bridge/types.js';
+import { AnimoriaElement } from '../common/events.js';
 
 /**
  * The slice of `lottie-web`'s `AnimationItem` this component drives.
@@ -53,15 +54,15 @@ interface LottieInstance {
  * cannot animate here looked exactly like one whose frame failed to render.
  */
 @customElement('animoria-asset-stage')
-export class AnimoriaAssetStage extends LitElement {
+export class AnimoriaAssetStage extends AnimoriaElement {
   @property({ attribute: false }) preview: AnimationPreview | null = null;
   @property({ attribute: false }) preferences!: UiPreferences;
-  @property({ type: Boolean }) loading = false;
+  @property({ type: Boolean }) isLoading = false;
   @property({ type: String }) error = '';
   /** Identifies the asset the current preview belongs to, so a change resets state. */
   @property({ type: String }) assetPath = '';
 
-  @state() private _playing = true;
+  @state() private _isPlaying = true;
   private _frame = 0;
   @state() private _totalFrames = 0;
   @state() private _zoom = 1;
@@ -251,7 +252,7 @@ export class AnimoriaAssetStage extends LitElement {
         const rive = new Rive({
           src: preview.sourceUrl,
           canvas: canvas,
-          autoplay: this._playing,
+          autoplay: this._isPlaying,
           onLoad: () => {
             rive.resizeDrawingSurfaceToCanvas();
           },
@@ -283,7 +284,7 @@ export class AnimoriaAssetStage extends LitElement {
         container: mount,
         renderer: 'svg',
         loop: true,
-        autoplay: this._playing,
+        autoplay: this._isPlaying,
         animationData: preview.animation as Record<string, unknown>,
       });
 
@@ -315,8 +316,8 @@ export class AnimoriaAssetStage extends LitElement {
   }
 
   private _togglePlay(): void {
-    this._playing = !this._playing;
-    if (this._playing) {
+    this._isPlaying = !this._isPlaying;
+    if (this._isPlaying) {
       this._animation?.play();
       this._riveInstance?.play();
     } else {
@@ -326,7 +327,7 @@ export class AnimoriaAssetStage extends LitElement {
   }
 
   private _scrub(frame: number): void {
-    this._playing = false;
+    this._isPlaying = false;
     this._frame = frame;
     this._animation?.goToAndStop(frame, true);
     if (this._scrubberInput) this._scrubberInput.value = String(frame);
@@ -334,13 +335,9 @@ export class AnimoriaAssetStage extends LitElement {
   }
 
   private _emitPreferences(patch: Partial<UiPreferences>): void {
-    this.dispatchEvent(
-      new CustomEvent('preferences-change', {
-        detail: { preferences: { ...this.preferences, ...patch } },
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    this.emit('preferences-change', {
+      preferences: { ...this.preferences, ...patch },
+    });
   }
 
   private _renderSurface() {
@@ -350,7 +347,7 @@ export class AnimoriaAssetStage extends LitElement {
     if (this._playerError) {
       return html`<span class="note failed" role="alert">${this._playerError}</span>`;
     }
-    if (this.loading) return html`<span class="note" role="status">Loading the preview…</span>`;
+    if (this.isLoading) return html`<span class="note" role="status">Loading the preview…</span>`;
     if (!preview) return html`<span class="note">Select an asset to preview it.</span>`;
 
     if (preview.kind === 'unsupported') {
@@ -397,7 +394,7 @@ export class AnimoriaAssetStage extends LitElement {
           canPlayPause
             ? html`
                 <button type="button" @click=${() => this._togglePlay()}>
-                  ${this._playing ? 'Pause' : 'Play'}
+                  ${this._isPlaying ? 'Pause' : 'Play'}
                 </button>
               `
             : nothing
@@ -482,7 +479,7 @@ export class AnimoriaAssetStage extends LitElement {
       >
         ${this._renderSurface()}
       </div>
-      ${this.preview && !this.loading && !this.error ? this._renderControls() : nothing}
+      ${this.preview && !this.isLoading && !this.error ? this._renderControls() : nothing}
     `;
   }
 }

@@ -1,6 +1,6 @@
 import type { HostBridge } from './bridge/types.js';
-import './components/animoria-workspace.js';
-import type { AnimoriaWorkspace } from './components/animoria-workspace.js';
+import './components/workspace/animoria-workspace.js';
+import type { AnimoriaWorkspace } from './components/workspace/animoria-workspace.js';
 
 /**
  * `@animoria/ui` — Animoria's shared product UI.
@@ -18,21 +18,33 @@ import type { AnimoriaWorkspace } from './components/animoria-workspace.js';
  * receive; a host that sends before `ready` is racing its own mount.
  */
 
-export { AnimoriaWorkspace } from './components/animoria-workspace.js';
-export { AnimoriaAssetCard } from './components/animoria-asset-card.js';
-export { AnimoriaAssetInspector } from './components/animoria-asset-inspector.js';
-export { AnimoriaSnippetPanel } from './components/animoria-snippet-panel.js';
-export { AnimoriaRootSelector } from './components/animoria-root-selector.js';
-export { AnimoriaTrashPanel } from './components/animoria-trash-panel.js';
-export { AnimoriaCleanupPreview } from './components/animoria-cleanup-preview.js';
-export { AnimoriaConfidenceBadge } from './components/animoria-confidence-badge.js';
-export { AnimoriaCoverageSummary } from './components/animoria-coverage-summary.js';
-export { AnimoriaDuplicateGroupView } from './components/animoria-duplicate-group.js';
-export { AnimoriaEvidencePanel } from './components/animoria-evidence-panel.js';
-export { AnimoriaFinding } from './components/animoria-finding.js';
-export { AnimoriaHealthSummary } from './components/animoria-health-summary.js';
-export { AnimoriaStatePanel } from './components/animoria-state-panel.js';
-export { AnimoriaTimelinePanel } from './components/animoria-timeline-panel.js';
+export { AnimoriaWorkspace } from './components/workspace/animoria-workspace.js';
+export { AnimoriaAssetsTab } from './components/workspace/animoria-assets-tab.js';
+export { AnimoriaCleanupTab } from './components/workspace/animoria-cleanup-tab.js';
+export { AnimoriaDuplicatesTab } from './components/workspace/animoria-duplicates-tab.js';
+export { AnimoriaFindingsTab } from './components/workspace/animoria-findings-tab.js';
+
+export { AnimoriaAssetCard } from './components/gallery/animoria-asset-card.js';
+export { AnimoriaFinding } from './components/gallery/animoria-finding.js';
+export { AnimoriaDuplicateGroupView } from './components/gallery/animoria-duplicate-group.js';
+export { AnimoriaRootSelector } from './components/gallery/animoria-root-selector.js';
+export { AnimoriaStatePanel } from './components/gallery/animoria-state-panel.js';
+
+export { AnimoriaAssetInspector } from './components/inspector/animoria-asset-inspector.js';
+export { AnimoriaAssetStage } from './components/inspector/animoria-asset-stage.js';
+export { AnimoriaEvidencePanel } from './components/inspector/animoria-evidence-panel.js';
+export { AnimoriaSnippetPanel } from './components/inspector/animoria-snippet-panel.js';
+export { AnimoriaTimelinePanel } from './components/inspector/animoria-timeline-panel.js';
+
+export { AnimoriaConfidenceBadge } from './components/badges/animoria-confidence-badge.js';
+export { AnimoriaCoverageSummary } from './components/badges/animoria-coverage-summary.js';
+export { AnimoriaHealthSummary } from './components/badges/animoria-health-summary.js';
+export { AnimoriaRootBadge } from './components/badges/animoria-root-badge.js';
+
+export { AnimoriaCleanupPreview } from './components/cleanup/animoria-cleanup-preview.js';
+export { AnimoriaTrashPanel } from './components/cleanup/animoria-trash-panel.js';
+
+export { AnimoriaElement, emitCustomEvent, WithEvents } from './components/common/events.js';
 
 export type {
   AnimationPreview,

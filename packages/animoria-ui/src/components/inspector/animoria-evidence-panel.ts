@@ -1,6 +1,7 @@
-import { LitElement, css, html, nothing } from 'lit';
+import { css, html, nothing } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { repeat } from 'lit/directives/repeat.js';
+import { AnimoriaElement } from '../common/events.js';
 
 export type EvidenceKind = 'reference' | 'absence' | 'duplicate' | 'metadata';
 
@@ -20,7 +21,7 @@ export interface DiagnosticEvidence {
  * Renders rule diagnostic evidence and supporting locations.
  */
 @customElement('animoria-evidence-panel')
-export class AnimoriaEvidencePanel extends LitElement {
+export class AnimoriaEvidencePanel extends AnimoriaElement {
   @property({ type: Object }) evidence: DiagnosticEvidence | null = null;
 
   static override styles = css`
@@ -79,13 +80,7 @@ export class AnimoriaEvidencePanel extends LitElement {
   `;
 
   private _navigate(loc: EvidenceLocation): void {
-    this.dispatchEvent(
-      new CustomEvent('open-reference', {
-        detail: { file: loc.file, line: loc.line },
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    this.emit('open-reference', { file: loc.file, line: loc.line });
   }
 
   override render() {

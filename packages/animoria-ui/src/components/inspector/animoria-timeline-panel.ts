@@ -1,8 +1,9 @@
 import type { AnalysisSnapshot, AuditEvent, AuditEventKind } from '@animoria/contracts';
-import { LitElement, css, html, nothing } from 'lit';
+import { css, html, nothing } from 'lit';
 import { customElement, property, state } from 'lit/decorators.js';
 import { classMap } from 'lit/directives/class-map.js';
 import { repeat } from 'lit/directives/repeat.js';
+import { AnimoriaElement } from '../common/events.js';
 
 interface TimelineItem {
   id: string;
@@ -17,10 +18,10 @@ interface TimelineItem {
  * Provides health score progression, governance activity markers, and snapshot rollback/selection.
  */
 @customElement('animoria-timeline-panel')
-export class AnimoriaTimelinePanel extends LitElement {
+export class AnimoriaTimelinePanel extends AnimoriaElement {
   @property({ attribute: false }) snapshots: readonly AnalysisSnapshot[] = [];
   @property({ attribute: false }) events: readonly AuditEvent[] = [];
-  @property({ type: Boolean }) loading = false;
+  @property({ type: Boolean }) isLoading = false;
   @property({ type: String }) selectedSnapshotId = '';
 
   @state() private _filter: 'all' | 'snapshots' | 'remediation' = 'all';
@@ -317,13 +318,7 @@ export class AnimoriaTimelinePanel extends LitElement {
 
   private _selectSnapshot(snapshotId: string): void {
     this.selectedSnapshotId = snapshotId;
-    this.dispatchEvent(
-      new CustomEvent('snapshot-select', {
-        detail: { snapshotId },
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    this.emit('snapshot-select', { snapshotId });
   }
 
   override render() {
@@ -364,9 +359,9 @@ export class AnimoriaTimelinePanel extends LitElement {
       </div>
 
       <div class="content">
-        ${this.loading ? html`<div class="empty-state">Loading timeline history…</div>` : nothing}
+        ${this.isLoading ? html`<div class="empty-state">Loading timeline history…</div>` : nothing}
         ${
-          !this.loading && items.length === 0
+          !this.isLoading && items.length === 0
             ? html`<div class="empty-state">No timeline events or snapshots recorded yet.</div>`
             : nothing
         }

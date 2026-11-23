@@ -38,10 +38,10 @@ function analysisStub(assets: WorkspaceAnalysis['assets']): WorkspaceAnalysis {
     generation: 1,
     durationMs: 1,
     readiness: {
-      assetsIndexed: true,
-      referencesResolved: true,
-      duplicatesResolved: true,
-      complete: true,
+      isAssetsIndexed: true,
+      isReferencesResolved: true,
+      isDuplicatesResolved: true,
+      isComplete: true,
     },
     assets,
     coverage: null,
@@ -171,7 +171,7 @@ describe('preview — a Lottie arrives playable, not as a picture', () => {
     // A `data:` URI, never a filesystem path — a webview cannot read one, and every
     // host that sent one rendered a broken image.
     expect(answer.preview.source.startsWith('data:image/gif')).toBe(true);
-    expect(answer.preview.animates).toBe(true);
+    expect(answer.preview.isAnimated).toBe(true);
   });
 
   it('says so, rather than failing, when there is nothing to show', async () => {

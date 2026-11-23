@@ -115,8 +115,8 @@ export function buildAnalysisViewModel(
       }
 
       for (const diagnostic of root.diagnostics) {
-        const item: AttributedDiagnostic = { rootId, rootName, diagnostic };
-        diagnostics.push(item);
+        const findingEntry: AttributedDiagnostic = { rootId, rootName, diagnostic };
+        diagnostics.push(findingEntry);
         const assetPath = diagnostic.target_asset_path || '';
         if (assetPath) {
           const list = byAsset.get(assetPath) ?? [];
@@ -125,7 +125,7 @@ export function buildAnalysisViewModel(
         }
         const ruleId = diagnostic.rule_id || 'general';
         const ruleList = byRule.get(ruleId) ?? [];
-        ruleList.push(item);
+        ruleList.push(findingEntry);
         byRule.set(ruleId, ruleList);
       }
     }
@@ -200,9 +200,9 @@ export function buildAnalysisViewModel(
   const rootIdByAssetPath = new Map<string, string>();
   const referenceCounts = new Map<string, number>();
 
-  for (const item of assets) {
-    rootIdByAssetPath.set(item.asset.path, item.rootId);
-    referenceCounts.set(item.asset.path, 0);
+  for (const assetEntry of assets) {
+    rootIdByAssetPath.set(assetEntry.asset.path, assetEntry.rootId);
+    referenceCounts.set(assetEntry.asset.path, 0);
   }
 
   const diagnostics: AttributedDiagnostic[] = isFiltered
@@ -210,16 +210,16 @@ export function buildAnalysisViewModel(
     : rawDiagnostics.map((diagnostic: RuleDiagnostic) => {
         const ruleId = diagnostic.rule_id || 'general';
         const assetPath = diagnostic.target_asset_path || '';
-        const item: AttributedDiagnostic = { rootId, rootName, diagnostic };
+        const findingEntry: AttributedDiagnostic = { rootId, rootName, diagnostic };
         if (assetPath) {
           const list = byAsset.get(assetPath) ?? [];
           list.push(diagnostic);
           byAsset.set(assetPath, list);
         }
         const ruleList = byRule.get(ruleId) ?? [];
-        ruleList.push(item);
+        ruleList.push(findingEntry);
         byRule.set(ruleId, ruleList);
-        return item;
+        return findingEntry;
       });
 
   const sections: FindingSection[] = [...byRule.entries()]

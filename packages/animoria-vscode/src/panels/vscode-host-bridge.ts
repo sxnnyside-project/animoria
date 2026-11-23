@@ -97,7 +97,7 @@ function buildCleanupCandidates(
       reasons: [{ code: d.rule_id, message: d.message }],
       sizeBytes: asset.size_bytes,
       referenceCount: 0,
-      eligibility: { eligible: true },
+      eligibility: { isEligible: true },
       severity: d.severity,
     });
   }
@@ -162,9 +162,9 @@ interface TrashedItem {
 // Stops at the first failed entry unless allowPartial is set — partial application is refused unless opted into.
 async function executeCleanupPlan(
   plan: CleanupPlan,
-  opts: { daemon: VsCodeDaemonClient; workspacePath: string; allowPartial?: boolean },
+  opts: { daemon: VsCodeDaemonClient; workspacePath: string; canAllowPartial?: boolean },
 ): Promise<CleanupExecutionResult & { trashedItems: TrashedItem[] }> {
-  if (plan.refusals.length > 0 && !opts.allowPartial) {
+  if (plan.refusals.length > 0 && !opts.canAllowPartial) {
     return {
       status: 'failed',
       removedAssetPaths: [],
@@ -182,17 +182,17 @@ async function executeCleanupPlan(
 
   for (const entry of plan.entries) {
     try {
-      const item = await opts.daemon.trashAsset(
+      const stagedItem = await opts.daemon.trashAsset(
         opts.workspacePath,
         entry.asset.id,
         entry.asset.path,
       );
-      trashedItems.push({ item, sizeBytes: entry.sizeBytes });
+      trashedItems.push({ item: stagedItem, sizeBytes: entry.sizeBytes });
       removedAssetPaths.push(entry.asset.path);
       recoveredBytes += entry.sizeBytes;
     } catch (err) {
       firstError = err instanceof Error ? err.message : String(err);
-      if (!opts.allowPartial) break;
+      if (!opts.canAllowPartial) break;
     }
   }
 
@@ -227,7 +227,7 @@ async function executeResolutionPlan(
     daemon: VsCodeDaemonClient;
     workspacePath: string;
     assetsById: ReadonlyMap<string, Asset>;
-    allowPartial?: boolean;
+    canAllowPartial?: boolean;
   },
 ): Promise<ResolutionResult & { trashedItems: TrashedItem[] }> {
   const removedAssetPaths: string[] = [];
@@ -239,17 +239,17 @@ async function executeResolutionPlan(
     const asset = opts.assetsById.get(assetId);
     if (!asset) {
       firstError = `Asset '${assetId}' from the resolution plan is no longer in the analysis.`;
-      if (!opts.allowPartial) break;
+      if (!opts.canAllowPartial) break;
       continue;
     }
     try {
-      const item = await opts.daemon.trashAsset(opts.workspacePath, asset.id, asset.path);
-      trashedItems.push({ item, sizeBytes: asset.size_bytes });
+      const stagedItem = await opts.daemon.trashAsset(opts.workspacePath, asset.id, asset.path);
+      trashedItems.push({ item: stagedItem, sizeBytes: asset.size_bytes });
       removedAssetPaths.push(asset.path);
       recoveredBytes += asset.size_bytes;
     } catch (err) {
       firstError = err instanceof Error ? err.message : String(err);
-      if (!opts.allowPartial) break;
+      if (!opts.canAllowPartial) break;
     }
   }
 
@@ -596,7 +596,7 @@ export class VsCodeHostBridge {
         type: 'error',
         message:
           'Animoria has no connection to the native engine. Reload the window and try again.',
-        recoverable: true,
+        isRecoverable: true,
       });
       return null;
     }
@@ -633,7 +633,7 @@ export class VsCodeHostBridge {
       this._post({
         type: 'error',
         message: error instanceof Error ? error.message : String(error),
-        recoverable: true,
+        isRecoverable: true,
       });
     }
   }
@@ -651,20 +651,20 @@ export class VsCodeHostBridge {
 
   publishProgress(
     readiness: {
-      assetsIndexed?: boolean;
-      referencesResolved?: boolean;
-      duplicatesResolved?: boolean;
-      complete?: boolean;
+      isAssetsIndexed?: boolean;
+      isReferencesResolved?: boolean;
+      isDuplicatesResolved?: boolean;
+      isComplete?: boolean;
     },
     message: string,
   ): void {
     this._post({
       type: 'analysis-progress',
       readiness: {
-        assetsIndexed: readiness?.assetsIndexed ?? true,
-        referencesResolved: readiness?.referencesResolved ?? true,
-        duplicatesResolved: readiness?.duplicatesResolved ?? true,
-        complete: readiness?.complete ?? true,
+        isAssetsIndexed: readiness?.isAssetsIndexed ?? true,
+        isReferencesResolved: readiness?.isReferencesResolved ?? true,
+        isDuplicatesResolved: readiness?.isDuplicatesResolved ?? true,
+        isComplete: readiness?.isComplete ?? true,
       },
       message,
     });
@@ -682,7 +682,7 @@ export class VsCodeHostBridge {
       this._post({
         type: 'error',
         message: 'Animoria has no workspace open. Open a folder and run the analysis again.',
-        recoverable: true,
+        isRecoverable: true,
       });
       return;
     }
@@ -876,7 +876,7 @@ export class VsCodeHostBridge {
           this._post({
             type: 'error',
             message: 'That cleanup preview is no longer available. Preview the removal again.',
-            recoverable: true,
+            isRecoverable: true,
           });
           return;
         }
@@ -894,7 +894,7 @@ export class VsCodeHostBridge {
         const { trashedItems, ...result } = await executeCleanupPlan(stored.plan, {
           daemon,
           workspacePath: root.path,
-          allowPartial: message.allowPartial,
+          canAllowPartial: message.canAllowPartial,
         });
         this._cleanupPlans.delete(message.planId);
         if (trashedItems.length > 0) {
@@ -921,7 +921,7 @@ export class VsCodeHostBridge {
           this._post({
             type: 'error',
             message: 'That duplicate group is gone.',
-            recoverable: true,
+            isRecoverable: true,
           });
           return;
         }
@@ -932,7 +932,7 @@ export class VsCodeHostBridge {
           this._post({
             type: 'error',
             message: `Animoria could not attribute ${canonical.name} to a workspace root.`,
-            recoverable: true,
+            isRecoverable: true,
           });
           return;
         }
@@ -970,7 +970,7 @@ export class VsCodeHostBridge {
           this._post({
             type: 'error',
             message: 'That resolution preview is no longer available. Select a copy again.',
-            recoverable: true,
+            isRecoverable: true,
           });
           return;
         }
@@ -1004,7 +1004,7 @@ export class VsCodeHostBridge {
           daemon,
           workspacePath: stored.workspacePath,
           assetsById,
-          allowPartial: message.allowPartial,
+          canAllowPartial: message.canAllowPartial,
         });
         this._resolutionPlans.delete(message.planId);
         if (trashedItems.length > 0) {
@@ -1046,7 +1046,7 @@ export class VsCodeHostBridge {
         const sessions = this._trashSessions();
         const found = sessions.find((s) => s.id === message.sessionId);
         if (!found) {
-          this._post({ type: 'error', message: 'Trash session not found.', recoverable: true });
+          this._post({ type: 'error', message: 'Trash session not found.', isRecoverable: true });
           return;
         }
 
@@ -1055,15 +1055,15 @@ export class VsCodeHostBridge {
 
         const restoredPaths: string[] = [];
         let error: string | null = null;
-        for (const item of found.items) {
+        for (const sessionItem of found.items) {
           try {
-            await daemon.restoreAsset(this._workspacePathFor(item.originalPath, session), {
+            await daemon.restoreAsset(this._workspacePathFor(sessionItem.originalPath, session), {
               asset_id: '',
-              original_path: item.originalPath,
-              trashed_path: item.trashPath,
+              original_path: sessionItem.originalPath,
+              trashed_path: sessionItem.trashPath,
               trashed_at_ms: found.timestamp,
             });
-            restoredPaths.push(item.originalPath);
+            restoredPaths.push(sessionItem.originalPath);
           } catch (err) {
             error = err instanceof Error ? err.message : String(err);
           }
@@ -1118,14 +1118,14 @@ export class VsCodeHostBridge {
           type: 'usage-references',
           assetPath: message.assetPath,
           references: refs,
-          complete: analysis.readiness?.referencesResolved ?? true,
+          isComplete: analysis.readiness?.isReferencesResolved ?? true,
         });
         return;
       }
 
       case 'dismiss-cleanup-candidate': {
         const dismissed = new Set(this._dismissed());
-        if (message.dismissed) dismissed.add(message.assetPath);
+        if (message.isDismissed) dismissed.add(message.assetPath);
         else dismissed.delete(message.assetPath);
         await this._memento?.update(DISMISSED_KEY, [...dismissed]);
         await this._dispatch({ type: 'request-cleanup-proposal' });
@@ -1138,7 +1138,7 @@ export class VsCodeHostBridge {
           this._post({
             type: 'error',
             message: 'That asset is not in the current analysis. Refresh and try again.',
-            recoverable: true,
+            isRecoverable: true,
           });
           return;
         }
@@ -1151,7 +1151,7 @@ export class VsCodeHostBridge {
           this._post({
             type: 'error',
             message: `No snippet generator supports ${asset.format} assets.`,
-            recoverable: true,
+            isRecoverable: true,
           });
           return;
         }
@@ -1175,7 +1175,7 @@ export class VsCodeHostBridge {
         this._post({
           type: 'error',
           message: `Animoria's VS Code host has no handler for "${(unhandled as HostOutbound).type}".`,
-          recoverable: true,
+          isRecoverable: true,
         });
         return;
       }
@@ -1185,21 +1185,21 @@ export class VsCodeHostBridge {
   private _assetFor(assetPath: string): Asset | null {
     const analysis = this._session?.getAnalysis();
     if (!analysis) return null;
-    for (const item of analysis.assets as readonly unknown[]) {
-      if (!item || typeof item !== 'object') continue;
+    for (const assetEntry of analysis.assets as readonly unknown[]) {
+      if (!assetEntry || typeof assetEntry !== 'object') continue;
       if (
-        'path' in item &&
-        typeof (item as Asset).path === 'string' &&
-        (item as Asset).path === assetPath
+        'path' in assetEntry &&
+        typeof (assetEntry as Asset).path === 'string' &&
+        (assetEntry as Asset).path === assetPath
       ) {
-        return item as Asset;
+        return assetEntry as Asset;
       }
       if (
-        'asset' in item &&
-        (item as { asset?: { path?: string } }).asset &&
-        (item as { asset: Asset }).asset.path === assetPath
+        'asset' in assetEntry &&
+        (assetEntry as { asset?: { path?: string } }).asset &&
+        (assetEntry as { asset: Asset }).asset.path === assetPath
       ) {
-        return (item as { asset: Asset }).asset;
+        return (assetEntry as { asset: Asset }).asset;
       }
     }
     return null;

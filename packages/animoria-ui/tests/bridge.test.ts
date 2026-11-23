@@ -43,12 +43,12 @@ describe('host bridge — vocabulary', () => {
         },
       },
       'request-usage-references': { assetPath: '/w/a.json' },
-      'dismiss-cleanup-candidate': { assetPath: '/w/a.json', dismissed: true },
+      'dismiss-cleanup-candidate': { assetPath: '/w/a.json', isDismissed: true },
       'request-cleanup-proposal': {},
       'request-cleanup-plan': { assetPaths: ['/w/a.json'] },
-      'apply-cleanup-plan': { planId: 'p1', allowPartial: false },
+      'apply-cleanup-plan': { planId: 'p1', canAllowPartial: false },
       'request-resolution-plan': { groupId: 'g1', keepPath: '/w/a.json' },
-      'apply-resolution-plan': { planId: 'p1', allowPartial: true },
+      'apply-resolution-plan': { planId: 'p1', canAllowPartial: true },
       'request-trash-sessions': {},
       'restore-session': { sessionId: 's1' },
     };
@@ -63,7 +63,7 @@ describe('host bridge — vocabulary', () => {
     const sample: Record<string, Record<string, unknown>> = {
       capabilities: { capabilities: {} },
       preferences: { preferences: {} },
-      'usage-references': { assetPath: '/w/a.json', references: [], complete: true },
+      'usage-references': { assetPath: '/w/a.json', references: [], isComplete: true },
       focus: { tab: 'duplicates', assetPath: null, groupId: 'g1', rootId: 'r1' },
       analysis: { analysis: {} },
       'analysis-progress': { readiness: {}, message: 'Scanning' },
@@ -77,7 +77,7 @@ describe('host bridge — vocabulary', () => {
       'trash-sessions': { sessions: [] },
       'restore-result': { result: {} },
       snippets: { assetPath: '/w/a.json', snippets: [] },
-      error: { message: 'boom', recoverable: true },
+      error: { message: 'boom', isRecoverable: true },
       'roots-changed': { roots: [] },
     };
 
@@ -120,10 +120,10 @@ describe('host bridge — capabilities', () => {
     const readOnly: HostCapabilities = { ...FULL, canMutate: false, canRestore: false };
 
     expect(
-      isPermitted({ type: 'apply-cleanup-plan', planId: 'p', allowPartial: false }, readOnly),
+      isPermitted({ type: 'apply-cleanup-plan', planId: 'p', canAllowPartial: false }, readOnly),
     ).toBe(false);
     expect(
-      isPermitted({ type: 'apply-resolution-plan', planId: 'p', allowPartial: false }, readOnly),
+      isPermitted({ type: 'apply-resolution-plan', planId: 'p', canAllowPartial: false }, readOnly),
     ).toBe(false);
     expect(isPermitted({ type: 'restore-session', sessionId: 's' }, readOnly)).toBe(false);
 

@@ -20,10 +20,10 @@ function analysisStub(overrides: Partial<WorkspaceAnalysis> = {}): WorkspaceAnal
     generation: 1,
     durationMs: 1,
     readiness: {
-      assetsIndexed: true,
-      referencesResolved: true,
-      duplicatesResolved: true,
-      complete: true,
+      isAssetsIndexed: true,
+      isReferencesResolved: true,
+      isDuplicatesResolved: true,
+      isComplete: true,
     },
     assets: [],
     coverage: null,
@@ -127,7 +127,7 @@ describe('VsCodeHostBridge — handshake', () => {
 describe('VsCodeHostBridge — validation', () => {
   it('ignores a malformed message instead of throwing', async () => {
     const { bridge, posted } = makeBridge();
-    await bridge.handle({ type: 'apply-cleanup-plan' }); // no planId, no allowPartial
+    await bridge.handle({ type: 'apply-cleanup-plan' }); // no planId, no canAllowPartial
     await bridge.handle('not an object');
     await bridge.handle({ type: 'nonsense' });
 
@@ -143,7 +143,7 @@ describe('VsCodeHostBridge — plans are held by id', () => {
     // is not holding. Without this, `apply-cleanup-plan` would be a request to
     // delete whatever the message described.
     const { bridge, posted } = makeBridge();
-    await bridge.handle({ type: 'apply-cleanup-plan', planId: 'forged', allowPartial: false });
+    await bridge.handle({ type: 'apply-cleanup-plan', planId: 'forged', canAllowPartial: false });
 
     const error = posted.find((m) => m.type === 'error');
     expect(error).toBeDefined();
@@ -152,7 +152,7 @@ describe('VsCodeHostBridge — plans are held by id', () => {
 
   it('refuses to apply a resolution plan id it never issued', async () => {
     const { bridge, posted } = makeBridge();
-    await bridge.handle({ type: 'apply-resolution-plan', planId: 'forged', allowPartial: true });
+    await bridge.handle({ type: 'apply-resolution-plan', planId: 'forged', canAllowPartial: true });
 
     const error = posted.find((m) => m.type === 'error');
     expect((error as { message: string }).message).toContain('no longer available');
@@ -165,7 +165,7 @@ describe('VsCodeHostBridge — plans are held by id', () => {
     bridge.dispose();
     posted.length = 0;
 
-    await bridge.handle({ type: 'apply-cleanup-plan', planId: 'anything', allowPartial: false });
+    await bridge.handle({ type: 'apply-cleanup-plan', planId: 'anything', canAllowPartial: false });
     expect(posted.find((m) => m.type === 'error')).toBeDefined();
   });
 });

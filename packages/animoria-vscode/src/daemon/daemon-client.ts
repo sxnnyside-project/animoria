@@ -292,21 +292,25 @@ export class VsCodeDaemonClient {
   }
 
   /** Liveness check. Answered in arrival order like any other request, so it confirms the daemon is alive between operations — not concurrently during a long-running one. */
-  public async ping(): Promise<{ ready: boolean; uptime_ms: number }> {
-    return this.request('ping');
+  public async ping(): Promise<{ isReady: boolean; uptime_ms: number }> {
+    const res = await this.request<Record<string, unknown>>('ping');
+    return {
+      isReady: Boolean(res.isReady ?? res.ready ?? true),
+      uptime_ms: typeof res.uptime_ms === 'number' ? res.uptime_ms : 0,
+    };
   }
 
   public async scan(
     workspacePath: string,
     customIgnorePatterns: string[] = [],
-    enableAuditLog?: boolean,
+    shouldEnableAuditLog?: boolean,
   ): Promise<DaemonScanResult> {
     const params: Record<string, unknown> = {
       workspace_path: workspacePath,
       custom_ignore_patterns: customIgnorePatterns,
     };
-    if (typeof enableAuditLog === 'boolean') {
-      params.enable_audit_log = enableAuditLog;
+    if (typeof shouldEnableAuditLog === 'boolean') {
+      params.enable_audit_log = shouldEnableAuditLog;
     }
     return this.request<DaemonScanResult>('scan', params);
   }
