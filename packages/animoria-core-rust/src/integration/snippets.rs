@@ -8,9 +8,13 @@ pub use crate::contracts::snippet::SnippetOption;
 /// worse than none, since copying it verbatim mixes lockfiles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PackageManager {
+    /// Standard Node.js package manager (`package-lock.json`).
     Npm,
+    /// Fast, disk space efficient package manager (`pnpm-lock.yaml`).
     Pnpm,
+    /// Yarn package manager (`yarn.lock`).
     Yarn,
+    /// High-performance all-in-one JavaScript runtime and toolkit (`bun.lockb` / `bun.lock`).
     Bun,
 }
 

@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 
+/// Parses XML dimensions, viewports, and vector characteristics from SVG files.
 pub fn parse_svg(path: &Path, asset: &mut Asset) -> Result<(), String> {
     let file = File::open(path).map_err(|e| format!("Cannot open SVG file: {e}"))?;
     let mut reader = Reader::from_reader(BufReader::new(file));
@@ -31,14 +32,14 @@ pub fn parse_svg(path: &Path, asset: &mut Asset) -> Result<(), String> {
 
                     for attr in e.attributes().flatten() {
                         let key = String::from_utf8_lossy(attr.key.as_ref()).to_lowercase();
-                        let val = String::from_utf8_lossy(&attr.value).to_string();
+                        let attr_value = String::from_utf8_lossy(&attr.value).to_string();
 
                         if key == "width" {
-                            width = parse_dimension(&val);
+                            width = parse_dimension(&attr_value);
                         } else if key == "height" {
-                            height = parse_dimension(&val);
+                            height = parse_dimension(&attr_value);
                         } else if key == "viewbox" {
-                            viewbox_dims = parse_viewbox(&val);
+                            viewbox_dims = parse_viewbox(&attr_value);
                         }
                     }
 

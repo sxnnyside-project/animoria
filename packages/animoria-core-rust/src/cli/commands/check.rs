@@ -7,17 +7,27 @@ use crate::indexer::AssetIndex;
 use std::path::Path;
 
 #[derive(Debug, Clone, Default)]
+/// Options controlling the execution and formatting of `animoria check`.
 pub struct CheckArgs<'a> {
-    pub json: bool,
-    pub sarif: bool,
+    /// Output analysis report as raw JSON.
+    pub is_json: bool,
+    /// Output report adhering to the SARIF 2.1.0 standard.
+    pub is_sarif: bool,
+    /// Optional explicit format specifier string.
     pub format: Option<&'a str>,
-    pub compact: bool,
-    pub only_violations: bool,
-    pub strict: bool,
+    /// Format output in compact single-line mode.
+    pub is_compact: bool,
+    /// Restrict output strictly to violations, suppressing summary metadata.
+    pub has_only_violations: bool,
+    /// Strict mode treating warnings as errors (exit code 2).
+    pub is_strict: bool,
+    /// Minimum health score threshold (0-100) below which the command fails.
     pub min_score: Option<u32>,
+    /// Maximum allowable warning count before failing.
     pub max_warnings: Option<usize>,
 }
 
+/// Audits visual assets against workspace governance policies and emits formatted diagnostics.
 pub fn execute_check(target_path: &Path, args: CheckArgs<'_>) -> anyhow::Result<i32> {
     let canonical = resolve_workspace_path(target_path)?;
     // Fail before scanning: a broken config must not silently turn into default rules.
@@ -27,15 +37,15 @@ pub fn execute_check(target_path: &Path, args: CheckArgs<'_>) -> anyhow::Result<
     let analysis = index.scan_workspace(&[])?;
 
     let effective_min_score = args.min_score.or(policy.ci_min_score);
-    let effective_max_warnings = if args.strict {
+    let effective_max_warnings = if args.is_strict {
         Some(0)
     } else {
         args.max_warnings.or(policy.ci_max_warnings)
     };
 
-    let is_sarif = args.sarif || args.format == Some("sarif");
-    let is_json = args.json || args.format == Some("json");
-    let is_compact = args.compact || args.format == Some("compact");
+    let is_sarif = args.is_sarif || args.format == Some("sarif");
+    let is_json = args.is_json || args.format == Some("json");
+    let is_compact = args.is_compact || args.format == Some("compact");
 
     let diagnostics = &analysis.diagnostics;
     let errors: Vec<_> = diagnostics
@@ -72,7 +82,7 @@ pub fn execute_check(target_path: &Path, args: CheckArgs<'_>) -> anyhow::Result<
     }
 
     if is_json {
-        if args.only_violations {
+        if args.has_only_violations {
             let payload = serde_json::json!({
                 "health_score": analysis.health_score,
                 "diagnostics": analysis.diagnostics,

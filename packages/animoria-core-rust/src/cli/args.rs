@@ -4,23 +4,25 @@ use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(
     name = "animoria",
-    author = "Sxnnyside Project <contact@sxnnyside.com>",
+    author = env!("CARGO_PKG_AUTHORS"),
     version = env!("CARGO_PKG_VERSION"),
     about = "High-performance visual asset governance & quality engine",
     long_about = "Animoria discovers, audits, deduplicates, and traces visual assets across your codebase with sub-millisecond native speed.",
     after_help = "EXAMPLES:\n    animoria check .                    Audit the current directory, human-readable\n    animoria check . --json | jq .      Audit and pipe machine-readable output to jq\n    animoria check . --strict           Also fail (exit 2) on warnings, for CI gates\n    animoria clean .                    Preview what a cleanup would move (no changes made)\n    animoria clean . --apply            Actually stage duplicates into .animoria/trash\n    animoria restore . --list           List trash sessions recorded by --apply\n    animoria restore . --session <id>   Undo one recorded session"
 )]
+/// Top-level command-line argument parser for Animoria visual asset governance.
 pub struct Cli {
+    /// Subcommand to execute.
     #[command(subcommand)]
     pub command: Commands,
 
     /// Disable ANSI colors in output, regardless of terminal detection
-    #[arg(long, global = true)]
-    pub no_color: bool,
+    #[arg(long = "no-color", global = true)]
+    pub is_no_color: bool,
 
     /// Suppress non-essential output (only the final result is printed)
-    #[arg(short, long, global = true)]
-    pub quiet: bool,
+    #[arg(short = 'q', long = "quiet", global = true)]
+    pub is_quiet: bool,
 
     /// Increase output detail (repeat for more, e.g. -vv)
     #[arg(short, long, global = true, action = clap::ArgAction::Count)]
@@ -28,6 +30,7 @@ pub struct Cli {
 }
 
 #[derive(Subcommand, Debug)]
+/// Available subcommands supported by the Animoria CLI.
 pub enum Commands {
     /// Discover and display visual asset inventory in the workspace
     #[command(after_help = "EXAMPLE:\n    animoria scan . --json | jq '.assets | length'")]
@@ -37,8 +40,8 @@ pub enum Commands {
         path: PathBuf,
 
         /// Output results as raw formatted JSON
-        #[arg(long)]
-        json: bool,
+        #[arg(long = "json")]
+        is_json: bool,
     },
 
     /// Audit visual assets against governance rules (exits with non-zero on violations)
@@ -51,28 +54,28 @@ pub enum Commands {
         path: PathBuf,
 
         /// Output results as raw formatted JSON
-        #[arg(long)]
-        json: bool,
+        #[arg(long = "json")]
+        is_json: bool,
 
         /// Output results as standard SARIF JSON (v2.1.0)
-        #[arg(long)]
-        sarif: bool,
+        #[arg(long = "sarif")]
+        is_sarif: bool,
 
         /// Output format (text, json, sarif, compact)
         #[arg(long, value_name = "FORMAT")]
         format: Option<String>,
 
         /// Emit single-line compact output optimized for AI agents and fast terminal parsing
-        #[arg(long)]
-        compact: bool,
+        #[arg(long = "compact")]
+        is_compact: bool,
 
         /// Output only violations and diagnostics, omitting full asset lists in JSON/compact modes
-        #[arg(long)]
-        only_violations: bool,
+        #[arg(long = "only-violations")]
+        has_only_violations: bool,
 
         /// Treat warnings as failures (exit code 2)
-        #[arg(long)]
-        strict: bool,
+        #[arg(long = "strict")]
+        is_strict: bool,
 
         /// Minimum acceptable health score (0-100). Fails with exit code 1 if score is lower.
         #[arg(long, value_name = "SCORE")]
@@ -90,8 +93,8 @@ pub enum Commands {
         path: PathBuf,
 
         /// Output results as raw formatted JSON
-        #[arg(long)]
-        json: bool,
+        #[arg(long = "json")]
+        is_json: bool,
     },
 
     /// Preview or stage duplicate assets into .animoria/trash (previews by default)
@@ -104,12 +107,12 @@ pub enum Commands {
         path: PathBuf,
 
         /// Actually move files. Without this flag, clean only previews what would move.
-        #[arg(long)]
-        apply: bool,
+        #[arg(long = "apply")]
+        should_apply: bool,
 
         /// Explicitly run in preview/dry-run mode without modifying any files (default behavior)
-        #[arg(long)]
-        dry_run: bool,
+        #[arg(long = "dry-run")]
+        is_dry_run: bool,
     },
 
     /// List or restore a trash session recorded by `clean --apply`
@@ -122,16 +125,16 @@ pub enum Commands {
         path: PathBuf,
 
         /// List recorded trash sessions instead of restoring one
-        #[arg(long)]
-        list: bool,
+        #[arg(long = "list")]
+        should_list: bool,
 
         /// Restore this specific trash session
         #[arg(long)]
         session: Option<String>,
 
         /// Restore every recorded trash session
-        #[arg(long)]
-        all: bool,
+        #[arg(long = "all")]
+        should_restore_all: bool,
     },
 
     /// Initialize .animoriarc.json policy and .animoriaignore in workspace
@@ -141,8 +144,8 @@ pub enum Commands {
         path: PathBuf,
 
         /// Overwrite existing configuration files
-        #[arg(long)]
-        force: bool,
+        #[arg(long = "force")]
+        should_force: bool,
     },
 
     /// Explain governance rules, rationales, and recommended remediation configurations

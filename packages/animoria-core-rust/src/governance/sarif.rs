@@ -4,99 +4,140 @@ use std::collections::HashSet;
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
+/// Root OASIS SARIF v2.1.0 output report.
 pub struct SarifReport {
+    /// URI of the official SARIF JSON schema.
     #[serde(rename = "$schema")]
     pub schema: &'static str,
+    /// SARIF format version string (`2.1.0`).
     pub version: &'static str,
+    /// Execution runs contained in this report.
     pub runs: Vec<SarifRun>,
 }
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
+/// Single analysis execution run within a SARIF report.
 pub struct SarifRun {
+    /// Tool component information that executed this analysis.
     pub tool: SarifTool,
+    /// Itemized list of diagnostic rule violation results.
     pub results: Vec<SarifResult>,
 }
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
+/// Component descriptor representing the Animoria governance engine.
 pub struct SarifTool {
+    /// Primary driver executing the analysis.
     pub driver: SarifDriver,
 }
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
+/// Driver specification describing the rules evaluated.
 pub struct SarifDriver {
+    /// Human-readable tool name.
     pub name: &'static str,
+    /// Tool build or package version.
     pub version: &'static str,
+    /// Canonical documentation URI for the engine.
     pub information_uri: &'static str,
+    /// Rules evaluated during this analysis run.
     pub rules: Vec<SarifRuleDefinition>,
 }
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
+/// Formal metadata definition of a governance rule in SARIF format.
 pub struct SarifRuleDefinition {
+    /// Stable rule identifier.
     pub id: String,
+    /// Human-readable rule title.
     pub name: String,
+    /// Brief explanation of the rule.
     pub short_description: SarifText,
+    /// Optional URI pointing to complete rule documentation.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub help_uri: Option<String>,
+    /// Default severity configuration for this rule.
     pub default_configuration: SarifRuleConfig,
 }
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
+/// Default severity configuration for a SARIF rule.
 pub struct SarifRuleConfig {
+    /// Severity level string (error, warning, note).
     pub level: &'static str,
 }
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
+/// Individual violation finding recorded in a SARIF report.
 pub struct SarifResult {
+    /// Rule identifier that produced this finding.
     pub rule_id: String,
+    /// Violation severity level.
     pub level: &'static str,
+    /// Textual explanation of the violation finding.
     pub message: SarifText,
+    /// Physical location coordinates of the violation.
     pub locations: Vec<SarifLocation>,
 }
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
+/// Human-readable text message container in SARIF format.
 pub struct SarifText {
+    /// Textual description or message content.
     pub text: String,
 }
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
+/// File location container for a SARIF result.
 pub struct SarifLocation {
+    /// Physical location on disk.
     pub physical_location: SarifPhysicalLocation,
 }
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
+/// Physical filesystem location of a violation.
 pub struct SarifPhysicalLocation {
+    /// Artifact location specifying the affected file path.
     pub artifact_location: SarifArtifactLocation,
+    /// Optional region within the file where the violation occurred.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub region: Option<SarifRegion>,
 }
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
+/// URI reference to the affected asset file.
 pub struct SarifArtifactLocation {
+    /// Relative or absolute URI to the asset file.
     pub uri: String,
+    /// Base identifier for resolving relative URIs.
     pub uri_base_id: &'static str,
 }
 
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
+/// Precise line and column coordinate range within an asset or evidence file.
 pub struct SarifRegion {
+    /// 1-based start line of the violation.
     pub start_line: usize,
 }
 
 impl SarifReport {
+    /// Converts a complete WorkspaceAnalysis into an OASIS SARIF v2.1.0 report.
     pub fn from_analysis(analysis: &WorkspaceAnalysis, workspace_root: &std::path::Path) -> Self {
         Self::from_diagnostics(&analysis.diagnostics, workspace_root)
     }
 
+    /// Converts a slice of diagnostics into an OASIS SARIF v2.1.0 report.
     pub fn from_diagnostics(
         diagnostics: &[RuleDiagnostic],
         workspace_root: &std::path::Path,

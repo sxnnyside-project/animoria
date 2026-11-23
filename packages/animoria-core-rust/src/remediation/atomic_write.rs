@@ -7,13 +7,13 @@ use std::path::Path;
 /// Callers that may be handed a symlink must pass the resolved path, or the link is replaced.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
-    let tmp = path.with_file_name(format!(".{name}.animoria-tmp"));
-    fs::write(&tmp, bytes)?;
+    let temp_file_path = path.with_file_name(format!(".{name}.animoria-tmp"));
+    fs::write(&temp_file_path, bytes)?;
     if let Ok(meta) = fs::metadata(path) {
-        let _ = fs::set_permissions(&tmp, meta.permissions());
+        let _ = fs::set_permissions(&temp_file_path, meta.permissions());
     }
-    fs::rename(&tmp, path).inspect_err(|_| {
-        let _ = fs::remove_file(&tmp);
+    fs::rename(&temp_file_path, path).inspect_err(|_| {
+        let _ = fs::remove_file(&temp_file_path);
     })
 }
 
@@ -25,13 +25,13 @@ pub fn write_atomic_staged(path: &Path, bytes: &[u8], staging_dir: &Path) -> io:
         let stamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_nanos());
-        let tmp = staging_dir.join(format!("{}-{stamp}.tmp", std::process::id()));
-        fs::write(&tmp, bytes)?;
+        let temp_file_path = staging_dir.join(format!("{}-{stamp}.tmp", std::process::id()));
+        fs::write(&temp_file_path, bytes)?;
         if let Ok(meta) = fs::metadata(path) {
-            let _ = fs::set_permissions(&tmp, meta.permissions());
+            let _ = fs::set_permissions(&temp_file_path, meta.permissions());
         }
-        fs::rename(&tmp, path).inspect_err(|_| {
-            let _ = fs::remove_file(&tmp);
+        fs::rename(&temp_file_path, path).inspect_err(|_| {
+            let _ = fs::remove_file(&temp_file_path);
         })
     });
     staged.or_else(|_| write_atomic(path, bytes))

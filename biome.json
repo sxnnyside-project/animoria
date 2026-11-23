@@ -25,6 +25,14 @@
       "!**/.turbo"
     ]
   },
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
@@ -36,7 +44,36 @@
     "rules": {
       "preset": "recommended",
       "style": {
-        "noNonNullAssertion": "off"
+        "noNonNullAssertion": "off",
+        "useNamingConvention": {
+          "level": "error",
+          "options": {
+            "strictCase": false,
+            "conventions": [
+              {
+                "selector": {
+                  "kind": "objectLiteralMember"
+                },
+                "match": "_?(.*)",
+                "formats": ["camelCase", "snake_case", "CONSTANT_CASE", "PascalCase"]
+              },
+              {
+                "selector": {
+                  "kind": "typeProperty"
+                },
+                "match": "_?(.*)",
+                "formats": ["camelCase", "snake_case", "CONSTANT_CASE", "PascalCase"]
+              },
+              {
+                "selector": {
+                  "kind": "classProperty"
+                },
+                "match": "_?(.*)",
+                "formats": ["camelCase", "snake_case", "CONSTANT_CASE", "PascalCase"]
+              }
+            ]
+          }
+        }
       },
       "suspicious": {
         "noExplicitAny": "warn"

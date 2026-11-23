@@ -8,7 +8,8 @@
 //! Builds an Aho-Corasick automaton from discovered asset filenames and stems, performing
 //! a single-pass parallel search over all source files.
 
-pub mod detector;
+pub(crate) mod detector;
+/// Reference pattern heuristics, regexes, and token extraction helpers.
 pub mod patterns;
 
 pub use detector::AssetReferenceDetector;

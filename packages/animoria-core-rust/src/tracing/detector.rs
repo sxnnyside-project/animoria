@@ -61,10 +61,12 @@ pub struct AssetReferenceDetector {
 }
 
 impl AssetReferenceDetector {
+    /// Creates a reference detector with default source scanning heuristics.
     pub fn new(root_path: PathBuf, custom_ignore_patterns: &[String]) -> anyhow::Result<Self> {
         Self::new_with_options(root_path, custom_ignore_patterns, &[], &[], None)
     }
 
+    /// Creates a reference detector with custom ignored file extensions.
     pub fn new_with_options(
         root_path: PathBuf,
         custom_ignore_patterns: &[String],
@@ -82,6 +84,7 @@ impl AssetReferenceDetector {
         )
     }
 
+    /// Creates a reference detector with full control over extension filtering and token lengths.
     pub fn new_with_all_options(
         root_path: PathBuf,
         custom_ignore_patterns: &[String],

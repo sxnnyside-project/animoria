@@ -2,5 +2,18 @@
 
 /**
  * One trashed asset inside a recorded [`SessionManifest`] — `.animoria/trash/sessions.json`'s per-item shape.
+ * Stored journal item tracking an asset staged during a cleanup session.
  */
-export type SessionItemStored = { originalPath: string, trashPath: string, sizeBytes: number, };
+export type SessionItemStored = { 
+/**
+ * Original workspace path of the asset before trashing.
+ */
+originalPath: string, 
+/**
+ * Location of the staged file in `.animoria/trash/`.
+ */
+trashPath: string, 
+/**
+ * File size in bytes recorded at cleanup time.
+ */
+sizeBytes: number, };

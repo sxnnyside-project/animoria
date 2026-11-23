@@ -7,9 +7,11 @@ use crate::contracts::asset::{Asset, AssetFormat};
 use std::path::Path;
 
 #[derive(Default, Debug, Clone)]
+/// Extensible registry routing assets to format-specific parsing implementations.
 pub struct ParserRegistry;
 
 impl ParserRegistry {
+    /// Constructs a parser registry pre-populated with all native format parsers.
     pub fn new() -> Self {
         Self
     }

@@ -3,6 +3,7 @@ use crate::governance::asset_matcher::{is_app_icon, matches_any_pattern};
 use crate::governance::context::AnalysisContext;
 use crate::governance::rule::Rule;
 
+/// Rule flagging assets that are never referenced across workspace source files.
 pub struct NoUnreferencedAssetsRule;
 
 impl Rule for NoUnreferencedAssetsRule {
@@ -19,12 +20,12 @@ impl Rule for NoUnreferencedAssetsRule {
             }
 
             let policy = ctx.policy_for(&asset.relative_path);
-            if !policy.no_unreferenced_assets {
+            if !policy.is_no_unreferenced_assets {
                 continue;
             }
 
             // Skip application icons if configured
-            if policy.no_unreferenced_ignore_app_icons
+            if policy.is_no_unreferenced_ignore_app_icons
                 && is_app_icon(&asset.relative_path, &asset.name)
             {
                 continue;

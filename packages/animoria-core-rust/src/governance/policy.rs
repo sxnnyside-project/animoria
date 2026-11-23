@@ -7,15 +7,22 @@ use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+/// Casing convention enforced by the `naming-convention` governance rule.
 pub enum NamingCase {
+    /// Enforces `kebab-case` naming (e.g. `icon-user.svg`).
     KebabCase,
+    /// Enforces `snake_case` naming (e.g. `icon_user.svg`).
     SnakeCase,
+    /// Enforces `camelCase` naming (e.g. `iconUser.svg`).
     CamelCase,
+    /// Enforces `PascalCase` naming (e.g. `IconUser.svg`).
     PascalCase,
+    /// Enforces flat lowercase naming (e.g. `iconuser.svg`).
     Lowercase,
 }
 
 impl NamingCase {
+    /// Returns the canonical string identifier for this naming case.
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::KebabCase => "kebab-case",
@@ -28,138 +35,187 @@ impl NamingCase {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct FilesConfig {
+/// Workspace crawler inclusion and exclusion pattern configuration.
+pub(crate) struct FilesConfig {
     #[serde(default)]
-    pub ignore: Vec<String>,
+    pub(crate) ignore: Vec<String>,
     #[serde(default)]
-    pub include: Option<Vec<String>>,
+    pub(crate) include: Option<Vec<String>>,
     #[serde(default, rename = "ignoreDocs")]
-    pub ignore_docs: Option<bool>,
+    pub(crate) ignore_docs: Option<bool>,
     #[serde(default, rename = "includeDocs")]
-    pub include_docs: Option<bool>,
+    pub(crate) include_docs: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct TracingConfig {
+/// Source code reference scanner configuration options.
+pub(crate) struct TracingConfig {
     #[serde(default, rename = "ignoreSourceExtensions")]
-    pub ignore_source_extensions: Vec<String>,
+    pub(crate) ignore_source_extensions: Vec<String>,
     #[serde(default, rename = "includeSourceExtensions")]
-    pub include_source_extensions: Vec<String>,
+    pub(crate) include_source_extensions: Vec<String>,
     #[serde(default, rename = "minStemLength")]
-    pub min_stem_length: Option<usize>,
+    pub(crate) min_stem_length: Option<usize>,
     #[serde(default, rename = "dynamicCollections")]
-    pub dynamic_collections: Vec<String>,
+    pub(crate) dynamic_collections: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct CiConfig {
+/// CI quality gate thresholds (minimum score, maximum warnings).
+pub(crate) struct CiConfig {
     #[serde(default, rename = "minScore")]
-    pub min_score: Option<u32>,
+    pub(crate) min_score: Option<u32>,
     #[serde(default, rename = "maxWarnings")]
-    pub max_warnings: Option<usize>,
+    pub(crate) max_warnings: Option<usize>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct GovernanceSection {
+/// Nested governance settings container in `.animoriarc.json`.
+pub(crate) struct GovernanceSection {
     #[serde(default)]
-    pub enabled: Option<bool>,
+    pub(crate) enabled: Option<bool>,
     #[serde(default)]
-    pub ci: Option<CiConfig>,
+    pub(crate) ci: Option<CiConfig>,
     #[serde(default)]
-    pub rules: HashMap<String, serde_json::Value>,
+    pub(crate) rules: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct RuleOverrideConfig {
+/// Monorepo path-specific policy override configuration.
+pub(crate) struct RuleOverrideConfig {
     #[serde(default)]
-    pub files: Vec<String>,
+    pub(crate) files: Vec<String>,
     #[serde(default)]
-    pub rules: HashMap<String, serde_json::Value>,
+    pub(crate) rules: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct RawAnimoriaConfig {
+/// Raw deserialization target for `.animoriarc.json` files.
+pub(crate) struct RawAnimoriaConfig {
     #[serde(default)]
-    pub extends: Option<serde_json::Value>,
+    pub(crate) extends: Option<serde_json::Value>,
     #[serde(default)]
-    pub files: FilesConfig,
+    pub(crate) files: FilesConfig,
     #[serde(default)]
-    pub tracing: TracingConfig,
+    pub(crate) tracing: TracingConfig,
     #[serde(default)]
-    pub ci: Option<CiConfig>,
+    pub(crate) ci: Option<CiConfig>,
     #[serde(default)]
-    pub governance: Option<GovernanceSection>,
+    pub(crate) governance: Option<GovernanceSection>,
     #[serde(default)]
-    pub overrides: Vec<RuleOverrideConfig>,
+    pub(crate) overrides: Vec<RuleOverrideConfig>,
     /// Backwards compatibility: root-level rules map
     #[serde(default)]
-    pub rules: HashMap<String, serde_json::Value>,
+    pub(crate) rules: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Path-scoped governance policy override rule.
 pub struct PolicyOverride {
+    /// Glob patterns matching target file paths for this override.
     pub files: Vec<String>,
+    /// Specific policy adjustments applied to matching paths.
     pub policy: GovernancePolicy,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Fully resolved policy rules and quality gates governing a workspace.
 pub struct GovernancePolicy {
-    pub no_unreferenced_assets: bool,
+    /// Whether unreferenced asset detection is enabled.
+    #[serde(rename = "no_unreferenced_assets")]
+    pub is_no_unreferenced_assets: bool,
+    /// Severity level for unreferenced asset violations.
     pub no_unreferenced_severity: DiagnosticSeverity,
-    pub no_unreferenced_ignore_app_icons: bool,
+    /// Whether to exclude application icon bundles from unreferenced checks.
+    #[serde(rename = "no_unreferenced_ignore_app_icons")]
+    pub is_no_unreferenced_ignore_app_icons: bool,
+    /// Custom path glob patterns ignored by unreferenced checks.
     pub no_unreferenced_ignore: Vec<String>,
 
-    pub no_duplicate_content: bool,
+    /// Whether duplicate content detection is enabled.
+    #[serde(rename = "no_duplicate_content")]
+    pub is_no_duplicate_content: bool,
+    /// Severity level for duplicate content violations.
     pub no_duplicate_severity: DiagnosticSeverity,
-    pub no_duplicate_ignore_app_icons: bool,
+    /// Whether to exclude application icon bundles from duplicate checks.
+    #[serde(rename = "no_duplicate_ignore_app_icons")]
+    pub is_no_duplicate_ignore_app_icons: bool,
+    /// Custom path glob patterns ignored by duplicate checks.
     pub no_duplicate_ignore: Vec<String>,
 
+    /// Maximum allowed asset file size in kilobytes.
     pub max_file_size_kb: Option<u64>,
+    /// Severity level for file size budget violations.
     pub max_file_size_severity: DiagnosticSeverity,
 
+    /// Whitelist of permitted asset file formats.
     pub allowed_formats: Option<Vec<AssetFormat>>,
+    /// Severity level for disallowed asset format violations.
     pub allowed_formats_severity: DiagnosticSeverity,
 
-    pub no_gif: bool,
+    /// Whether to flag all animated and static GIF files.
+    #[serde(rename = "no_gif")]
+    pub is_no_gif: bool,
+    /// Severity level for GIF usage violations.
     pub no_gif_severity: DiagnosticSeverity,
 
+    /// Maximum allowed asset width in pixels.
     pub max_dimensions_width: Option<u32>,
+    /// Maximum allowed asset height in pixels.
     pub max_dimensions_height: Option<u32>,
+    /// Severity level for dimension limit violations.
     pub max_dimensions_severity: DiagnosticSeverity,
 
+    /// Casing convention required for visual asset filenames.
     pub naming_convention: Option<NamingCase>,
+    /// Severity level for naming convention violations.
     pub naming_convention_severity: DiagnosticSeverity,
+    /// Optional custom regex pattern enforced for filenames.
     pub naming_convention_pattern: Option<String>,
 
-    pub svg_sanitization: bool,
+    /// Whether SVG security sanitization inspection is enabled.
+    #[serde(rename = "svg_sanitization")]
+    pub is_svg_sanitization_enabled: bool,
+    /// Severity level for SVG security risks (scripts, foreignObjects).
     pub svg_sanitization_severity: DiagnosticSeverity,
 
+    /// Minimum acceptable composite health score threshold for CI gates.
     pub ci_min_score: Option<u32>,
+    /// Maximum allowed warning findings before failing CI gates.
     pub ci_max_warnings: Option<usize>,
 
+    /// Glob patterns ignored during workspace file discovery.
     pub files_ignore: Vec<String>,
+    /// Optional whitelist restricting discovery to matching globs.
     pub files_include: Option<Vec<String>>,
-    pub files_ignore_docs: bool,
+    /// Whether documentation directories should be excluded from file discovery.
+    #[serde(rename = "files_ignore_docs")]
+    pub should_ignore_docs: bool,
 
+    /// Source file extensions ignored by the reference tracer.
     pub tracing_ignore_source_extensions: Vec<String>,
+    /// Explicit source file extensions inspected by the reference tracer.
     pub tracing_include_source_extensions: Vec<String>,
+    /// Minimum filename stem length required before performing reference tracing.
     pub tracing_min_stem_length: Option<usize>,
+    /// Dynamic token collections recognized during reference tracing.
     pub tracing_dynamic_collections: Vec<String>,
 
+    /// Path-specific policy overrides active in the workspace.
     pub overrides: Vec<PolicyOverride>,
 }
 
 impl Default for GovernancePolicy {
     fn default() -> Self {
         Self {
-            no_unreferenced_assets: true,
+            is_no_unreferenced_assets: true,
             no_unreferenced_severity: DiagnosticSeverity::Warning,
-            no_unreferenced_ignore_app_icons: true,
+            is_no_unreferenced_ignore_app_icons: true,
             no_unreferenced_ignore: Vec::new(),
 
-            no_duplicate_content: true,
+            is_no_duplicate_content: true,
             no_duplicate_severity: DiagnosticSeverity::Error,
-            no_duplicate_ignore_app_icons: true,
+            is_no_duplicate_ignore_app_icons: true,
             no_duplicate_ignore: Vec::new(),
 
             max_file_size_kb: Some(512),
@@ -168,7 +224,7 @@ impl Default for GovernancePolicy {
             allowed_formats: None,
             allowed_formats_severity: DiagnosticSeverity::Error,
 
-            no_gif: false,
+            is_no_gif: false,
             no_gif_severity: DiagnosticSeverity::Warning,
 
             max_dimensions_width: None,
@@ -179,7 +235,7 @@ impl Default for GovernancePolicy {
             naming_convention_severity: DiagnosticSeverity::Warning,
             naming_convention_pattern: None,
 
-            svg_sanitization: true,
+            is_svg_sanitization_enabled: true,
             svg_sanitization_severity: DiagnosticSeverity::Error,
 
             ci_min_score: None,
@@ -187,7 +243,7 @@ impl Default for GovernancePolicy {
 
             files_ignore: Vec::new(),
             files_include: None,
-            files_ignore_docs: true,
+            should_ignore_docs: true,
 
             tracing_ignore_source_extensions: Vec::new(),
             tracing_include_source_extensions: Vec::new(),
@@ -200,32 +256,34 @@ impl Default for GovernancePolicy {
 }
 
 impl GovernancePolicy {
+    /// Recommended balanced governance configuration preset.
     pub fn recommended() -> Self {
         Self {
-            no_unreferenced_ignore_app_icons: true,
-            no_duplicate_ignore_app_icons: true,
-            no_gif: true,
-            svg_sanitization: true,
+            is_no_unreferenced_ignore_app_icons: true,
+            is_no_duplicate_ignore_app_icons: true,
+            is_no_gif: true,
+            is_svg_sanitization_enabled: true,
             svg_sanitization_severity: DiagnosticSeverity::Error,
             ..Default::default()
         }
     }
 
+    /// Strict governance configuration preset enforcing zero warnings.
     pub fn strict() -> Self {
         Self {
             no_unreferenced_severity: DiagnosticSeverity::Error,
-            no_unreferenced_ignore_app_icons: false,
-            no_duplicate_ignore_app_icons: false,
+            is_no_unreferenced_ignore_app_icons: false,
+            is_no_duplicate_ignore_app_icons: false,
             max_file_size_kb: Some(256),
             max_file_size_severity: DiagnosticSeverity::Error,
             max_dimensions_width: Some(2560),
             max_dimensions_height: Some(1440),
             max_dimensions_severity: DiagnosticSeverity::Error,
-            no_gif: true,
+            is_no_gif: true,
             no_gif_severity: DiagnosticSeverity::Error,
             naming_convention: Some(NamingCase::KebabCase),
             naming_convention_severity: DiagnosticSeverity::Error,
-            svg_sanitization: true,
+            is_svg_sanitization_enabled: true,
             svg_sanitization_severity: DiagnosticSeverity::Error,
             ci_min_score: Some(90),
             ci_max_warnings: Some(0),
@@ -233,20 +291,22 @@ impl GovernancePolicy {
         }
     }
 
+    /// Relaxed governance configuration preset suitable for legacy workspaces.
     pub fn relaxed() -> Self {
         Self {
-            no_unreferenced_assets: false,
+            is_no_unreferenced_assets: false,
             no_duplicate_severity: DiagnosticSeverity::Warning,
-            no_duplicate_ignore_app_icons: true,
+            is_no_duplicate_ignore_app_icons: true,
             max_file_size_kb: Some(2048),
             max_file_size_severity: DiagnosticSeverity::Warning,
-            no_gif: false,
-            svg_sanitization: true,
+            is_no_gif: false,
+            is_svg_sanitization_enabled: true,
             svg_sanitization_severity: DiagnosticSeverity::Warning,
             ..Default::default()
         }
     }
 
+    /// Resolves the specific policy applicable to a relative file path.
     pub fn policy_for_path<'a>(&'a self, relative_path: &str) -> &'a GovernancePolicy {
         for ovr in &self.overrides {
             if crate::governance::asset_matcher::matches_any_pattern(relative_path, &ovr.files) {
@@ -274,6 +334,7 @@ impl GovernancePolicy {
         Ok(Self::parse_config_str(&content))
     }
 
+    /// Loads workspace policy from disk, falling back to defaults on error.
     pub fn load_from_workspace(root: &Path) -> Self {
         Self::try_load_from_workspace(root).unwrap_or_else(|e| {
             warn_once(format!(
@@ -283,6 +344,7 @@ impl GovernancePolicy {
         })
     }
 
+    /// Parses a configuration string into a resolved GovernancePolicy.
     pub fn parse_config_str(content: &str) -> Self {
         if let Ok(raw) = serde_json::from_str::<RawAnimoriaConfig>(content) {
             let mut policy = if let Some(ref ext) = raw.extends {
@@ -295,7 +357,7 @@ impl GovernancePolicy {
             policy.files_ignore = raw.files.ignore;
             policy.files_include = raw.files.include;
             if raw.files.ignore_docs == Some(false) || raw.files.include_docs == Some(true) {
-                policy.files_ignore_docs = false;
+                policy.should_ignore_docs = false;
             }
 
             // 2. Tracing configuration
@@ -324,15 +386,15 @@ impl GovernancePolicy {
             let mut combined_rules = raw.rules;
             if let Some(gov) = raw.governance {
                 if gov.enabled == Some(false) {
-                    policy.no_unreferenced_assets = false;
-                    policy.no_duplicate_content = false;
+                    policy.is_no_unreferenced_assets = false;
+                    policy.is_no_duplicate_content = false;
                     policy.max_file_size_kb = None;
                     policy.max_dimensions_width = None;
                     policy.max_dimensions_height = None;
                     policy.allowed_formats = None;
-                    policy.no_gif = false;
+                    policy.is_no_gif = false;
                     policy.naming_convention = None;
-                    policy.svg_sanitization = false;
+                    policy.is_svg_sanitization_enabled = false;
                     return policy;
                 }
                 for (k, v) in gov.rules {
@@ -348,7 +410,7 @@ impl GovernancePolicy {
                     || val.as_str() == Some("on")
                     || val.as_str() == Some("enabled")
                 {
-                    policy.files_ignore_docs = false;
+                    policy.should_ignore_docs = false;
                 }
             }
 
@@ -418,12 +480,12 @@ fn apply_rules_to_policy(
         match rule_id.as_str() {
             "no-unreferenced-assets" => {
                 let parsed = parse_rule_entry(val, DiagnosticSeverity::Warning);
-                policy.no_unreferenced_assets = parsed.enabled;
+                policy.is_no_unreferenced_assets = parsed.is_enabled;
                 if let Some(sev) = parsed.severity {
                     policy.no_unreferenced_severity = sev;
                 }
                 if let Some(ignore_icons) = parsed.ignore_app_icons {
-                    policy.no_unreferenced_ignore_app_icons = ignore_icons;
+                    policy.is_no_unreferenced_ignore_app_icons = ignore_icons;
                 }
                 policy.no_unreferenced_ignore.extend(parsed.ignore_patterns);
                 for ext in parsed.ignore_source_extensions {
@@ -434,25 +496,25 @@ fn apply_rules_to_policy(
             }
             "no-duplicate-content" => {
                 let parsed = parse_rule_entry(val, DiagnosticSeverity::Error);
-                policy.no_duplicate_content = parsed.enabled;
+                policy.is_no_duplicate_content = parsed.is_enabled;
                 if let Some(sev) = parsed.severity {
                     policy.no_duplicate_severity = sev;
                 }
                 if let Some(ignore_icons) = parsed.ignore_app_icons {
-                    policy.no_duplicate_ignore_app_icons = ignore_icons;
+                    policy.is_no_duplicate_ignore_app_icons = ignore_icons;
                 }
                 policy.no_duplicate_ignore.extend(parsed.ignore_patterns);
             }
             "no-gif" => {
                 let parsed = parse_rule_entry(val, DiagnosticSeverity::Warning);
-                policy.no_gif = parsed.enabled;
+                policy.is_no_gif = parsed.is_enabled;
                 if let Some(sev) = parsed.severity {
                     policy.no_gif_severity = sev;
                 }
             }
             "max-file-size-kb" => {
                 let parsed = parse_rule_entry(val, DiagnosticSeverity::Warning);
-                if !parsed.enabled {
+                if !parsed.is_enabled {
                     policy.max_file_size_kb = None;
                 } else {
                     if let Some(sev) = parsed.severity {
@@ -471,7 +533,7 @@ fn apply_rules_to_policy(
             }
             "max-dimensions" => {
                 let parsed = parse_rule_entry(val, DiagnosticSeverity::Warning);
-                if !parsed.enabled {
+                if !parsed.is_enabled {
                     policy.max_dimensions_width = None;
                     policy.max_dimensions_height = None;
                 } else {
@@ -484,7 +546,7 @@ fn apply_rules_to_policy(
             }
             "allowed-formats" => {
                 let parsed = parse_rule_entry(val, DiagnosticSeverity::Error);
-                if !parsed.enabled {
+                if !parsed.is_enabled {
                     policy.allowed_formats = None;
                 } else {
                     if let Some(sev) = parsed.severity {
@@ -518,7 +580,7 @@ fn apply_rules_to_policy(
             }
             "naming-convention" => {
                 let parsed = parse_rule_entry(val, DiagnosticSeverity::Warning);
-                if !parsed.enabled {
+                if !parsed.is_enabled {
                     policy.naming_convention = None;
                     policy.naming_convention_pattern = None;
                 } else {
@@ -537,7 +599,7 @@ fn apply_rules_to_policy(
             }
             "svg-sanitization" => {
                 let parsed = parse_rule_entry(val, DiagnosticSeverity::Error);
-                policy.svg_sanitization = parsed.enabled;
+                policy.is_svg_sanitization_enabled = parsed.is_enabled;
                 if let Some(sev) = parsed.severity {
                     policy.svg_sanitization_severity = sev;
                 }
@@ -552,7 +614,7 @@ fn apply_rules_to_policy(
 
 #[derive(Default)]
 struct ParsedRule {
-    enabled: bool,
+    is_enabled: bool,
     severity: Option<DiagnosticSeverity>,
     threshold: Option<u64>,
     max_width: Option<u32>,
@@ -567,18 +629,18 @@ struct ParsedRule {
 
 fn parse_rule_entry(val: &serde_json::Value, default_severity: DiagnosticSeverity) -> ParsedRule {
     let mut parsed = ParsedRule {
-        enabled: true,
+        is_enabled: true,
         severity: Some(default_severity),
         ..Default::default()
     };
 
     match val {
         serde_json::Value::Bool(b) => {
-            parsed.enabled = *b;
+            parsed.is_enabled = *b;
         }
         serde_json::Value::String(s) => {
             if s == "off" || s == "disabled" {
-                parsed.enabled = false;
+                parsed.is_enabled = false;
             } else if let Some(sev) = parse_severity(s) {
                 parsed.severity = Some(sev);
             } else if let Some(case) = parse_naming_case(s) {
@@ -588,7 +650,7 @@ fn parse_rule_entry(val: &serde_json::Value, default_severity: DiagnosticSeverit
         serde_json::Value::Array(arr) => {
             if let Some(first) = arr.first().and_then(|v| v.as_str()) {
                 if first == "off" || first == "disabled" {
-                    parsed.enabled = false;
+                    parsed.is_enabled = false;
                 } else if let Some(sev) = parse_severity(first) {
                     parsed.severity = Some(sev);
                 } else if let Some(case) = parse_naming_case(first) {
@@ -621,13 +683,13 @@ fn parse_rule_entry(val: &serde_json::Value, default_severity: DiagnosticSeverit
         serde_json::Value::Object(map) => {
             if let Some(sev_val) = map.get("severity").and_then(|v| v.as_str()) {
                 if sev_val == "off" || sev_val == "disabled" {
-                    parsed.enabled = false;
+                    parsed.is_enabled = false;
                 } else if let Some(sev) = parse_severity(sev_val) {
                     parsed.severity = Some(sev);
                 }
             }
             if let Some(b) = map.get("enabled").and_then(|v| v.as_bool()) {
-                parsed.enabled = b;
+                parsed.is_enabled = b;
             }
             if let Some(t) = map.get("threshold").and_then(|v| v.as_u64()) {
                 parsed.threshold = Some(t);
@@ -736,7 +798,7 @@ mod tests {
 
         let relaxed_cfg = r#"{ "extends": "relaxed" }"#;
         let p_relaxed = GovernancePolicy::parse_config_str(relaxed_cfg);
-        assert!(!p_relaxed.no_unreferenced_assets);
+        assert!(!p_relaxed.is_no_unreferenced_assets);
         assert_eq!(p_relaxed.max_file_size_kb, Some(2048));
     }
 

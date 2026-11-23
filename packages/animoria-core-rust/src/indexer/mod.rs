@@ -1,3 +1,5 @@
-pub mod index;
+//! High-performance workspace asset indexing and caching.
 
-pub use index::*;
+pub(crate) mod index;
+
+pub use index::AssetIndex;

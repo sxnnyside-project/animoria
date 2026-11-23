@@ -2,6 +2,7 @@ use crate::contracts::analysis::RuleDiagnostic;
 use crate::governance::context::AnalysisContext;
 use crate::governance::rule::Rule;
 
+/// Rule flagging images exceeding pixel width or height boundaries.
 pub struct MaxDimensionsRule;
 
 impl Rule for MaxDimensionsRule {

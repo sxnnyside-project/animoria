@@ -6,8 +6,8 @@
 //! ## Invariant
 //! Format detection is heuristic and fast; deep validation is delegated to [`crate::parser::ParserRegistry`].
 
-pub mod ignore_rules;
-pub mod walker;
+pub(crate) mod ignore_rules;
+pub(crate) mod walker;
 
-pub use ignore_rules::*;
-pub use walker::*;
+pub use ignore_rules::IgnoreRules;
+pub use walker::WorkspaceScanner;

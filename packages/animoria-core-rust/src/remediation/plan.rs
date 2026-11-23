@@ -2,6 +2,7 @@ use crate::contracts::duplicates::DuplicateGroup;
 use crate::contracts::remediation::ResolutionPlan;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// Generates a duplicate resolution plan selecting canonical assets and staging duplicates.
 pub fn create_duplicate_resolution_plan(duplicate_group: &DuplicateGroup) -> ResolutionPlan {
     let now_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)

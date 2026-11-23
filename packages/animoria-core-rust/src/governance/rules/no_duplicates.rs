@@ -27,12 +27,12 @@ impl Rule for NoDuplicateContentRule {
                 if asset_id != &group.canonical_asset_id {
                     if let Some(asset) = ctx.assets.iter().find(|a| &a.id == asset_id) {
                         let policy = ctx.policy_for(&asset.relative_path);
-                        if !policy.no_duplicate_content {
+                        if !policy.is_no_duplicate_content {
                             continue;
                         }
 
                         // Skip application icons if configured
-                        if policy.no_duplicate_ignore_app_icons
+                        if policy.is_no_duplicate_ignore_app_icons
                             && is_app_icon(&asset.relative_path, &asset.name)
                         {
                             continue;

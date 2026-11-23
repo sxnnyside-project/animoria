@@ -5,7 +5,62 @@ import type { Dimensions } from "./Dimensions";
 import type { MotionMetadata } from "./MotionMetadata";
 import type { StaticMetadata } from "./StaticMetadata";
 
-export type Asset = { id: string, path: string, relative_path: string, name: string, stem: string, size_bytes: number, mtime_ms: number, kind: AssetKind, format: AssetFormat, content_hash?: string, dimensions?: Dimensions, motion?: MotionMetadata, static_meta?: StaticMetadata, 
+/**
+ * Unified domain model representing any discovered visual asset in the workspace.
+ */
+export type Asset = { 
+/**
+ * Unique identifier computed from asset path or contents.
+ */
+id: string, 
+/**
+ * Absolute filesystem path to the asset on disk.
+ */
+path: string, 
+/**
+ * Workspace-relative path to the asset.
+ */
+relative_path: string, 
+/**
+ * Filename including file extension (e.g. `logo.svg`).
+ */
+name: string, 
+/**
+ * Filename stem excluding file extension (e.g. `logo`).
+ */
+stem: string, 
+/**
+ * Asset size on disk in raw bytes.
+ */
+size_bytes: number, 
+/**
+ * Unix modification timestamp in milliseconds.
+ */
+mtime_ms: number, 
+/**
+ * Asset categorization kind (`Motion` vs `Static`).
+ */
+kind: AssetKind, 
+/**
+ * Specific file format representation.
+ */
+format: AssetFormat, 
+/**
+ * Hex-encoded SHA-256 content hash of the asset bytes.
+ */
+content_hash?: string, 
+/**
+ * Pixel or viewport dimensions.
+ */
+dimensions?: Dimensions, 
+/**
+ * Motion animation metadata if applicable.
+ */
+motion?: MotionMetadata, 
+/**
+ * Static image metadata if applicable.
+ */
+static_meta?: StaticMetadata, 
 /**
  * Absolute path to a file the UI can render directly as a preview.
  * For formats a browser/webview can already display natively (raster
@@ -14,4 +69,12 @@ export type Asset = { id: string, path: string, relative_path: string, name: str
  * dotLottie, Rive) it points at a generated SVG placeholder under
  * `.animoria/thumbnails/`. `None` only when generation itself failed.
  */
-thumbnail_path?: string, is_valid: boolean, error?: string, };
+thumbnail_path?: string, 
+/**
+ * Invariant: whether the asset parsed successfully. Corrupt assets are kept with `false`.
+ */
+is_valid: boolean, 
+/**
+ * Parser error message if validation failed.
+ */
+error?: string, };

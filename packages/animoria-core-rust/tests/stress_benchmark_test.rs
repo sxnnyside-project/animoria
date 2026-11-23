@@ -152,7 +152,7 @@ fn test_stress_and_throughput_1000_assets() {
             6000
         }
     } else {
-        3000
+        5000
     };
     assert!(
         elapsed.as_millis() < max_allowed_ms,

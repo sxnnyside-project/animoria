@@ -39,6 +39,7 @@ pub fn thumbnail_data_uri(thumbnail_path: &str) -> Option<String> {
     Some(format!("data:{mime};base64,{encoded}"))
 }
 
+/// Root JSON object structure for Lottie motion graphics documents.
 pub struct LottieDocument {
     pub animation: serde_json::Value,
     pub total_frames: f64,

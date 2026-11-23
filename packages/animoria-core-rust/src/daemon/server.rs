@@ -15,6 +15,7 @@ use crate::integration::generate_snippets_for_asset;
 use crate::parser::heuristics::detect_format;
 use crate::remediation::{create_duplicate_resolution_plan, TrashManager};
 
+/// String constant identifying the Protocol v1 daemon implementation.
 pub const PROTOCOL_VERSION: u32 = 1;
 
 /// A single NDJSON message larger than this is refused rather than buffered.
@@ -110,6 +111,7 @@ fn supported_methods() -> Vec<String> {
     .collect()
 }
 
+/// Protocol v1 NDJSON server managing long-lived workspace indices and IDE events.
 pub struct DaemonServer {
     indices: HashMap<String, AssetIndex>,
     cleanup_plans: HashMap<String, (String, CleanupPlan)>,
@@ -131,6 +133,7 @@ impl Default for DaemonServer {
 }
 
 impl DaemonServer {
+    /// Instantiates a new daemon server with uninitialized workspace indices.
     pub fn new() -> Self {
         Self {
             indices: HashMap::new(),
@@ -199,6 +202,7 @@ impl DaemonServer {
             .map(|(root_id, _)| PathBuf::from(root_id))
     }
 
+    /// Enters the standard I/O NDJSON event loop until EOF is encountered.
     pub fn run(&mut self) -> anyhow::Result<()> {
         let stdin = io::stdin();
         let mut stdout = io::stdout();
@@ -409,6 +413,7 @@ impl DaemonServer {
         Ok(())
     }
 
+    /// Dispatches an incoming NDJSON request and generates a protocol response.
     pub fn handle_request(&mut self, req: DaemonRequest) -> (DaemonResponse, bool) {
         if req.protocol != PROTOCOL_VERSION {
             let resp = DaemonResponse {
@@ -1286,7 +1291,7 @@ impl DaemonServer {
                     .get("planId")
                     .and_then(|v| v.as_str())
                     .unwrap_or_default();
-                let allow_partial = req
+                let can_allow_partial = req
                     .params
                     .get("allowPartial")
                     .and_then(|v| v.as_bool())
@@ -1294,8 +1299,11 @@ impl DaemonServer {
 
                 match self.cleanup_plans.remove(plan_id) {
                     Some((root_id, plan)) => {
-                        let (result, _trashed) =
-                            cleanup::apply_cleanup_plan(Path::new(&root_id), &plan, allow_partial);
+                        let (result, _trashed) = cleanup::apply_cleanup_plan(
+                            Path::new(&root_id),
+                            &plan,
+                            can_allow_partial,
+                        );
                         let resp = DaemonResponse {
                             protocol: PROTOCOL_VERSION,
                             id: req.id,
@@ -1402,7 +1410,7 @@ impl DaemonServer {
                     .get("planId")
                     .and_then(|v| v.as_str())
                     .unwrap_or_default();
-                let allow_partial = req
+                let can_allow_partial = req
                     .params
                     .get("allowPartial")
                     .and_then(|v| v.as_bool())
@@ -1415,7 +1423,7 @@ impl DaemonServer {
                                 Path::new(&root_id),
                                 &plan,
                                 index,
-                                allow_partial,
+                                can_allow_partial,
                             );
                             crate::daemon::audit::record_audit_event(
                                 Path::new(&root_id),

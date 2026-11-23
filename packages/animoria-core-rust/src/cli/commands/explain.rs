@@ -1,16 +1,26 @@
 use crate::cli::ui::{self, accent, brand, dim, error, title};
 
+/// Documentation and remediation details for an individual governance rule.
 pub struct RuleDoc {
+    /// Unique rule identifier string.
     pub id: &'static str,
+    /// Human-readable rule title.
     pub name: &'static str,
+    /// Governance category grouping.
     pub category: &'static str,
+    /// Default severity level (e.g., error, warn).
     pub default_severity: &'static str,
+    /// Concise summary of rule purpose.
     pub summary: &'static str,
+    /// Technical rationale explaining why this rule exists.
     pub why: &'static str,
+    /// Concrete steps to resolve rule violations.
     pub how_to_fix: &'static str,
+    /// Example configuration block for `.animoriarc.json`.
     pub config_example: &'static str,
 }
 
+/// Complete static catalog of built-in governance rules.
 pub const ALL_RULES: &[RuleDoc] = &[
     RuleDoc {
         id: "no-duplicate-content",
@@ -94,6 +104,7 @@ pub const ALL_RULES: &[RuleDoc] = &[
     },
 ];
 
+/// Explains governance rules and displays remediation guidelines.
 pub fn execute_explain(rule_id: Option<&str>) -> anyhow::Result<i32> {
     match rule_id {
         Some(id) => {

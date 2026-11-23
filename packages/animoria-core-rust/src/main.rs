@@ -1,3 +1,7 @@
+//! # Animoria CLI Binary
+//!
+//! High-performance visual asset governance and quality engine command-line utility.
+
 fn main() {
     let exit_code = match animoria_core::cli::run_cli() {
         Ok(code) => code,

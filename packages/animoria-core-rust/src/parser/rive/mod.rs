@@ -54,6 +54,7 @@ const ANIMATION_HINTS: &[&str] = &[
     "ocultar", "abrir", "cerrar", "girar", "alerta", "salto",
 ];
 
+/// Parses binary headers and animation artboards from Rive runtime files.
 pub fn parse_rive(path: &Path, asset: &mut Asset) -> Result<(), String> {
     let bytes = fs::read(path).map_err(|e| format!("Cannot read Rive file: {e}"))?;
 

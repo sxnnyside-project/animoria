@@ -6,14 +6,15 @@ use crate::indexer::AssetIndex;
 use std::path::Path;
 use std::time::Instant;
 
-pub fn execute_scan(target_path: &Path, json: bool) -> anyhow::Result<i32> {
+/// Discovers and lists visual assets across the target workspace.
+pub fn execute_scan(target_path: &Path, is_json: bool) -> anyhow::Result<i32> {
     let canonical = resolve_workspace_path(target_path)?;
     let mut index = AssetIndex::new(canonical.to_string_lossy().to_string(), canonical.clone());
     let started = Instant::now();
     let analysis = index.scan_workspace(&[])?;
     let elapsed = started.elapsed();
 
-    if json {
+    if is_json {
         println!("{}", serde_json::to_string_pretty(&analysis)?);
         return Ok(0);
     }

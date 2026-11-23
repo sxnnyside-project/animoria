@@ -5,6 +5,7 @@ use crate::governance::rule::Rule;
 use std::fs::File;
 use std::io::Read;
 
+/// Rule scanning SVG files for embedded scripts, external entities, and vulnerabilities.
 pub struct SvgSanitizationRule;
 
 impl Rule for SvgSanitizationRule {
@@ -17,7 +18,7 @@ impl Rule for SvgSanitizationRule {
 
         for asset in ctx.assets {
             let policy = ctx.policy_for(&asset.relative_path);
-            if !policy.svg_sanitization {
+            if !policy.is_svg_sanitization_enabled {
                 continue;
             }
 
@@ -59,6 +60,7 @@ impl Rule for SvgSanitizationRule {
     }
 }
 
+/// Inspects SVG source text for prohibited security attack vectors.
 pub fn detect_svg_vulnerability(raw_text: &str) -> Option<&'static str> {
     let text = raw_text.to_lowercase();
     if text.contains("<script") {

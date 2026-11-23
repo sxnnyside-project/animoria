@@ -4,4 +4,35 @@ import type { HealthScoreReport } from "./HealthScoreReport";
 import type { LifecycleState } from "./LifecycleState";
 import type { RuleDiagnostic } from "./RuleDiagnostic";
 
-export type WorkspaceAnalysis = { root_id: string, root_path: string, state: LifecycleState, assets: Array<Asset>, diagnostics: Array<RuleDiagnostic>, health_score: HealthScoreReport, indexed_at_ms: number, };
+/**
+ * Complete analysis payload containing assets, diagnostics, duplicates, and health score.
+ */
+export type WorkspaceAnalysis = { 
+/**
+ * Unique workspace root identifier.
+ */
+root_id: string, 
+/**
+ * Absolute filesystem path to the workspace root.
+ */
+root_path: string, 
+/**
+ * Current lifecycle state of the workspace analysis.
+ */
+state: LifecycleState, 
+/**
+ * Collection of all discovered visual assets.
+ */
+assets: Array<Asset>, 
+/**
+ * All rule violation diagnostics emitted during policy evaluation.
+ */
+diagnostics: Array<RuleDiagnostic>, 
+/**
+ * Composite health score report synthesizing workspace quality.
+ */
+health_score: HealthScoreReport, 
+/**
+ * Unix timestamp in milliseconds when the analysis completed.
+ */
+indexed_at_ms: number, };

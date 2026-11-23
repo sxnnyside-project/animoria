@@ -1,7 +1,13 @@
 install:
-    pnpm install
+    pnpm install --frozen-lockfile
+    git config core.hooksPath .githooks
 
-check: format-check lint typecheck test
+check: format-check lint typecheck test lint-config
+
+lint-config:
+    actionlint
+    git ls-files -z --cached --others --exclude-standard -- '*.sh' '.githooks/*' | xargs -0 shellcheck
+    git ls-files -z --cached --others --exclude-standard -- '*.sh' '.githooks/*' | xargs -0 shfmt -d
 
 clean: core-clean jetbrains-clean
     pnpm clean

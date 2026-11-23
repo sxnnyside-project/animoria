@@ -11,8 +11,11 @@
   "private": true,
   "packageManager": "pnpm@11.5.2",
   "engines": {
-    "node": ">=22",
+    "node": ">=26",
     "pnpm": ">=11"
+  },
+  "coverageThreshold": {
+    "lines": 80
   },
   "scripts": {
     "dev": "turbo dev",
@@ -30,7 +33,7 @@
     "package:native-daemon": "cargo build --release --manifest-path packages/animoria-core-rust/Cargo.toml && node scripts/copy-native-daemon.mjs && node scripts/verify-packaged-daemon.mjs",
     "package:jetbrains": "pnpm --filter @animoria/ui build && pnpm package:native-daemon && cd packages/animoria-jetbrains && ./gradlew buildPlugin",
     "package:all": "pnpm package:vscode && pnpm package:jetbrains",
-    "prepare": "husky",
+    "prepare": "git config core.hooksPath .githooks",
     "verify:packaged-daemon": "node scripts/verify-packaged-daemon.mjs"
   },
   "devDependencies": {

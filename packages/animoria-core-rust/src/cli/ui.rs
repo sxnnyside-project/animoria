@@ -2,15 +2,25 @@ use crate::contracts::asset::AssetFormat;
 use std::io::IsTerminal;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
+/// ANSI escape code to reset all formatting styles.
 pub const RESET: &str = "\x1b[0m";
+/// ANSI escape code for bold text weight.
 pub const BOLD: &str = "\x1b[1m";
+/// ANSI escape code for dimmed text style.
 pub const DIM: &str = "\x1b[2m";
+/// ANSI escape code for red foreground text.
 pub const RED: &str = "\x1b[31m";
+/// ANSI escape code for green foreground text.
 pub const GREEN: &str = "\x1b[32m";
+/// ANSI escape code for yellow foreground text.
 pub const YELLOW: &str = "\x1b[33m";
+/// ANSI escape code for blue foreground text.
 pub const BLUE: &str = "\x1b[34m";
+/// ANSI escape code for magenta foreground text.
 pub const MAGENTA: &str = "\x1b[35m";
+/// ANSI escape code for cyan foreground text.
 pub const CYAN: &str = "\x1b[36m";
+/// ANSI escape code for white foreground text.
 pub const WHITE: &str = "\x1b[37m";
 
 /// Set once from `--no-color` at startup. `colors_enabled` also checks
@@ -21,16 +31,19 @@ static FORCE_NO_COLOR: AtomicBool = AtomicBool::new(false);
 static QUIET: AtomicBool = AtomicBool::new(false);
 static VERBOSITY: AtomicU8 = AtomicU8::new(0);
 
-pub fn configure(no_color: bool, quiet: bool, verbosity: u8) {
-    FORCE_NO_COLOR.store(no_color, Ordering::Relaxed);
-    QUIET.store(quiet, Ordering::Relaxed);
+/// Configures global output rendering options (colors, quiet mode, verbosity).
+pub fn configure(has_no_color: bool, is_quiet: bool, verbosity: u8) {
+    FORCE_NO_COLOR.store(has_no_color, Ordering::Relaxed);
+    QUIET.store(is_quiet, Ordering::Relaxed);
     VERBOSITY.store(verbosity, Ordering::Relaxed);
 }
 
+/// Returns whether output suppression (quiet mode) is currently enabled.
 pub fn is_quiet() -> bool {
     QUIET.load(Ordering::Relaxed)
 }
 
+/// Returns the configured numeric verbosity level.
 pub fn verbosity() -> u8 {
     VERBOSITY.load(Ordering::Relaxed)
 }
@@ -58,36 +71,45 @@ fn colorize(code: &str, text: &str) -> String {
     }
 }
 
+/// Formats text using the bold cyan brand styling.
 pub fn brand(text: &str) -> String {
     colorize(&format!("{BOLD}{CYAN}"), text)
 }
 
+/// Formats text as a prominent bold section title.
 pub fn title(text: &str) -> String {
     colorize(&format!("{BOLD}{WHITE}"), text)
 }
 
+/// Formats text with subtle dim coloring for secondary information.
 pub fn dim(text: &str) -> String {
     colorize(DIM, text)
 }
 
+/// Formats text in green to indicate successful operations or passing states.
 pub fn success(text: &str) -> String {
     colorize(GREEN, text)
 }
 
+/// Formats text in yellow to highlight warnings or caution states.
 pub fn warning(text: &str) -> String {
     colorize(YELLOW, text)
 }
 
+/// Formats text in red to indicate failures or violations.
 pub fn error(text: &str) -> String {
     colorize(RED, text)
 }
 
+/// Formats text in cyan to draw attention to values or counts.
 pub fn accent(text: &str) -> String {
     colorize(CYAN, text)
 }
 
+/// Public URL path to the online rule documentation portal.
 pub const RULES_BASE_URL: &str = "https://extensions.sxnnysideproject.com/en/animoria/rules";
 
+/// Constructs the full documentation hyperlink for a given rule identifier.
 pub fn rule_url(rule_id: &str) -> String {
     format!("{RULES_BASE_URL}/{rule_id}/")
 }
@@ -116,6 +138,7 @@ pub fn bold_start() -> &'static str {
     }
 }
 
+/// Returns the reset escape sequence if styling is active, or an empty string.
 pub fn reset() -> &'static str {
     if colors_enabled() {
         RESET
@@ -124,6 +147,7 @@ pub fn reset() -> &'static str {
     }
 }
 
+/// Formats a raw byte count into human-readable B, KB, MB, or GB.
 pub fn format_bytes(bytes: u64) -> String {
     if bytes == 0 {
         return "0 B".to_string();
@@ -141,6 +165,7 @@ pub fn format_bytes(bytes: u64) -> String {
     }
 }
 
+/// Formats an elapsed duration in seconds into milliseconds or fractional seconds.
 pub fn format_duration(secs: Option<f64>) -> String {
     match secs {
         Some(s) if s > 0.0 => {
@@ -154,6 +179,7 @@ pub fn format_duration(secs: Option<f64>) -> String {
     }
 }
 
+/// Renders a colored format badge corresponding to an asset format.
 pub fn format_badge(format: AssetFormat) -> String {
     match format {
         AssetFormat::Lottie => colorize(MAGENTA, "[Lottie]"),
@@ -178,6 +204,7 @@ pub fn format_badge(format: AssetFormat) -> String {
     }
 }
 
+/// Renders an overall health score grade badge (A, B, C, D, or F).
 pub fn grade_badge(grade: &str) -> String {
     let upper = grade.to_uppercase();
     let code = match upper.as_str() {

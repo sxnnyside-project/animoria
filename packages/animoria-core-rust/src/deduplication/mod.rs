@@ -6,8 +6,8 @@
 //! Groups matching assets into [`crate::contracts::DuplicateGroup`] instances and computes
 //! wasted storage bytes to guide remediation.
 
-pub mod cluster;
-pub mod hasher;
+pub(crate) mod cluster;
+pub(crate) mod hasher;
 
 pub use cluster::find_duplicate_groups;
 pub use hasher::{compute_file_sha256, hash_assets_in_parallel};

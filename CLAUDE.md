@@ -1,7 +1,7 @@
 # Animoria — CLAUDE.md
 
-## Repository Overview
-Animoria is a polyglot monorepo (Rust, TypeScript, Kotlin) using `pnpm` workspaces, a native Rust engine, and multi-IDE extensions.
+## Topology
+Animoria is a non-monolithic polyglot workspace using `pnpm` workspaces, a native Rust engine, and multi-IDE extensions.
 
 ---
 
@@ -85,7 +85,7 @@ just clean         # Clean all build outputs, targets, and caches
 
 ---
 
-## 5. Core Architectural Invariants
+## 5. Rules & Core Architectural Invariants
 
 1. **Single Source of Truth**: The Rust engine (`animoria-core-rust`) authoritatively owns all asset discovery, format parsing, duplicate detection, health grading, and remediation plans.
 2. **Zero Client-Side Calculation**: Host extensions (VS Code, JetBrains) and the Shared UI are pure presentation layers. They never compute health scores, invent confidence metrics, or mutate the filesystem outside an immutable plan.

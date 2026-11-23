@@ -6,7 +6,8 @@ use crate::contracts::analysis::DiagnosticSeverity;
 use crate::indexer::AssetIndex;
 use std::path::Path;
 
-pub fn execute_report(target_path: &Path, json: bool) -> anyhow::Result<i32> {
+/// Computes and prints an in-depth asset health score and audit report.
+pub fn execute_report(target_path: &Path, is_json: bool) -> anyhow::Result<i32> {
     let (bold, reset) = (ui::bold_start(), ui::reset());
     let canonical = resolve_workspace_path(target_path)?;
     let mut index = AssetIndex::new(canonical.to_string_lossy().to_string(), canonical);
@@ -21,7 +22,7 @@ pub fn execute_report(target_path: &Path, json: bool) -> anyhow::Result<i32> {
         .any(|d| d.severity == DiagnosticSeverity::Error);
     let exit_code = if has_errors { 1 } else { 0 };
 
-    if json {
+    if is_json {
         let payload = serde_json::json!({
             "analysis": analysis,
             "duplicate_groups": index.duplicate_groups(),
@@ -65,7 +66,7 @@ pub fn execute_report(target_path: &Path, json: bool) -> anyhow::Result<i32> {
     println!("  {}", title("Category Performance:"));
     for cat in &health.categories {
         let bar_len = ((cat.score as usize) / 5).min(20);
-        let bar = format!("{}{}", "█".repeat(bar_len), "░".repeat(20 - bar_len));
+        let progress_meter = format!("{}{}", "█".repeat(bar_len), "░".repeat(20 - bar_len));
         let score_fmt = if cat.score >= 80 {
             success(&format!("{}%", cat.score))
         } else {
@@ -74,7 +75,7 @@ pub fn execute_report(target_path: &Path, json: bool) -> anyhow::Result<i32> {
         println!(
             "    {:<26} [{}] {} ({} issues)",
             cat.category,
-            accent(&bar),
+            accent(&progress_meter),
             score_fmt,
             cat.violations_count
         );

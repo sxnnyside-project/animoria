@@ -30,6 +30,7 @@ use crate::remediation::{create_duplicate_resolution_plan, TrashManager};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Rationale explaining why an asset is eligible or ineligible for cleanup.
 pub struct CleanupReason {
     pub code: String,
     pub message: String,
@@ -37,12 +38,15 @@ pub struct CleanupReason {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Status indicating whether an asset can be safely staged to trash.
 pub struct CleanupEligibility {
-    pub eligible: bool,
+    #[serde(rename = "eligible")]
+    pub is_eligible: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Asset identified as eligible for cleanup staging with associated reasons.
 pub struct CleanupCandidate {
     pub asset: Asset,
     pub reasons: Vec<CleanupReason>,
@@ -53,13 +57,17 @@ pub struct CleanupCandidate {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Summary of cleanup actions proposed across a workspace.
 pub struct CleanupProposal {
+    /// List of cleanup candidates identified across the workspace.
     pub candidates: Vec<CleanupCandidate>,
+    /// Total storage in bytes eligible for reclamation.
     pub total_size_bytes: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Itemized asset entry within a finalized cleanup plan.
 pub struct CleanupEntry {
     pub asset: Asset,
     pub reasons: Vec<CleanupReason>,
@@ -69,6 +77,7 @@ pub struct CleanupEntry {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Documentation of an asset excluded from cleanup due to active references or policy.
 pub struct CleanupRefusal {
     pub asset_path: String,
     pub explanation: String,
@@ -76,16 +85,23 @@ pub struct CleanupRefusal {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Concrete execution plan specifying assets to stage into `.animoria/trash`.
 pub struct CleanupPlan {
+    /// Unique identifier for this cleanup plan.
     pub plan_id: String,
+    /// Assets scheduled for staging to trash.
     pub entries: Vec<CleanupEntry>,
+    /// Assets excluded from cleanup due to active references or policy locks.
     pub refusals: Vec<CleanupRefusal>,
+    /// Safety level classification of the plan.
     pub safety: String,
+    /// Total bytes that will be reclaimed upon execution.
     pub bytes_reclaimed: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Execution summary of an applied cleanup plan.
 pub struct CleanupResult {
     pub status: String,
     pub removed_asset_paths: Vec<String>,
@@ -96,20 +112,13 @@ pub struct CleanupResult {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+/// Result returned from applying a duplicate asset resolution plan.
 pub struct ResolutionResult {
     pub status: String,
     pub removed_asset_paths: Vec<String>,
     pub recovered_bytes: u64,
     pub trash_session_id: Option<String>,
     pub error: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SessionItem {
-    pub original_path: String,
-    pub trash_path: String,
-    pub size_bytes: u64,
 }
 
 const RULE_UNREFERENCED: &str = "no-unreferenced-assets";
@@ -142,7 +151,7 @@ pub fn build_cleanup_proposal(index: &AssetIndex, dismissed_paths: &[String]) ->
             }],
             size_bytes: asset.size_bytes,
             reference_count: 0,
-            eligibility: CleanupEligibility { eligible: true },
+            eligibility: CleanupEligibility { is_eligible: true },
         });
     }
 
@@ -225,9 +234,9 @@ pub fn build_cleanup_plan(
 pub fn apply_cleanup_plan(
     workspace_root: &Path,
     plan: &CleanupPlan,
-    allow_partial: bool,
+    can_allow_partial: bool,
 ) -> (CleanupResult, Vec<(TrashItem, u64)>) {
-    if !plan.refusals.is_empty() && !allow_partial {
+    if !plan.refusals.is_empty() && !can_allow_partial {
         return (
             CleanupResult {
                 status: "failed".to_string(),
@@ -258,7 +267,7 @@ pub fn apply_cleanup_plan(
             }
             Err(e) => {
                 first_error = Some(e.to_string());
-                if !allow_partial {
+                if !can_allow_partial {
                     break;
                 }
             }
@@ -321,11 +330,12 @@ pub fn build_resolution_plan(
     plan
 }
 
+/// Executes duplicate resolution by trashing duplicates and saving a session journal.
 pub fn apply_resolution_plan(
     workspace_root: &Path,
     plan: &ResolutionPlan,
     index: &AssetIndex,
-    allow_partial: bool,
+    can_allow_partial: bool,
 ) -> (ResolutionResult, Vec<(TrashItem, u64)>) {
     let assets = index.assets();
     let assets_by_id: HashMap<&str, &Asset> = assets.iter().map(|a| (a.id.as_str(), a)).collect();
@@ -341,7 +351,7 @@ pub fn apply_resolution_plan(
             first_error = Some(format!(
                 "Asset '{asset_id}' from the resolution plan is no longer in the analysis."
             ));
-            if !allow_partial {
+            if !can_allow_partial {
                 break;
             }
             continue;
@@ -354,7 +364,7 @@ pub fn apply_resolution_plan(
             }
             Err(e) => {
                 first_error = Some(e.to_string());
-                if !allow_partial {
+                if !can_allow_partial {
                     break;
                 }
             }
@@ -398,6 +408,7 @@ fn sessions_journal_path(workspace_root: &Path) -> PathBuf {
         .join("sessions.json")
 }
 
+/// Persists a new trash session into `.animoria/trash/sessions.json`.
 pub fn record_trash_session(
     workspace_root: &Path,
     trashed: &[(TrashItem, u64)],
@@ -425,6 +436,7 @@ pub fn record_trash_session(
     Ok(session_id)
 }
 
+/// Reads all recorded trash sessions from the workspace journal.
 pub fn read_sessions(workspace_root: &Path) -> Vec<SessionManifest> {
     let path = sessions_journal_path(workspace_root);
     let Ok(raw) = fs::read_to_string(&path) else {
@@ -447,6 +459,7 @@ fn write_sessions(workspace_root: &Path, sessions: &[SessionManifest]) -> std::i
     crate::remediation::write_atomic(&path, serde_json::to_string_pretty(sessions)?.as_bytes())
 }
 
+/// Restores all assets staged in a specified trash session.
 pub fn restore_session(workspace_root: &Path, session_id: &str) -> Result<Vec<String>, String> {
     let mut sessions = read_sessions(workspace_root);
     let Some(pos) = sessions.iter().position(|s| s.id == session_id) else {

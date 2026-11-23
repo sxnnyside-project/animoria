@@ -26,7 +26,8 @@
       "no-unreferenced-assets": {
         "severity": "warning",
         "ignoreAppIcons": true
-      }
+      },
+      "svg-sanitization": "error"
     }
   }
 }

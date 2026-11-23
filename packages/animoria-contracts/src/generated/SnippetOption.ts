@@ -3,5 +3,26 @@
 /**
  * One framework integration snippet for an asset, as `generateSnippet`
  * returns it. Produced by `integration::snippets::generate_snippets_for_asset`.
+ * Generated component import snippet for consuming a visual asset in UI frameworks.
  */
-export type SnippetOption = { label: string, language: string, code: string, imports: string | null, installHint: string | null, };
+export type SnippetOption = { 
+/**
+ * Human-readable framework or component label.
+ */
+label: string, 
+/**
+ * Syntax highlighting language identifier (e.g. `typescript`, `vue`).
+ */
+language: string, 
+/**
+ * Template code snippet ready to paste into source code.
+ */
+code: string, 
+/**
+ * Optional import statements required for this snippet.
+ */
+imports: string | null, 
+/**
+ * Package installation command hint if dependencies are needed.
+ */
+installHint: string | null, };

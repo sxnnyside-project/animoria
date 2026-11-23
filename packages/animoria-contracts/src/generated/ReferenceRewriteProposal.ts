@@ -7,5 +7,22 @@
  * a diff to review — computed by substituting the deleted asset's filename for the
  * canonical asset's inside the traced reference line, which preserves whatever quote
  * style and relative-path form the original reference already used.
+ * Recommended source code import path substitution.
  */
-export type ReferenceRewriteProposal = { file_path: string, line_number: number, original_line: string, proposed_line: string, };
+export type ReferenceRewriteProposal = { 
+/**
+ * Relative or absolute path to the referencing source file.
+ */
+file_path: string, 
+/**
+ * 1-based line number where the reference occurs.
+ */
+line_number: number, 
+/**
+ * Existing source line content prior to rewrite.
+ */
+original_line: string, 
+/**
+ * Suggested line content substituting canonical asset path.
+ */
+proposed_line: string, };

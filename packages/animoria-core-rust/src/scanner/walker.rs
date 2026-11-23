@@ -2,17 +2,20 @@ use super::ignore_rules::IgnoreRules;
 use ignore::WalkBuilder;
 use std::path::{Path, PathBuf};
 
+/// Supported visual asset file extensions recognized during crawler scans.
 pub const RECOGNIZED_EXTENSIONS: &[&str] = &[
     "json", "lottie", "riv", "gif", "apng", "svg", "png", "jpg", "jpeg", "webp", "avif", "bmp",
     "eps", "icns", "ico", "cur", "odd", "ps", "psd", "tiff", "tif",
 ];
 
+/// High-speed parallel filesystem walker discovering candidate visual assets.
 pub struct WorkspaceScanner {
     root_path: PathBuf,
     ignore_rules: IgnoreRules,
 }
 
 impl WorkspaceScanner {
+    /// Initializes a workspace scanner for a root directory with compiled ignore rules.
     pub fn new(root_path: PathBuf, custom_ignore_patterns: &[String]) -> anyhow::Result<Self> {
         let mut patterns = super::ignore_rules::unity_generated_patterns(&root_path);
         patterns.extend_from_slice(custom_ignore_patterns);
@@ -25,6 +28,7 @@ impl WorkspaceScanner {
         })
     }
 
+    /// Traverses the filesystem using Rayon parallelism to collect all candidate asset paths.
     pub fn scan_candidates(&self) -> Vec<PathBuf> {
         let mut builder = WalkBuilder::new(&self.root_path);
         builder
@@ -66,6 +70,7 @@ impl WorkspaceScanner {
         candidates
     }
 
+    /// Returns the root filesystem path being scanned.
     pub fn root_path(&self) -> &Path {
         &self.root_path
     }

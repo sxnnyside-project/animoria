@@ -8,6 +8,7 @@
 
 use crate::contracts::analysis::WorkspaceAnalysis;
 
+/// Renders a full governance health audit report in GitHub Flavored Markdown.
 pub fn render_markdown(analysis: &WorkspaceAnalysis) -> String {
     let mut lines = vec![
         "# Animoria Visual Governance Report".to_string(),
@@ -29,6 +30,7 @@ pub fn render_markdown(analysis: &WorkspaceAnalysis) -> String {
     lines.join("\n")
 }
 
+/// Generates an audit report formatted according to the requested output format.
 pub fn render(analysis: &WorkspaceAnalysis, format: &str) -> String {
     if format.eq_ignore_ascii_case("json") {
         serde_json::to_string_pretty(analysis).unwrap_or_default()

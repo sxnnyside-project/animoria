@@ -1,5 +1,6 @@
 use crate::scanner::walker::RECOGNIZED_EXTENSIONS;
 
+/// Recognized source code file extensions inspected for asset references.
 pub const SOURCE_EXTENSIONS: &[&str] = &[
     "ts",
     "tsx",
@@ -88,6 +89,7 @@ pub const SOURCE_EXTENSIONS: &[&str] = &[
     "webmanifest",
 ];
 
+/// Returns whether a given file extension corresponds to scannable source code.
 pub fn is_source_file_extension(ext: &str) -> bool {
     SOURCE_EXTENSIONS.contains(&ext.to_lowercase().as_str())
 }
@@ -222,6 +224,7 @@ pub fn is_valid_stem_reference(line_lower: &str, stem_lower: &str) -> bool {
     false
 }
 
+/// Validates whether a token match represents a legitimate asset reference.
 pub fn is_valid_exact_filename_reference(line_lower: &str, filename_lower: &str) -> bool {
     // Filename must appear inside quotes, import specifier, or path delimiter
     for (pos, _) in line_lower.match_indices(filename_lower) {
@@ -444,11 +447,11 @@ pub fn asset_matches_path_token(
 /// Represents a parsed dynamic reference pattern extracted from an interpolated
 /// string (e.g. `${c.id}.webp`, `/characters/${c.id}.webp`, or `'icons/' + id + '.png'`).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DynamicPattern {
-    pub dir_prefix: Option<String>,
-    pub stem_prefix: Option<String>,
-    pub stem_suffix: Option<String>,
-    pub extension: String,
+pub(crate) struct DynamicPattern {
+    pub(crate) dir_prefix: Option<String>,
+    pub(crate) stem_prefix: Option<String>,
+    pub(crate) stem_suffix: Option<String>,
+    pub(crate) extension: String,
 }
 
 fn parse_dynamic_pattern_from_token(token: &str) -> Option<DynamicPattern> {
@@ -535,7 +538,7 @@ fn parse_dynamic_pattern_from_token(token: &str) -> Option<DynamicPattern> {
 ///
 /// Detects JavaScript/TypeScript/Kotlin template literals (`` `${c.id}.webp` ``),
 /// Swift interpolations (`"\(id).png"`), and dynamic concatenations (`'/characters/' + id + '.webp'`).
-pub fn extract_dynamic_patterns(line: &str) -> Vec<DynamicPattern> {
+pub(crate) fn extract_dynamic_patterns(line: &str) -> Vec<DynamicPattern> {
     let mut patterns = Vec::new();
     let tokens = extract_quoted_tokens(line);
 
@@ -584,7 +587,7 @@ pub fn extract_dynamic_patterns(line: &str) -> Vec<DynamicPattern> {
 }
 
 /// Evaluates whether an indexed asset satisfies a dynamic reference pattern.
-pub fn asset_matches_dynamic_pattern(
+pub(crate) fn asset_matches_dynamic_pattern(
     asset_name: &str,
     asset_stem: &str,
     asset_relative_path: &str,

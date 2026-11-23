@@ -11,9 +11,9 @@ use std::path::Path;
 /// for the IDE hosts, but the CLI never exposed either.
 pub fn execute_restore(
     target_path: &Path,
-    list: bool,
+    should_list: bool,
     session: Option<&str>,
-    all: bool,
+    should_restore_all: bool,
 ) -> anyhow::Result<i32> {
     let (bold, reset) = (ui::bold_start(), ui::reset());
     let quiet = ui::is_quiet();
@@ -29,7 +29,7 @@ pub fn execute_restore(
 
     let sessions = read_sessions(&canonical);
 
-    if list || (session.is_none() && !all) {
+    if should_list || (session.is_none() && !should_restore_all) {
         if sessions.is_empty() {
             println!("  {} No trash sessions recorded.\n", dim("·"));
             return Ok(0);
@@ -48,7 +48,7 @@ pub fn execute_restore(
         return Ok(0);
     }
 
-    let ids: Vec<String> = if all {
+    let ids: Vec<String> = if should_restore_all {
         sessions.iter().map(|s| s.id.clone()).collect()
     } else {
         vec![session.unwrap().to_string()]

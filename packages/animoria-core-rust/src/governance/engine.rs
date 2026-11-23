@@ -8,6 +8,7 @@ use crate::contracts::analysis::{
     CategoryScore, DiagnosticSeverity, HealthScoreReport, RuleDiagnostic,
 };
 
+/// Rule coordinator that runs governance checks across all indexed workspace assets.
 pub struct GovernanceEngine {
     rules: Vec<Box<dyn Rule>>,
 }
@@ -19,6 +20,7 @@ impl Default for GovernanceEngine {
 }
 
 impl GovernanceEngine {
+    /// Creates a governance engine initialized with the default set of governance rules.
     pub fn new() -> Self {
         let rules: Vec<Box<dyn Rule>> = vec![
             Box::new(NoUnreferencedAssetsRule),
@@ -34,6 +36,7 @@ impl GovernanceEngine {
         Self { rules }
     }
 
+    /// Evaluates all configured rules against the provided analysis context.
     pub fn evaluate(&self, ctx: &AnalysisContext) -> (Vec<RuleDiagnostic>, HealthScoreReport) {
         let mut diagnostics = Vec::new();
 

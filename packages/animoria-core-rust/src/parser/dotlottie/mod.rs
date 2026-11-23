@@ -30,6 +30,7 @@ struct DotLottieManifest {
     animations: Vec<DotLottieAnimation>,
 }
 
+/// Decompresses and extracts animation characteristics from a dotLottie archive.
 pub fn parse_dotlottie(path: &Path, asset: &mut Asset) -> Result<(), String> {
     let file = File::open(path).map_err(|e| format!("Cannot open dotLottie file: {e}"))?;
     let mut archive =

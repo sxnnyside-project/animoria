@@ -2,6 +2,7 @@ use crate::contracts::analysis::RuleDiagnostic;
 use crate::governance::context::AnalysisContext;
 use crate::governance::rule::Rule;
 
+/// Rule flagging asset files exceeding raw byte size ceilings.
 pub struct MaxFileSizeRule;
 
 impl Rule for MaxFileSizeRule {

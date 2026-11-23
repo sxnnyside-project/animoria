@@ -6,5 +6,18 @@ import type { SessionItemStored } from "./SessionItemStored";
  * session, as persisted to `.animoria/trash/sessions.json` and returned by
  * `listTrashSessions` — the source of truth `animoria restore` and every
  * host's restore UI read from.
+ * Complete undo journal entry recording a remediation session.
  */
-export type SessionManifest = { id: string, timestamp: number, items: Array<SessionItemStored>, };
+export type SessionManifest = { 
+/**
+ * Unique session identifier.
+ */
+id: string, 
+/**
+ * Unix timestamp in milliseconds when the cleanup was executed.
+ */
+timestamp: number, 
+/**
+ * Itemized list of assets moved to trash during this session.
+ */
+items: Array<SessionItemStored>, };

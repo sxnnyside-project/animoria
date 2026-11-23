@@ -5,16 +5,23 @@ use crate::contracts::usage::UsageReference;
 use std::collections::HashSet;
 use std::path::Path;
 
+/// Shared immutable analysis context passed into governance rules for evaluation.
 pub struct AnalysisContext<'a> {
+    /// Absolute filesystem path to the workspace root directory.
     pub workspace_root: &'a Path,
+    /// Slice of all visual assets discovered in the workspace.
     pub assets: &'a [Asset],
+    /// Slice of all traced source code usage references.
     pub references: &'a [UsageReference],
+    /// Slice of all identified duplicate asset clusters.
     pub duplicate_groups: &'a [DuplicateGroup],
+    /// Active governance policy resolved for this workspace.
     pub policy: &'a GovernancePolicy,
     referenced_asset_ids: HashSet<String>,
 }
 
 impl<'a> AnalysisContext<'a> {
+    /// Constructs an analysis context from assets, usage references, duplicate clusters, and policy.
     pub fn new(
         workspace_root: &'a Path,
         assets: &'a [Asset],
@@ -43,14 +50,17 @@ impl<'a> AnalysisContext<'a> {
         }
     }
 
+    /// Resolves the governing policy applicable to a specific relative asset path.
     pub fn policy_for(&self, relative_path: &str) -> &GovernancePolicy {
         self.policy.policy_for_path(relative_path)
     }
 
+    /// Determines whether the given asset identifier is referenced in workspace source code.
     pub fn is_asset_referenced(&self, asset_id_or_path: &str) -> bool {
         self.referenced_asset_ids.contains(asset_id_or_path)
     }
 
+    /// Returns all source code references matched for the given asset identifier.
     pub fn references_for_asset(&self, asset_id_or_path: &str) -> Vec<&UsageReference> {
         self.references
             .iter()

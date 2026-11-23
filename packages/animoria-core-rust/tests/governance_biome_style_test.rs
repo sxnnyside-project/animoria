@@ -9,7 +9,7 @@ fn test_governance_ignores_app_icons_and_custom_patterns() {
 
     // Setup .animoriarc.json with Biome-style configuration
     let config = r#"{
-        "$schema": "https://animoria.dev/schema/animoriarc.json",
+        "$schema": "https://extensions.sxnnysideproject.com/en/animoria/schema/animoriarc.json",
         "governance": {
             "rules": {
                 "no-unreferenced-assets": {
@@ -57,7 +57,7 @@ fn test_governance_ignore_source_extensions() {
 
     // Config ignores markdown and vue as reference sources
     let config = r#"{
-        "$schema": "https://animoria.dev/schema/animoriarc.json",
+        "$schema": "https://extensions.sxnnysideproject.com/en/animoria/schema/animoriarc.json",
         "tracing": {
             "ignoreSourceExtensions": ["md", "vue"]
         },
@@ -102,7 +102,7 @@ fn test_framework_tracing_and_extended_static_formats() {
 
     // Config allows custom source extensions (e.g. htmx, custom extension)
     let config = r#"{
-        "$schema": "https://animoria.dev/schema/animoriarc.json",
+        "$schema": "https://extensions.sxnnysideproject.com/en/animoria/schema/animoriarc.json",
         "tracing": {
             "includeSourceExtensions": ["customext"]
         },
@@ -230,7 +230,7 @@ fn test_dynamic_template_interpolation_resolves_unreferenced() {
 
     // Enable no-unreferenced-assets rule
     let config = r#"{
-        "$schema": "https://animoria.dev/schema/animoriarc.json",
+        "$schema": "https://extensions.sxnnysideproject.com/en/animoria/schema/animoriarc.json",
         "governance": {
             "rules": {
                 "no-unreferenced-assets": "error"
@@ -382,10 +382,10 @@ fn test_cli_ci_quality_gates_and_sarif_export() {
     let exit_code_score = animoria_core::cli::commands::check::execute_check(
         root,
         animoria_core::cli::commands::check::CheckArgs {
-            json: true,
-            sarif: false,
+            is_json: true,
+            is_sarif: false,
             format: None,
-            strict: false,
+            is_strict: false,
             min_score: None,
             max_warnings: None,
             ..Default::default()
@@ -401,10 +401,10 @@ fn test_cli_ci_quality_gates_and_sarif_export() {
     let exit_code_warn = animoria_core::cli::commands::check::execute_check(
         root,
         animoria_core::cli::commands::check::CheckArgs {
-            json: true,
-            sarif: false,
+            is_json: true,
+            is_sarif: false,
             format: None,
-            strict: false,
+            is_strict: false,
             min_score: Some(0),
             max_warnings: Some(0),
             ..Default::default()
@@ -573,8 +573,8 @@ fn test_cli_explain_compact_and_agent_ergonomics() {
     fs::write(root.join("bad.svg"), svg_content).unwrap();
 
     let check_args = CheckArgs {
-        compact: true,
-        only_violations: true,
+        is_compact: true,
+        has_only_violations: true,
         ..Default::default()
     };
     let exit_code = execute_check(root, check_args).unwrap();

@@ -14,12 +14,14 @@ fn sidecar(path: &Path, suffix: &str) -> PathBuf {
     PathBuf::from(name)
 }
 
+/// Manages staging and restoring visual assets within `.animoria/trash`.
 pub struct TrashManager {
     workspace_root: PathBuf,
     trash_root: PathBuf,
 }
 
 impl TrashManager {
+    /// Constructs a trash manager bound to the target workspace root directory.
     pub fn new(workspace_root: &Path) -> Self {
         let trash_root = workspace_root.join(".animoria/trash");
         Self {
@@ -52,6 +54,7 @@ impl TrashManager {
         Ok(canonical_candidate)
     }
 
+    /// Atomically relocates an asset to the workspace trash repository.
     pub fn stage_to_trash(&self, asset_id: &str, file_path: &Path) -> anyhow::Result<TrashItem> {
         let file_path = self.require_within_workspace(file_path)?;
 
@@ -110,6 +113,7 @@ impl TrashManager {
         })
     }
 
+    /// Reverses a previous trash staging operation, returning the asset to its original location.
     pub fn restore_from_trash(&self, item: &TrashItem) -> anyhow::Result<()> {
         let canonical_root =
             fs::canonicalize(&self.workspace_root).unwrap_or_else(|_| self.workspace_root.clone());
@@ -213,14 +217,14 @@ mod tests {
         ] {
             fs::write(ws.path().join(name), body).unwrap();
         }
-        let manager = TrashManager::new(ws.path());
+        let trash_mgr = TrashManager::new(ws.path());
 
-        let item = manager.stage_to_trash("a", &png).unwrap();
+        let staged_item = trash_mgr.stage_to_trash("a", &png).unwrap();
         assert!(!ws.path().join("hero.png.meta").exists());
         assert!(!ws.path().join("hero.png.import").exists());
-        assert!(Path::new(&format!("{}.meta", item.trashed_path)).is_file());
+        assert!(Path::new(&format!("{}.meta", staged_item.trashed_path)).is_file());
 
-        manager.restore_from_trash(&item).unwrap();
+        trash_mgr.restore_from_trash(&staged_item).unwrap();
         assert_eq!(
             fs::read_to_string(ws.path().join("hero.png.meta")).unwrap(),
             "guid: a"
@@ -237,32 +241,34 @@ mod tests {
         let outside = tempdir().unwrap();
         let file = ws.path().join("logo.png");
         fs::write(&file, b"old").unwrap();
-        let manager = TrashManager::new(ws.path());
-        let item = manager.stage_to_trash("a", &file).unwrap();
+        let trash_mgr = TrashManager::new(ws.path());
+        let staged_item = trash_mgr.stage_to_trash("a", &file).unwrap();
 
         fs::write(&file, b"new").unwrap();
-        assert!(manager.restore_from_trash(&item).is_err());
+        assert!(trash_mgr.restore_from_trash(&staged_item).is_err());
         assert_eq!(fs::read(&file).unwrap(), b"new");
 
-        let mut escaping = item.clone();
+        let mut escaping = staged_item.clone();
         escaping.original_path = outside
             .path()
             .join("x/y/a.png")
             .to_string_lossy()
             .to_string();
-        assert!(manager.restore_from_trash(&escaping).is_err());
+        assert!(trash_mgr.restore_from_trash(&escaping).is_err());
         assert!(!outside.path().join("x").exists());
 
-        let mut not_trash = item;
-        not_trash.trashed_path = file.to_string_lossy().to_string();
-        assert!(manager.restore_from_trash(&not_trash).is_err());
+        let mut invalid_location_item = staged_item;
+        invalid_location_item.trashed_path = file.to_string_lossy().to_string();
+        assert!(trash_mgr
+            .restore_from_trash(&invalid_location_item)
+            .is_err());
     }
 
     #[test]
     fn test_stage_to_trash_avoids_homonymous_collision() {
         let dir = tempdir().unwrap();
         let ws_root = dir.path();
-        let manager = TrashManager::new(ws_root);
+        let trash_mgr = TrashManager::new(ws_root);
 
         let file1 = ws_root.join("app1_icon.png");
         let file2 = ws_root.join("app2_icon.png");
@@ -279,17 +285,17 @@ mod tests {
         fs::write(&path1, b"content1").unwrap();
         fs::write(&path2, b"content2").unwrap();
 
-        let item1 = manager.stage_to_trash("asset-1", &path1).unwrap();
-        let item2 = manager.stage_to_trash("asset-2", &path2).unwrap();
+        let staged_item1 = trash_mgr.stage_to_trash("asset-1", &path1).unwrap();
+        let staged_item2 = trash_mgr.stage_to_trash("asset-2", &path2).unwrap();
 
         // Both items must have distinct trashed paths and their contents must be preserved
-        assert_ne!(item1.trashed_path, item2.trashed_path);
-        assert_eq!(fs::read(&item1.trashed_path).unwrap(), b"content1");
-        assert_eq!(fs::read(&item2.trashed_path).unwrap(), b"content2");
+        assert_ne!(staged_item1.trashed_path, staged_item2.trashed_path);
+        assert_eq!(fs::read(&staged_item1.trashed_path).unwrap(), b"content1");
+        assert_eq!(fs::read(&staged_item2.trashed_path).unwrap(), b"content2");
 
         // Restoring both must restore original contents to respective locations
-        manager.restore_from_trash(&item1).unwrap();
-        manager.restore_from_trash(&item2).unwrap();
+        trash_mgr.restore_from_trash(&staged_item1).unwrap();
+        trash_mgr.restore_from_trash(&staged_item2).unwrap();
         assert_eq!(fs::read(&path1).unwrap(), b"content1");
         assert_eq!(fs::read(&path2).unwrap(), b"content2");
     }

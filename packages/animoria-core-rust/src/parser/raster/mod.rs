@@ -5,6 +5,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
+/// Extracts dimensions, format validation, and color metadata from raster images.
 pub fn parse_raster(path: &Path, asset: &mut Asset) -> Result<(), String> {
     let file = File::open(path).map_err(|e| format!("Cannot open raster file: {e}"))?;
 

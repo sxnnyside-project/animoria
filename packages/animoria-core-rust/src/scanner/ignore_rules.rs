@@ -1,6 +1,7 @@
 use globset::{Glob, GlobMatcher};
 use std::path::Path;
 
+/// Standard directories always excluded from workspace asset discovery.
 pub const DEFAULT_EXCLUDE_DIRS: &[&str] = &[
     "node_modules",
     ".git",
@@ -48,7 +49,7 @@ pub fn read_animoriaignore(root: &Path) -> Vec<String> {
 
 struct Rule {
     matcher: GlobMatcher,
-    negate: bool,
+    is_negated: bool,
 }
 
 /// Ignore rules evaluated in gitignore order: rules are checked front-to-back
@@ -69,15 +70,16 @@ impl std::fmt::Debug for IgnoreRules {
     }
 }
 
-fn push_rule(rules: &mut Vec<Rule>, pattern: &str, negate: bool) -> anyhow::Result<()> {
+fn push_rule(rules: &mut Vec<Rule>, pattern: &str, is_negated: bool) -> anyhow::Result<()> {
     rules.push(Rule {
         matcher: Glob::new(pattern)?.compile_matcher(),
-        negate,
+        is_negated,
     });
     Ok(())
 }
 
 impl IgnoreRules {
+    /// Compiles gitignore-style ignore rules from custom workspace patterns.
     pub fn new(custom_patterns: &[String]) -> anyhow::Result<Self> {
         let mut rules = Vec::new();
 
@@ -93,7 +95,7 @@ impl IgnoreRules {
                 continue;
             }
 
-            let (negate, pattern) = match trimmed.strip_prefix('!') {
+            let (is_negated, pattern) = match trimmed.strip_prefix('!') {
                 Some(rest) => (true, rest),
                 None => (false, trimmed),
             };
@@ -110,28 +112,28 @@ impl IgnoreRules {
             let clean = pattern.trim_end_matches('/');
 
             if anchored {
-                push_rule(&mut rules, clean, negate)?;
-                push_rule(&mut rules, &format!("{clean}/**"), negate)?;
+                push_rule(&mut rules, clean, is_negated)?;
+                push_rule(&mut rules, &format!("{clean}/**"), is_negated)?;
                 // Absolute paths (`/Users/me/proj/dist/`) must keep matching as they always did.
-                push_rule(&mut rules, &format!("/{clean}"), negate)?;
-                push_rule(&mut rules, &format!("/{clean}/**"), negate)?;
+                push_rule(&mut rules, &format!("/{clean}"), is_negated)?;
+                push_rule(&mut rules, &format!("/{clean}/**"), is_negated)?;
                 continue;
             }
 
             if is_dir {
-                push_rule(&mut rules, clean, negate)?;
-                push_rule(&mut rules, &format!("{clean}/**"), negate)?;
-                push_rule(&mut rules, &format!("**/{clean}/**"), negate)?;
-                push_rule(&mut rules, &format!("**/{clean}"), negate)?;
+                push_rule(&mut rules, clean, is_negated)?;
+                push_rule(&mut rules, &format!("{clean}/**"), is_negated)?;
+                push_rule(&mut rules, &format!("**/{clean}/**"), is_negated)?;
+                push_rule(&mut rules, &format!("**/{clean}"), is_negated)?;
             } else if !clean.contains('/') {
-                push_rule(&mut rules, clean, negate)?;
-                push_rule(&mut rules, &format!("**/{clean}"), negate)?;
-                push_rule(&mut rules, &format!("**/{clean}/**"), negate)?;
+                push_rule(&mut rules, clean, is_negated)?;
+                push_rule(&mut rules, &format!("**/{clean}"), is_negated)?;
+                push_rule(&mut rules, &format!("**/{clean}/**"), is_negated)?;
             } else {
-                push_rule(&mut rules, clean, negate)?;
-                push_rule(&mut rules, &format!("{clean}/**"), negate)?;
-                push_rule(&mut rules, &format!("**/{clean}"), negate)?;
-                push_rule(&mut rules, &format!("**/{clean}/**"), negate)?;
+                push_rule(&mut rules, clean, is_negated)?;
+                push_rule(&mut rules, &format!("{clean}/**"), is_negated)?;
+                push_rule(&mut rules, &format!("**/{clean}"), is_negated)?;
+                push_rule(&mut rules, &format!("**/{clean}/**"), is_negated)?;
             }
         }
 
@@ -140,6 +142,7 @@ impl IgnoreRules {
         })
     }
 
+    /// Checks whether a given filesystem path is excluded by active ignore rules.
     pub fn is_ignored(&self, path: &Path) -> bool {
         let normalized = path.to_string_lossy().replace('\\', "/");
         let path_obj = Path::new(&normalized);
@@ -152,12 +155,13 @@ impl IgnoreRules {
                 || rule.matcher.is_match(path_obj)
                 || rule.matcher.is_match(trimmed_obj)
             {
-                ignored = !rule.negate;
+                ignored = !rule.is_negated;
             }
         }
         ignored
     }
 
+    /// Checks whether a relative path is excluded by active ignore rules.
     pub fn is_ignored_relative(&self, path: &Path, root: &Path) -> bool {
         if self.is_ignored(path) {
             return true;

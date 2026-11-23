@@ -519,13 +519,13 @@ export function resetVscodeMock(): void {
   __mockState.informationMessageResult = undefined;
   __mockState.warningMessageResult = undefined;
   __mockState.activeTextEditor = undefined;
-  commands.__registry.clear();
+  commands._registry.clear();
 }
 
 const registeredCommands = new Map<string, (...args: unknown[]) => unknown>();
 
 export const commands = {
-  __registry: registeredCommands,
+  _registry: registeredCommands,
   registerCommand(command: string, callback: (...args: unknown[]) => unknown): Disposable {
     registeredCommands.set(command, callback);
     return new Disposable(() => registeredCommands.delete(command));

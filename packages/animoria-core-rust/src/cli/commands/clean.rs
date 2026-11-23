@@ -7,13 +7,13 @@ use std::path::Path;
 
 /// Stages duplicate assets to `.animoria/trash`, or previews doing so.
 ///
-/// `apply` defaults to `false` at the call site (see `cli/args.rs`): running
+/// `should_apply` defaults to `false` at the call site (see `cli/args.rs`): running
 /// `animoria clean <path>` with no flags only prints what *would* move.
 /// Nothing on disk changes until the caller passes `--apply`, and only then
 /// is a trash session actually recorded — a dry run must not litter
 /// `.animoria/trash/sessions.json` with a session there is nothing to
 /// restore.
-pub fn execute_clean(target_path: &Path, apply: bool) -> anyhow::Result<i32> {
+pub fn execute_clean(target_path: &Path, should_apply: bool) -> anyhow::Result<i32> {
     let (bold, reset) = (ui::bold_start(), ui::reset());
     let quiet = ui::is_quiet();
     let canonical = resolve_workspace_path(target_path)?;
@@ -65,7 +65,7 @@ pub fn execute_clean(target_path: &Path, apply: bool) -> anyhow::Result<i32> {
                 skipped_referenced.push(asset.relative_path.clone());
                 continue;
             }
-            if apply {
+            if should_apply {
                 match trash_mgr.stage_to_trash(&asset.id, Path::new(&asset.path)) {
                     Ok(item) => {
                         if !quiet {
@@ -97,7 +97,7 @@ pub fn execute_clean(target_path: &Path, apply: bool) -> anyhow::Result<i32> {
     }
 
     // Recorded even after a failure, so whatever was already moved can still be restored.
-    let session_id = if apply && !trashed.is_empty() {
+    let session_id = if should_apply && !trashed.is_empty() {
         Some(record_trash_session(&canonical, &trashed).map_err(|e| {
             anyhow::anyhow!(
                 "moved {} file(s) into .animoria/trash but could not save the undo journal ({e}); \
@@ -134,7 +134,7 @@ pub fn execute_clean(target_path: &Path, apply: bool) -> anyhow::Result<i32> {
     }
 
     if quiet {
-        let mode = if apply { "applied" } else { "dry-run" };
+        let mode = if should_apply { "applied" } else { "dry-run" };
         println!(
             "{}: {} duplicate asset(s), {} reclaimed{}",
             mode,
@@ -148,7 +148,7 @@ pub fn execute_clean(target_path: &Path, apply: bool) -> anyhow::Result<i32> {
         return Ok(0);
     }
 
-    let mode = if apply { "" } else { "[Dry Run] " };
+    let mode = if should_apply { "" } else { "[Dry Run] " };
     println!(
         "\n  {}{bold}Remediation Summary:{reset} {} duplicate asset(s) staged | {} reclaimed.\n",
         mode,
@@ -164,7 +164,7 @@ pub fn execute_clean(target_path: &Path, apply: bool) -> anyhow::Result<i32> {
                 canonical.display()
             ))
         );
-    } else if !apply {
+    } else if !should_apply {
         println!(
             "  {}\n",
             warning("This was a preview. Re-run with --apply to actually move these files.")
@@ -233,8 +233,8 @@ mod tests {
         execute_clean(ws.path(), true).unwrap();
         let session = crate::daemon::cleanup::read_sessions(ws.path()).remove(0);
         // Simulate a first restore that moved the file back but died before updating the journal.
-        let item = &session.items[0];
-        fs::rename(&item.trash_path, &item.original_path).unwrap();
+        let session_item = &session.items[0];
+        fs::rename(&session_item.trash_path, &session_item.original_path).unwrap();
 
         let restored = crate::daemon::cleanup::restore_session(ws.path(), &session.id).unwrap();
         assert!(

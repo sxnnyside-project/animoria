@@ -2,7 +2,8 @@ use crate::cli::ui::{accent, brand, success, title, warning};
 use std::fs;
 use std::path::Path;
 
-pub fn execute_init(target_path: &Path, force: bool) -> anyhow::Result<i32> {
+/// Initializes `.animoriarc.json` policy and `.animoriaignore` files in the workspace.
+pub fn execute_init(target_path: &Path, should_force: bool) -> anyhow::Result<i32> {
     let canonical = fs::canonicalize(target_path).unwrap_or_else(|_| target_path.to_path_buf());
     let config_path = canonical.join(".animoriarc.json");
     let ignore_path = canonical.join(".animoriaignore");
@@ -13,7 +14,7 @@ pub fn execute_init(target_path: &Path, force: bool) -> anyhow::Result<i32> {
         title("Initialize Workspace Configuration")
     );
 
-    if config_path.is_file() && !force {
+    if config_path.is_file() && !should_force {
         println!(
             "  {} {} (Use --force to overwrite)",
             warning("▲"),
@@ -21,7 +22,7 @@ pub fn execute_init(target_path: &Path, force: bool) -> anyhow::Result<i32> {
         );
     } else {
         let default_config = serde_json::json!({
-            "$schema": "https://animoria.dev/schema/animoriarc.json",
+            "$schema": "https://extensions.sxnnysideproject.com/en/animoria/schema/animoriarc.json",
             "rules": {
                 "no-duplicate-content": "error",
                 "no-unreferenced-assets": "warning",
@@ -36,7 +37,7 @@ pub fn execute_init(target_path: &Path, force: bool) -> anyhow::Result<i32> {
         println!("  {} Created {}", success("✔"), success(".animoriarc.json"));
     }
 
-    if ignore_path.is_file() && !force {
+    if ignore_path.is_file() && !should_force {
         println!(
             "  {} {}",
             warning("▲"),

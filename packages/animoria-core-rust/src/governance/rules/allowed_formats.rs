@@ -3,6 +3,7 @@ use crate::contracts::asset::AssetFormat;
 use crate::governance::context::AnalysisContext;
 use crate::governance::rule::Rule;
 
+/// Rule restricting visual asset extensions to an explicit allowlist.
 pub struct AllowedFormatsRule;
 
 impl Rule for AllowedFormatsRule {
@@ -41,6 +42,7 @@ impl Rule for AllowedFormatsRule {
     }
 }
 
+/// Rule flagging legacy uncompressed GIF files.
 pub struct NoGifRule;
 
 impl Rule for NoGifRule {
@@ -53,7 +55,7 @@ impl Rule for NoGifRule {
 
         for asset in ctx.assets {
             let policy = ctx.policy_for(&asset.relative_path);
-            if !policy.no_gif {
+            if !policy.is_no_gif {
                 continue;
             }
 

@@ -5,6 +5,7 @@ use crate::governance::policy::NamingCase;
 use crate::governance::rule::Rule;
 use regex::Regex;
 
+/// Rule verifying asset file names match a required casing convention.
 pub struct NamingConventionRule;
 
 impl Rule for NamingConventionRule {
@@ -23,7 +24,8 @@ impl Rule for NamingConventionRule {
             };
 
             // Skip application icons if configured
-            if (policy.no_unreferenced_ignore_app_icons || policy.no_duplicate_ignore_app_icons)
+            if (policy.is_no_unreferenced_ignore_app_icons
+                || policy.is_no_duplicate_ignore_app_icons)
                 && is_app_icon(&asset.relative_path, &asset.name)
             {
                 continue;
@@ -75,6 +77,7 @@ impl Rule for NamingConventionRule {
     }
 }
 
+/// Strips `@2x`, `@3x`, and responsive suffixes from an asset stem.
 pub fn strip_density_suffix(stem: &str) -> &str {
     if let Some(idx) = stem.rfind('@') {
         let suffix = &stem[idx + 1..];
@@ -90,6 +93,7 @@ pub fn strip_density_suffix(stem: &str) -> &str {
     stem
 }
 
+/// Validates whether an identifier string satisfies the expected casing.
 pub fn matches_case(stem: &str, case: NamingCase) -> bool {
     if stem.is_empty() {
         return false;

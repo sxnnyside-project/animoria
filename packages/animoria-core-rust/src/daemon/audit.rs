@@ -87,6 +87,7 @@ pub fn read_audit_events(workspace_root: &Path) -> Vec<AuditEvent> {
 /// across a long-lived daemon process re-scanning the same workspace.
 const MAX_RETAINED_SNAPSHOTS: usize = 200;
 
+/// Saves an immutable analysis snapshot to `.animoria/audit/` for historical telemetry.
 pub fn record_analysis_snapshot(
     workspace_root: &Path,
     analysis: &WorkspaceAnalysis,

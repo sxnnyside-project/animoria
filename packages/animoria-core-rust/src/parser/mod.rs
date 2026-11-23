@@ -9,13 +9,19 @@
 //! the [`crate::contracts::Asset`] as `is_valid: false` with the exact failure message.
 //! The asset remains in the workspace index so developers are alerted via governance diagnostics.
 
-pub mod dotlottie;
-pub mod heuristics;
-pub mod lottie;
-pub mod raster;
+pub(crate) mod dotlottie;
+pub(crate) mod heuristics;
+pub(crate) mod lottie;
+pub(crate) mod raster;
+/// Universal parser registry mapping candidate assets to deep format parsers.
 pub mod registry;
-pub mod rive;
-pub mod vector;
+pub(crate) mod rive;
+pub(crate) mod vector;
 
+pub use dotlottie::parse_dotlottie;
 pub use heuristics::detect_format;
+pub use lottie::parse_lottie;
+pub use raster::parse_raster;
 pub use registry::ParserRegistry;
+pub use rive::parse_rive;
+pub use vector::parse_svg;

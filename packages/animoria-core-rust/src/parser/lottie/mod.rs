@@ -21,6 +21,7 @@ struct LottieDocument {
     layers: Option<Vec<serde_json::Value>>,
 }
 
+/// Inspects JSON content to parse and enrich Lottie motion metadata.
 pub fn parse_lottie(path: &Path, asset: &mut Asset) -> Result<(), String> {
     let file = File::open(path).map_err(|e| format!("Cannot open Lottie file: {e}"))?;
     let reader = BufReader::new(file);

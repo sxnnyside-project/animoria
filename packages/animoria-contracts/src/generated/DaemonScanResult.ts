@@ -3,4 +3,19 @@ import type { DuplicateGroup } from "./DuplicateGroup";
 import type { UsageReference } from "./UsageReference";
 import type { WorkspaceAnalysis } from "./WorkspaceAnalysis";
 
-export type DaemonScanResult = { analysis: WorkspaceAnalysis, references: Array<UsageReference>, duplicate_groups: Array<DuplicateGroup>, };
+/**
+ * Response payload returned by daemon scan operations.
+ */
+export type DaemonScanResult = { 
+/**
+ * Complete workspace asset analysis snapshot.
+ */
+analysis: WorkspaceAnalysis, 
+/**
+ * Traced source code usage references.
+ */
+references: Array<UsageReference>, 
+/**
+ * Discovered duplicate asset clusters.
+ */
+duplicate_groups: Array<DuplicateGroup>, };

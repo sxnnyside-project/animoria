@@ -18,6 +18,7 @@ use crate::thumbnail::resolve_thumbnail;
 use crate::tracing::AssetReferenceDetector;
 
 #[derive(Debug, Clone)]
+/// Thread-safe in-memory index coordinating asset discovery, parsing, and analysis.
 pub struct AssetIndex {
     root_id: String,
     root_path: PathBuf,
@@ -32,6 +33,7 @@ pub struct AssetIndex {
 }
 
 impl AssetIndex {
+    /// Initializes a new asset index bound to a workspace identifier and filesystem path.
     pub fn new(root_id: String, root_path: PathBuf) -> Self {
         Self {
             root_id,
@@ -52,14 +54,17 @@ impl AssetIndex {
         }
     }
 
+    /// Returns the unique workspace identifier for this index.
     pub fn root_id(&self) -> &str {
         &self.root_id
     }
 
+    /// Returns the root filesystem path of the indexed workspace.
     pub fn root_path(&self) -> &Path {
         &self.root_path
     }
 
+    /// Returns the current lifecycle state of the index.
     pub fn state(&self) -> LifecycleState {
         self.state
     }
@@ -75,24 +80,29 @@ impl AssetIndex {
         }
     }
 
+    /// Returns an immutable snapshot slice of all discovered visual assets.
     pub fn assets(&self) -> Vec<Asset> {
         let mut list: Vec<Asset> = self.assets.values().cloned().collect();
         list.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
         list
     }
 
+    /// Returns an immutable snapshot slice of all detected code usage references.
     pub fn references(&self) -> &[UsageReference] {
         &self.references
     }
 
+    /// Returns all duplicate asset clusters identified by content hashing.
     pub fn duplicate_groups(&self) -> &[DuplicateGroup] {
         &self.duplicate_groups
     }
 
+    /// Returns all governance rule diagnostic findings for the workspace.
     pub fn diagnostics(&self) -> &[RuleDiagnostic] {
         &self.diagnostics
     }
 
+    /// Returns the composite health score report synthesized for this workspace.
     pub fn health_score(&self) -> &HealthScoreReport {
         &self.health_score
     }
@@ -236,7 +246,7 @@ impl AssetIndex {
         }
 
         // If docs is explicitly configured to be scanned, negate the default exclusion
-        if !policy.files_ignore_docs {
+        if !policy.should_ignore_docs {
             combined_ignores.push("!docs/**".to_string());
             combined_ignores.push("!doc/**".to_string());
         }
@@ -305,6 +315,7 @@ impl AssetIndex {
         Ok(self.to_workspace_analysis())
     }
 
+    /// Serializes the current index state into a complete WorkspaceAnalysis payload.
     pub fn to_workspace_analysis(&self) -> WorkspaceAnalysis {
         let now_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
