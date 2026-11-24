@@ -96,10 +96,10 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: '21'
-      - name: Install just
+      - name: Install CLI tools
         uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with:
-          tool: just
+          tool: just,actionlint,shfmt
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Re-run quality gate

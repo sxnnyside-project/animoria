@@ -32,10 +32,10 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: '21'
-      - name: Install just
+      - name: Install CLI tools
         uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with:
-          tool: just
+          tool: just,actionlint,shfmt
       - name: Cache cargo registry & build
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
