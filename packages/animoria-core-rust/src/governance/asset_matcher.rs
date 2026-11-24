@@ -7,7 +7,7 @@ pub fn is_app_icon(asset_rel_path: &str, asset_name: &str) -> bool {
     let path_lower = asset_rel_path.to_lowercase().replace('\\', "/");
     let name_lower = asset_name.to_lowercase();
 
-    // 1. Directory hints for platform asset catalogs, IDE plugins, and density buckets
+    // 1. Directory hints for platform asset catalogs, IDE plugins, density buckets, store metadata, test goldens
     if path_lower.contains(".appiconset/")
         || path_lower.contains("appicon.appiconset")
         || path_lower.contains("/mipmap-")
@@ -19,11 +19,28 @@ pub fn is_app_icon(asset_rel_path: &str, asset_name: &str) -> bool {
         || path_lower.contains("meta-inf/icons/")
         || path_lower.contains("favicon_io/")
         || path_lower.contains("/favicon_io")
+        // Fastlane metadata store screenshots
+        || path_lower.contains("fastlane/metadata/")
+        || path_lower.contains("/phonescreenshots")
+        || path_lower.contains("/tabletscreenshots")
+        // Flutter test goldens
+        || path_lower.contains("/goldens/")
+        || path_lower.starts_with("goldens/")
+        || path_lower.ends_with("/goldens")
+        // Flutter web splash and icons
+        || path_lower.starts_with("web/icons/")
+        || path_lower.contains("/web/icons/")
+        || path_lower.starts_with("web/splash/")
+        || path_lower.contains("/web/splash/")
+        || path_lower == "web/favicon.png"
+        || path_lower.ends_with("/web/favicon.png")
+        || path_lower == "web/splash.png"
+        || path_lower.ends_with("/web/splash.png")
     {
         return true;
     }
 
-    // 2. Specific icon naming conventions (mobile, web, IDE plugins)
+    // 2. Specific icon naming conventions (mobile, web, IDE plugins, Windows/Tauri store assets)
     if name_lower.starts_with("ic_launcher")
         || name_lower.starts_with("appicon")
         || name_lower.starts_with("app-icon")
@@ -37,6 +54,13 @@ pub fn is_app_icon(asset_rel_path: &str, asset_name: &str) -> bool {
         || name_lower.starts_with("favicon")
         || name_lower.starts_with("maskable_icon")
         || name_lower.starts_with("mstile-")
+        // Windows / Tauri packaging and store logos
+        || (name_lower.starts_with("square") && name_lower.contains("logo"))
+        || name_lower.starts_with("storelogo")
+        || name_lower.starts_with("badgelogo")
+        || name_lower.starts_with("splashscreen")
+        // Flutter test golden files (e.g. login_screen_test.dart.0.png)
+        || (name_lower.contains(".dart.") && name_lower.ends_with(".png"))
     {
         return true;
     }
@@ -139,6 +163,43 @@ mod tests {
             "website/favicon_io/apple-touch-icon.png",
             "apple-touch-icon.png"
         ));
+    }
+
+    #[test]
+    fn detects_packaging_conventions_and_store_metadata() {
+        // Fastlane screenshots
+        assert!(is_app_icon(
+            "fastlane/metadata/android/en-US/images/phoneScreenshots/1.png",
+            "1.png"
+        ));
+        assert!(is_app_icon(
+            "fastlane/metadata/ios/en-US/images/tabletScreenshots/2.png",
+            "2.png"
+        ));
+
+        // Flutter test goldens
+        assert!(is_app_icon(
+            "test/goldens/login_screen.png",
+            "login_screen.png"
+        ));
+        assert!(is_app_icon(
+            "test/screens/home_test.dart.0.png",
+            "home_test.dart.0.png"
+        ));
+
+        // Windows / Tauri packaging logos
+        assert!(is_app_icon(
+            "src-tauri/icons/Square310x310Logo.png",
+            "Square310x310Logo.png"
+        ));
+        assert!(is_app_icon("windows/StoreLogo.png", "StoreLogo.png"));
+        assert!(is_app_icon("windows/BadgeLogo.png", "BadgeLogo.png"));
+
+        // Flutter web
+        assert!(is_app_icon("web/icons/Icon-192.png", "Icon-192.png"));
+        assert!(is_app_icon("web/favicon.png", "favicon.png"));
+        assert!(is_app_icon("web/splash.png", "splash.png"));
+        assert!(is_app_icon("web/splash/img/dark-1x.png", "dark-1x.png"));
     }
 
     #[test]

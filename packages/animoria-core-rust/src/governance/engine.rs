@@ -75,31 +75,6 @@ impl GovernanceEngine {
             .count();
         let invalid_count = ctx.assets.iter().filter(|a| !a.is_valid).count();
 
-        // Error penalty = 15 points per violation, Warning penalty = 5 points, Invalid asset = 20 points
-        let penalty = (error_count as f64 * 15.0)
-            + (warning_count as f64 * 5.0)
-            + (invalid_count as f64 * 20.0);
-
-        let base_score = 100.0 - (penalty / (total_assets as f64).max(1.0) * 10.0);
-        let score = (base_score.clamp(0.0, 100.0).round()) as u32;
-
-        // These cutoffs are the *only* place a score becomes a letter grade —
-        // `cli/ui.rs::grade_badge` and the VS Code host's
-        // `describeHealthState` both key off this `grade` string rather than
-        // re-deriving their own thresholds from `score`, specifically so a
-        // grade can never disagree with itself across surfaces.
-        let grade = if score >= 90 {
-            "A".to_string()
-        } else if score >= 80 {
-            "B".to_string()
-        } else if score >= 70 {
-            "C".to_string()
-        } else if score >= 60 {
-            "D".to_string()
-        } else {
-            "F".to_string()
-        };
-
         let unreferenced_violations = diagnostics
             .iter()
             .filter(|d| d.rule_id == "no-unreferenced-assets")
@@ -150,6 +125,32 @@ impl GovernanceEngine {
                 violations_count: policy_violations,
             },
         ];
+
+        // Overall score is strictly the category-weighted sum: sum(cat.score * cat.weight)
+        // Mathematically bounded within [0, 100] and within [min(cat.score), max(cat.score)].
+        let score = categories
+            .iter()
+            .map(|c| c.score as f64 * c.weight)
+            .sum::<f64>()
+            .clamp(0.0, 100.0)
+            .round() as u32;
+
+        // These cutoffs are the *only* place a score becomes a letter grade —
+        // `cli/ui.rs::grade_badge` and the VS Code host's
+        // `describeHealthState` both key off this `grade` string rather than
+        // re-deriving their own thresholds from `score`, specifically so a
+        // grade can never disagree with itself across surfaces.
+        let grade = if score >= 90 {
+            "A".to_string()
+        } else if score >= 80 {
+            "B".to_string()
+        } else if score >= 70 {
+            "C".to_string()
+        } else if score >= 60 {
+            "D".to_string()
+        } else {
+            "F".to_string()
+        };
 
         let summary = format!(
             "Governance evaluation complete: {} asset(s), {} error(s), {} warning(s). Overall Health: {}% (Grade {}).",
@@ -356,5 +357,60 @@ mod aggregate_tests {
             .unwrap();
         assert_eq!(dup_cat.violations_count, 0);
         assert_eq!(dup_cat.score, 100);
+
+        // Overall score must be the category-weighted sum:
+        // unref (0 * 0.35) + dup (100 * 0.35) + policy (100 * 0.30) = 65 -> Grade D
+        assert_eq!(report.score, 65);
+        assert_eq!(report.grade, "D");
+    }
+
+    #[test]
+    fn overall_score_matches_category_weights_and_bounds() {
+        // Test that overall score matches sum(cat.score * cat.weight)
+        // Example: vibetype (Unreferenced: 97, Duplication: 94, Format/Sizing: 32)
+        // 97 * 0.35 + 94 * 0.35 + 32 * 0.30 = 33.95 + 32.90 + 9.60 = 76.45 -> 76 (C)
+        let unreferenced = CategoryScore {
+            category: "Unreferenced Assets".to_string(),
+            score: 97,
+            weight: 0.35,
+            violations_count: 3,
+        };
+        let duplication = CategoryScore {
+            category: "Content Duplication".to_string(),
+            score: 94,
+            weight: 0.35,
+            violations_count: 6,
+        };
+        let format_sizing = CategoryScore {
+            category: "Format & Sizing Policy".to_string(),
+            score: 32,
+            weight: 0.30,
+            violations_count: 68,
+        };
+
+        let categories = [unreferenced, duplication, format_sizing];
+        let score = categories
+            .iter()
+            .map(|c| c.score as f64 * c.weight)
+            .sum::<f64>()
+            .clamp(0.0, 100.0)
+            .round() as u32;
+
+        let min_cat = categories.iter().map(|c| c.score).min().unwrap();
+        let max_cat = categories.iter().map(|c| c.score).max().unwrap();
+
+        assert_eq!(score, 76);
+        assert!(
+            score >= min_cat,
+            "score {} must be >= min category score {}",
+            score,
+            min_cat
+        );
+        assert!(
+            score <= max_cat,
+            "score {} must be <= max category score {}",
+            score,
+            max_cat
+        );
     }
 }

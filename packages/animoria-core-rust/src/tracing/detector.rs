@@ -5,7 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use super::patterns::{
-    asset_matches_dynamic_pattern, asset_matches_path_token, extract_dynamic_patterns,
+    asset_matches_dynamic_pattern, asset_matches_path_token, extract_dynamic_patterns_with_context,
     extract_exported_identifier, extract_path_token, extract_quoted_tokens, is_line_comment_or_url,
     is_source_file_extension, is_valid_exact_filename_reference, is_valid_stem_reference,
     is_word_boundary, lua_long_comment,
@@ -271,10 +271,33 @@ impl AssetReferenceDetector {
                 let mut in_block_comment = false;
                 let is_lua = matches!(syntax_type.as_str(), "lua" | "luau");
                 let mut lua_close: Option<String> = None;
+                let mut local_vars = std::collections::HashMap::new();
 
                 for (line_idx, line) in content.lines().enumerate() {
                     let line_number = (line_idx + 1) as u32;
                     let trimmed = line.trim();
+
+                    // Track local string variable assignments (e.g. const dir = '...', final _imagePath = '...')
+                    if line.contains('=')
+                        && (line.contains('\'') || line.contains('"') || line.contains('`'))
+                    {
+                        if let Some(eq_idx) = line.find('=') {
+                            let left = line[..eq_idx].trim();
+                            let right = line[eq_idx + 1..].trim();
+                            if let Some(var_name) = left.split_whitespace().last() {
+                                let clean_var = var_name.trim_start_matches(['$', '_']);
+                                if let Some(quoted) = extract_quoted_tokens(right).first() {
+                                    if !quoted.is_empty() {
+                                        local_vars.insert(var_name.to_string(), quoted.to_string());
+                                        if !clean_var.is_empty() {
+                                            local_vars
+                                                .insert(clean_var.to_string(), quoted.to_string());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
 
                     if in_block_comment {
                         let ended = match &lua_close {
@@ -413,19 +436,31 @@ impl AssetReferenceDetector {
                         });
                     }
 
-                    // Dynamic template string and interpolation scan on line
+                    // Dynamic template string, interpolation, glob, and external declaration scan on line
                     let has_dynamic_candidate = line.contains("${")
                         || line.contains('`')
                         || line.contains("\\(")
                         || line.contains("{$")
                         || line.contains("#{")
+                        || line.contains('$')
+                        || line.contains("import.meta.glob")
+                        || line.contains("classpath:")
+                        || line.contains("classpath*:")
+                        || (relative_source.ends_with("pubspec.yaml")
+                            && (line.contains("- ") || line.contains("assets/")))
                         || (line.contains('+')
                             && (line.contains("'.")
                                 || line.contains("\".")
-                                || line.contains("`.")));
+                                || line.contains("`.")
+                                || line.contains('/')
+                                || !local_vars.is_empty()));
 
                     if has_dynamic_candidate {
-                        let dynamic_patterns = extract_dynamic_patterns(line);
+                        let dynamic_patterns = extract_dynamic_patterns_with_context(
+                            line,
+                            &local_vars,
+                            &relative_source,
+                        );
                         for dyn_pattern in &dynamic_patterns {
                             for asset in assets {
                                 if !asset_matches_dynamic_pattern(
@@ -460,7 +495,9 @@ impl AssetReferenceDetector {
                                 let confidence = if syntax_type == "md" || syntax_type == "mdx" {
                                     "low"
                                 } else if dyn_pattern.dir_prefix.is_some()
+                                    || dyn_pattern.stem_exact.is_some()
                                     || dyn_pattern.stem_prefix.is_some()
+                                    || dyn_pattern.glob_pattern.is_some()
                                 {
                                     "medium"
                                 } else {

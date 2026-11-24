@@ -209,7 +209,7 @@ fn test_invariant_malformed_assets_are_never_dropped() {
     assert!(!corrupt_svg.is_valid);
     assert!(corrupt_svg.error.is_some());
 
-    // Health score properly penalizes 4 invalid assets + 1 unreferenced asset
-    assert!(analysis.health_score.score <= 20);
-    assert_eq!(analysis.health_score.grade, "F");
+    // Health score properly reflects category-weighted sum (Unreferenced 80, Duplication 100, Policy 20 -> 69)
+    assert_eq!(analysis.health_score.score, 69);
+    assert_eq!(analysis.health_score.grade, "D");
 }

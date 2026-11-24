@@ -87,6 +87,9 @@ pub const SOURCE_EXTENSIONS: &[&str] = &[
     "lua",
     // Web manifest formats
     "webmanifest",
+    // Database and configuration formats
+    "sql",
+    "properties",
 ];
 
 /// Returns whether a given file extension corresponds to scannable source code.
@@ -96,7 +99,8 @@ pub fn is_source_file_extension(ext: &str) -> bool {
 
 /// Languages where a leading `#` starts a comment. In CSS/SCSS/HTML a leading `#` is an id
 /// selector (`#hero { background: url(hero.png) }`), which is a real reference.
-const HASH_COMMENT_EXTENSIONS: &[&str] = &["py", "rb", "toml", "yml", "yaml", "gd", "sh"];
+const HASH_COMMENT_EXTENSIONS: &[&str] =
+    &["py", "rb", "toml", "yml", "yaml", "gd", "sh", "properties"];
 
 /// Opening of a Lua long comment (`--[[`, `--[=[`, `--[==[` ...): the byte length of the opener
 /// and the closing bracket with the same number of `=` signs.
@@ -114,12 +118,13 @@ pub fn lua_long_comment(trimmed: &str) -> Option<(usize, String)> {
 /// treated as a comment here (`* { background: url(bg.png) }` is a CSS rule).
 pub fn is_line_comment_or_url(line: &str, ext: &str) -> bool {
     let trimmed = line.trim();
-    // Only Lua/Luau: in CSS a leading `--` is a custom property (`--logo: url(logo.png)`).
-    (trimmed.starts_with("--") && matches!(ext, "lua" | "luau"))
+    // Only Lua/Luau/SQL: in CSS a leading `--` is a custom property (`--logo: url(logo.png)`).
+    (trimmed.starts_with("--") && matches!(ext, "lua" | "luau" | "sql"))
         || trimmed.starts_with("//")
         || trimmed.starts_with("/*")
         || trimmed.starts_with("<!--")
         || (trimmed.starts_with('#') && HASH_COMMENT_EXTENSIONS.contains(&ext))
+        || (trimmed.starts_with('!') && ext == "properties")
 }
 
 /// Whether a line containing an asset's *stem* (name without extension) is a
@@ -232,8 +237,10 @@ pub fn is_valid_exact_filename_reference(line_lower: &str, filename_lower: &str)
         let after = &line_lower[pos + filename_lower.len()..];
 
         let before_quote = before.ends_with('"') || before.ends_with('\'') || before.ends_with('`');
-        let after_quote =
-            after.starts_with('"') || after.starts_with('\'') || after.starts_with('`');
+        let after_quote = after.starts_with('"')
+            || after.starts_with('\'')
+            || after.starts_with('`')
+            || after.starts_with('?');
 
         if (before_quote && after_quote)
             || before.ends_with('/')
@@ -277,7 +284,7 @@ pub fn extract_path_token(line: &str, match_start: usize, match_end: usize) -> O
         start -= 1;
     }
 
-    // Expand forwards until quote, whitespace, comma, paren, semicolon, etc.
+    // Expand forwards until quote, whitespace, comma, paren, semicolon, query string, etc.
     while end < bytes.len() {
         let b = bytes[end];
         if b == b'"'
@@ -290,6 +297,7 @@ pub fn extract_path_token(line: &str, match_start: usize, match_end: usize) -> O
             || b == b'\t'
             || b == b';'
             || b == b','
+            || b == b'?'
         {
             break;
         }
@@ -342,8 +350,10 @@ pub fn asset_matches_path_token(
     source_path: &std::path::Path,
     token: &str,
 ) -> bool {
+    // Strip query parameters (e.g. `?url`, `?raw`)
+    let clean_token_raw = token.split('?').next().unwrap_or(token);
     // Godot's `res://` is the project root, so the rest is a workspace-relative suffix.
-    let clean_token = token.replace('\\', "/");
+    let clean_token = clean_token_raw.replace('\\', "/");
     let clean_token = clean_token
         .strip_prefix("res://")
         .unwrap_or(&clean_token)
@@ -444,113 +454,261 @@ pub fn asset_matches_path_token(
     false
 }
 
+/// Matches an asset against a glob pattern (e.g. from `import.meta.glob` or Spring `classpath:`).
+pub fn matches_glob(
+    pattern: &str,
+    source_path: &std::path::Path,
+    asset_path: &str,
+    asset_rel_path: &str,
+) -> bool {
+    let clean_pat = pattern
+        .split('?')
+        .next()
+        .unwrap_or(pattern)
+        .replace('\\', "/");
+    let clean_pat = clean_pat
+        .trim_matches(['"', '\'', '`'])
+        .trim()
+        .replace('…', "..");
+
+    if clean_pat.is_empty() {
+        return false;
+    }
+
+    let norm_asset_path = asset_path.replace('\\', "/");
+    let norm_asset_rel = asset_rel_path.replace('\\', "/");
+
+    // 1. If pattern is relative to source file (starts with ./ or ../)
+    if clean_pat.starts_with("./") || clean_pat.starts_with("../") {
+        if let Some(parent) = source_path.parent() {
+            let joined = parent.join(&clean_pat);
+            let mut normalized = std::path::PathBuf::new();
+            for comp in joined.components() {
+                match comp {
+                    std::path::Component::CurDir => {}
+                    std::path::Component::ParentDir => {
+                        normalized.pop();
+                    }
+                    other => normalized.push(other.as_os_str()),
+                }
+            }
+            let norm_str = normalized.to_string_lossy().replace('\\', "/");
+            if let Ok(glob) = globset::Glob::new(&norm_str) {
+                let matcher = glob.compile_matcher();
+                if matcher.is_match(&norm_asset_path) || matcher.is_match(&norm_asset_rel) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    // 2. Direct glob match on relative path or full path
+    let pat_trimmed = clean_pat.trim_start_matches(['/', '.']);
+    if let Ok(glob) = globset::Glob::new(pat_trimmed) {
+        let matcher = glob.compile_matcher();
+        if matcher.is_match(&norm_asset_rel) || matcher.is_match(&norm_asset_path) {
+            return true;
+        }
+    }
+
+    // 3. Match with **/ prefix for subtrees (e.g. static/images/icons/svg/*.svg)
+    let wildcard_pat = format!("**/{}", pat_trimmed.trim_start_matches('/'));
+    if let Ok(glob) = globset::Glob::new(&wildcard_pat) {
+        let matcher = glob.compile_matcher();
+        if matcher.is_match(&norm_asset_rel) || matcher.is_match(&norm_asset_path) {
+            return true;
+        }
+    }
+
+    false
+}
+
 /// Represents a parsed dynamic reference pattern extracted from an interpolated
 /// string (e.g. `${c.id}.webp`, `/characters/${c.id}.webp`, or `'icons/' + id + '.png'`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DynamicPattern {
     pub(crate) dir_prefix: Option<String>,
+    pub(crate) stem_exact: Option<String>,
     pub(crate) stem_prefix: Option<String>,
     pub(crate) stem_suffix: Option<String>,
-    pub(crate) extension: String,
+    pub(crate) extension: Option<String>,
+    pub(crate) glob_pattern: Option<String>,
 }
 
-fn parse_dynamic_pattern_from_token(token: &str) -> Option<DynamicPattern> {
-    let is_interpolation = token.contains("${")
-        || token.contains("\\(")
-        || token.contains("#{")
-        || token.contains("{$")
-        || (token.contains('{') && token.contains('}'));
+fn has_dart_style_interpolation(token: &str) -> bool {
+    let bytes = token.as_bytes();
+    for (i, &b) in bytes.iter().enumerate() {
+        if b == b'$' && i + 1 < bytes.len() {
+            let next = bytes[i + 1];
+            if next.is_ascii_alphabetic() || next == b'_' {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn parse_dynamic_pattern_from_token(
+    token: &str,
+    vars: &std::collections::HashMap<String, String>,
+) -> Option<DynamicPattern> {
+    let clean = token.trim_matches(['"', '\'', '`', ';', ',']).trim();
+    if clean.is_empty() {
+        return None;
+    }
+
+    let is_interpolation = clean.contains("${")
+        || clean.contains("\\(")
+        || clean.contains("#{")
+        || clean.contains("{$")
+        || (clean.contains('{') && clean.contains('}'))
+        || has_dart_style_interpolation(clean);
 
     if !is_interpolation {
         return None;
     }
 
-    let last_dot = token.rfind('.')?;
-    let ext_str = &token[last_dot + 1..];
-    let ext_lower = ext_str
-        .trim_matches(['"', '\'', '`', '}', ')', ';', ',', ' '])
-        .to_lowercase();
-
-    if !RECOGNIZED_EXTENSIONS.contains(&ext_lower.as_str()) {
-        return None;
+    // Find first dynamic marker start
+    let mut first_marker_start: Option<usize> = None;
+    let bytes = clean.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if (bytes[i] == b'$'
+            && i + 1 < bytes.len()
+            && (bytes[i + 1] == b'{' || bytes[i + 1].is_ascii_alphabetic() || bytes[i + 1] == b'_'))
+            || (bytes[i] == b'\\' && i + 1 < bytes.len() && bytes[i + 1] == b'(')
+            || (bytes[i] == b'#' && i + 1 < bytes.len() && bytes[i + 1] == b'{')
+            || (bytes[i] == b'{' && i + 1 < bytes.len() && bytes[i + 1] == b'$')
+            || (bytes[i] == b'{')
+        {
+            first_marker_start = Some(i);
+            break;
+        }
+        i += 1;
     }
 
-    let start_marker = token
-        .find("${")
-        .or_else(|| token.find("\\("))
-        .or_else(|| token.find("#{"))
-        .or_else(|| token.find("{$"))
-        .or_else(|| token.find('{'))?;
+    let start_idx = first_marker_start?;
 
-    let end_marker = token[..last_dot]
-        .rfind('}')
-        .or_else(|| token[..last_dot].rfind(')'))
-        .map(|pos| pos + 1)?;
-
-    if start_marker >= end_marker || end_marker > last_dot {
-        return None;
+    // Find the last dynamic marker end
+    let mut last_marker_end: Option<usize> = None;
+    if let Some(r_close) = clean.rfind('}').or_else(|| clean.rfind(')')) {
+        last_marker_end = Some(r_close + 1);
+    } else if let Some(last_dollar) = clean.rfind('$') {
+        let mut j = last_dollar + 1;
+        while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_') {
+            j += 1;
+        }
+        last_marker_end = Some(j);
     }
 
-    let before = &token[..start_marker];
-    let (dir_prefix, stem_prefix) = if before.contains('/') {
-        let last_slash = before.rfind('/').unwrap();
-        let dir_part = &before[..last_slash];
-        let clean_dir = dir_part.trim_matches(['/', '.', '`', '"', '\'']).trim();
-        let dir = if clean_dir.is_empty() {
-            None
-        } else {
-            Some(clean_dir.to_string())
-        };
+    let end_idx = last_marker_end.unwrap_or(start_idx);
 
-        let stem_prefix_part = before[last_slash + 1..].trim();
-        let stem_pre = if stem_prefix_part.is_empty() {
-            None
-        } else {
-            Some(stem_prefix_part.to_string())
-        };
-        (dir, stem_pre)
+    let before = &clean[..start_idx];
+    let after = if end_idx <= clean.len() {
+        &clean[end_idx..]
+    } else {
+        ""
+    };
+
+    // Check extension and stem suffix/exact in `after`
+    let mut extension: Option<String> = None;
+    let mut stem_suffix: Option<String> = None;
+    let mut stem_exact: Option<String> = None;
+
+    if let Some(last_dot) = after.rfind('.') {
+        let ext_candidate = after[last_dot + 1..]
+            .trim_matches(['"', '\'', '`', '}', ')', ';', ',', ' '])
+            .to_lowercase();
+        if RECOGNIZED_EXTENSIONS.contains(&ext_candidate.as_str()) {
+            extension = Some(ext_candidate);
+            let suffix = after[..last_dot].trim();
+            if !suffix.is_empty() {
+                if suffix.starts_with('/') {
+                    let stem = suffix.trim_start_matches('/');
+                    if !stem.is_empty() {
+                        stem_exact = Some(stem.to_string());
+                    }
+                } else {
+                    stem_suffix = Some(suffix.to_string());
+                }
+            }
+        }
+    }
+
+    // Directory prefix and stem prefix from `before`
+    let mut dir_prefix: Option<String> = None;
+    let mut stem_prefix: Option<String> = None;
+
+    if before.contains('/') {
+        if let Some(last_slash) = before.rfind('/') {
+            let dir_part = &before[..last_slash];
+            let clean_dir = dir_part.trim_matches(['/', '.', '`', '"', '\'']).trim();
+            if !clean_dir.is_empty() {
+                dir_prefix = Some(clean_dir.to_string());
+            }
+
+            let stem_pre = before[last_slash + 1..].trim();
+            if !stem_pre.is_empty() {
+                stem_prefix = Some(stem_pre.to_string());
+            }
+        }
     } else {
         let clean_before = before.trim_matches(['`', '"', '\'']).trim();
-        let stem_pre = if clean_before.is_empty() {
-            None
-        } else {
-            Some(clean_before.to_string())
-        };
-        (None, stem_pre)
-    };
+        if !clean_before.is_empty() {
+            stem_prefix = Some(clean_before.to_string());
+        }
+    }
 
-    let suffix_part = token[end_marker..last_dot].trim();
-    let stem_suffix = if suffix_part.is_empty() {
-        None
-    } else {
-        Some(suffix_part.to_string())
-    };
+    // If dir_prefix is None and variable was at the start (e.g. `$_imagePath/foo.png`),
+    // resolve against `vars`
+    if dir_prefix.is_none() && start_idx == 0 {
+        let var_text = &clean[1..end_idx];
+        let var_name = var_text.trim_matches(['{', '}']);
+        if let Some(val) = vars.get(var_name).or_else(|| vars.get(&clean[..end_idx])) {
+            let clean_val = val.trim_matches(['/', '.', '"', '\'', '`']).trim();
+            if !clean_val.is_empty() {
+                dir_prefix = Some(clean_val.to_string());
+            }
+        }
+    }
+
+    if dir_prefix.is_none()
+        && stem_exact.is_none()
+        && stem_prefix.is_none()
+        && stem_suffix.is_none()
+        && extension.is_none()
+    {
+        return None;
+    }
 
     Some(DynamicPattern {
         dir_prefix,
+        stem_exact,
         stem_prefix,
         stem_suffix,
-        extension: ext_lower,
+        extension,
+        glob_pattern: None,
     })
 }
 
-/// Extracts all dynamic asset template patterns from a source code line.
-///
-/// Detects JavaScript/TypeScript/Kotlin template literals (`` `${c.id}.webp` ``),
-/// Swift interpolations (`"\(id).png"`), and dynamic concatenations (`'/characters/' + id + '.webp'`).
-pub(crate) fn extract_dynamic_patterns(line: &str) -> Vec<DynamicPattern> {
+/// Extracts all dynamic asset template patterns from a source code line with variable resolution and context.
+pub(crate) fn extract_dynamic_patterns_with_context(
+    line: &str,
+    vars: &std::collections::HashMap<String, String>,
+    relative_source: &str,
+) -> Vec<DynamicPattern> {
     let mut patterns = Vec::new();
     let tokens = extract_quoted_tokens(line);
 
     for token in &tokens {
-        if let Some(pat) = parse_dynamic_pattern_from_token(token) {
+        if let Some(pat) = parse_dynamic_pattern_from_token(token, vars) {
             if !patterns.contains(&pat) {
                 patterns.push(pat);
             }
         }
     }
 
-    // Also support string concatenation (e.g. '/characters/' + c.id + '.webp')
+    // Support string concatenation (e.g. 'res/icons/overlay/' + n + '.png' or dir + i + '.jpg')
     if line.contains('+') {
         let mut dir_prefix: Option<String> = None;
         let mut target_ext: Option<String> = None;
@@ -570,12 +728,27 @@ pub(crate) fn extract_dynamic_patterns(line: &str) -> Vec<DynamicPattern> {
             }
         }
 
+        // If dir_prefix was not a quoted literal, check if any identifier in line is in `vars`
+        if dir_prefix.is_none() {
+            for word in line.split(|c: char| !c.is_alphanumeric() && c != '_' && c != '$') {
+                if let Some(val) = vars.get(word) {
+                    let clean = val.trim_matches(['/', '.', '"', '\'', '`']).trim();
+                    if !clean.is_empty() {
+                        dir_prefix = Some(clean.to_string());
+                        break;
+                    }
+                }
+            }
+        }
+
         if let (Some(dir), Some(ext)) = (dir_prefix, target_ext) {
             let pat = DynamicPattern {
                 dir_prefix: Some(dir),
+                stem_exact: None,
                 stem_prefix: None,
                 stem_suffix: None,
-                extension: ext,
+                extension: Some(ext),
+                glob_pattern: None,
             };
             if !patterns.contains(&pat) {
                 patterns.push(pat);
@@ -583,7 +756,91 @@ pub(crate) fn extract_dynamic_patterns(line: &str) -> Vec<DynamicPattern> {
         }
     }
 
+    // Support Vite / SvelteKit / Astro `import.meta.glob('…/*.svg', ...)`
+    if line.contains("import.meta.glob") {
+        for token in &tokens {
+            let clean = token.split('?').next().unwrap_or(token).trim();
+            if clean.contains('*') || RECOGNIZED_EXTENSIONS.iter().any(|ext| clean.ends_with(ext)) {
+                let pat = DynamicPattern {
+                    dir_prefix: None,
+                    stem_exact: None,
+                    stem_prefix: None,
+                    stem_suffix: None,
+                    extension: None,
+                    glob_pattern: Some(clean.to_string()),
+                };
+                if !patterns.contains(&pat) {
+                    patterns.push(pat);
+                }
+            }
+        }
+    }
+
+    // Support Spring Boot `classpath:static/.../*.svg` or `classpath*:...`
+    if line.contains("classpath:") || line.contains("classpath*:") {
+        for token in &tokens {
+            if let Some(pos) = token.find("classpath:") {
+                let after_cp = &token[pos + "classpath:".len()..];
+                let pat = DynamicPattern {
+                    dir_prefix: None,
+                    stem_exact: None,
+                    stem_prefix: None,
+                    stem_suffix: None,
+                    extension: None,
+                    glob_pattern: Some(after_cp.to_string()),
+                };
+                if !patterns.contains(&pat) {
+                    patterns.push(pat);
+                }
+            } else if let Some(pos) = token.find("classpath*:") {
+                let after_cp = &token[pos + "classpath*:".len()..];
+                let pat = DynamicPattern {
+                    dir_prefix: None,
+                    stem_exact: None,
+                    stem_prefix: None,
+                    stem_suffix: None,
+                    extension: None,
+                    glob_pattern: Some(after_cp.to_string()),
+                };
+                if !patterns.contains(&pat) {
+                    patterns.push(pat);
+                }
+            }
+        }
+    }
+
+    // Support Flutter pubspec.yaml asset directory declarations: `- assets/icons/`
+    if relative_source.ends_with("pubspec.yaml") {
+        let trimmed = line.trim();
+        if let Some(stripped) = trimmed.strip_prefix("- ") {
+            let entry = stripped.trim().trim_matches(['"', '\'', '`']);
+            if entry.ends_with('/') || entry.contains('/') {
+                let clean = entry.trim_matches(['/', '.']);
+                if !clean.is_empty() {
+                    let pat = DynamicPattern {
+                        dir_prefix: Some(clean.to_string()),
+                        stem_exact: None,
+                        stem_prefix: None,
+                        stem_suffix: None,
+                        extension: None,
+                        glob_pattern: None,
+                    };
+                    if !patterns.contains(&pat) {
+                        patterns.push(pat);
+                    }
+                }
+            }
+        }
+    }
+
     patterns
+}
+
+/// Extracts all dynamic asset template patterns from a source code line.
+/// Backward-compatible wrapper calling `extract_dynamic_patterns_with_context`.
+#[allow(dead_code)]
+pub(crate) fn extract_dynamic_patterns(line: &str) -> Vec<DynamicPattern> {
+    extract_dynamic_patterns_with_context(line, &std::collections::HashMap::new(), "")
 }
 
 /// Evaluates whether an indexed asset satisfies a dynamic reference pattern.
@@ -595,41 +852,63 @@ pub(crate) fn asset_matches_dynamic_pattern(
     source_path: &std::path::Path,
     pattern: &DynamicPattern,
 ) -> bool {
-    // 1. Extension must match
-    if !asset_name
-        .to_lowercase()
-        .ends_with(&format!(".{}", pattern.extension.to_lowercase()))
-    {
-        return false;
+    let asset_name_lower = asset_name.to_lowercase();
+    let asset_stem_lower = asset_stem.to_lowercase();
+    let rel_lower = asset_relative_path.to_lowercase().replace('\\', "/");
+    let path_lower = asset_path.to_lowercase().replace('\\', "/");
+
+    // 0. Glob pattern check (e.g. import.meta.glob or Spring classpath:)
+    if let Some(ref glob_pat) = pattern.glob_pattern {
+        return matches_glob(glob_pat, source_path, &path_lower, &rel_lower);
     }
 
-    // 2. Directory prefix check if present
-    if let Some(ref dir) = pattern.dir_prefix {
-        let dir_lower = dir.to_lowercase();
-        let rel_lower = asset_relative_path.to_lowercase();
-        let path_lower = asset_path.to_lowercase();
+    // 1. Extension must match if specified
+    if let Some(ref ext) = pattern.extension {
+        let expected_ext = format!(".{}", ext.to_lowercase());
+        if !asset_name_lower.ends_with(&expected_ext) {
+            return false;
+        }
+    }
 
-        let matches_dir = rel_lower.contains(&format!("{}/", dir_lower))
-            || rel_lower.starts_with(&dir_lower)
-            || rel_lower.contains(&dir_lower)
-            || path_lower.contains(&format!("{}/", dir_lower))
+    // 2. Exact stem check if present (e.g. `$_imagePath/foo.png`)
+    if let Some(ref exact) = pattern.stem_exact {
+        if !asset_stem_lower.eq_ignore_ascii_case(exact) {
+            return false;
+        }
+    }
+
+    // 3. Directory prefix check if present
+    if let Some(ref dir) = pattern.dir_prefix {
+        let dir_lower = dir.to_lowercase().replace('\\', "/");
+        let dir_trimmed = dir_lower.trim_matches(['/', '.']);
+
+        let matches_dir = rel_lower.contains(&format!("{}/", dir_trimmed))
+            || rel_lower.starts_with(dir_trimmed)
+            || path_lower.contains(&format!("{}/", dir_trimmed))
             || asset_matches_path_token(asset_path, source_path, dir);
 
         if !matches_dir {
             return false;
         }
+    } else if pattern.extension.is_none()
+        && pattern.stem_exact.is_none()
+        && pattern.stem_prefix.is_none()
+        && pattern.stem_suffix.is_none()
+        && pattern.glob_pattern.is_none()
+    {
+        return false;
     }
 
-    // 3. Stem prefix check if present
+    // 4. Stem prefix check if present
     if let Some(ref sp) = pattern.stem_prefix {
-        if !asset_stem.to_lowercase().starts_with(&sp.to_lowercase()) {
+        if !asset_stem_lower.starts_with(&sp.to_lowercase()) {
             return false;
         }
     }
 
-    // 4. Stem suffix check if present
+    // 5. Stem suffix check if present
     if let Some(ref ss) = pattern.stem_suffix {
-        if !asset_stem.to_lowercase().ends_with(&ss.to_lowercase()) {
+        if !asset_stem_lower.ends_with(&ss.to_lowercase()) {
             return false;
         }
     }
@@ -845,9 +1124,11 @@ mod tests {
             patterns[0],
             DynamicPattern {
                 dir_prefix: Some("characters".to_string()),
+                stem_exact: None,
                 stem_prefix: None,
                 stem_suffix: None,
-                extension: "webp".to_string(),
+                extension: Some("webp".to_string()),
+                glob_pattern: None,
             }
         );
     }
@@ -861,9 +1142,11 @@ mod tests {
             patterns[0],
             DynamicPattern {
                 dir_prefix: None,
+                stem_exact: None,
                 stem_prefix: None,
                 stem_suffix: None,
-                extension: "webp".to_string(),
+                extension: Some("webp".to_string()),
+                glob_pattern: None,
             }
         );
     }
@@ -877,9 +1160,11 @@ mod tests {
             patterns[0],
             DynamicPattern {
                 dir_prefix: Some("icons".to_string()),
+                stem_exact: None,
                 stem_prefix: Some("btn-".to_string()),
                 stem_suffix: Some("_active".to_string()),
-                extension: "png".to_string(),
+                extension: Some("png".to_string()),
+                glob_pattern: None,
             }
         );
     }
@@ -893,10 +1178,115 @@ mod tests {
             patterns[0],
             DynamicPattern {
                 dir_prefix: Some("characters".to_string()),
+                stem_exact: None,
                 stem_prefix: None,
                 stem_suffix: None,
-                extension: "webp".to_string(),
+                extension: Some("webp".to_string()),
+                glob_pattern: None,
             }
+        );
+    }
+
+    #[test]
+    fn test_extract_dynamic_patterns_dart_interpolations() {
+        // Dart multi-scope interpolation (Monekin)
+        let line1 = r#"final path = 'assets/icons/supported_selectable_icons/$scope/$id.svg';"#;
+        let patterns1 = extract_dynamic_patterns(line1);
+        assert_eq!(patterns1.len(), 1);
+        assert_eq!(
+            patterns1[0],
+            DynamicPattern {
+                dir_prefix: Some("assets/icons/supported_selectable_icons".to_string()),
+                stem_exact: None,
+                stem_prefix: None,
+                stem_suffix: None,
+                extension: Some("svg".to_string()),
+                glob_pattern: None,
+            }
+        );
+
+        // Dart avatars
+        let line2 = r#"final avatarPath = 'assets/icons/avatars/$avatar.svg';"#;
+        let patterns2 = extract_dynamic_patterns(line2);
+        assert_eq!(patterns2.len(), 1);
+        assert_eq!(
+            patterns2[0].dir_prefix,
+            Some("assets/icons/avatars".to_string())
+        );
+        assert_eq!(patterns2[0].extension, Some("svg".to_string()));
+
+        // Dart constant variable prefix (Hacki)
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("_imagePath".to_string(), "assets/images".to_string());
+        let line3 = r#"final img = '$_imagePath/foo.png';"#;
+        let patterns3 = extract_dynamic_patterns_with_context(line3, &vars, "lib/constants.dart");
+        assert_eq!(patterns3.len(), 1);
+        assert_eq!(patterns3[0].dir_prefix, Some("assets/images".to_string()));
+        assert_eq!(patterns3[0].stem_exact, Some("foo".to_string()));
+        assert_eq!(patterns3[0].extension, Some("png".to_string()));
+    }
+
+    #[test]
+    fn test_extract_dynamic_patterns_js_concatenation_with_var() {
+        let mut vars = std::collections::HashMap::new();
+        vars.insert("dir".to_string(), "assets/images/gallery/".to_string());
+        let line = r#"photos.push({ src: dir + i + '.jpg' });"#;
+        let patterns = extract_dynamic_patterns_with_context(line, &vars, "gallery.ts");
+        assert_eq!(patterns.len(), 1);
+        assert_eq!(
+            patterns[0],
+            DynamicPattern {
+                dir_prefix: Some("assets/images/gallery".to_string()),
+                stem_exact: None,
+                stem_prefix: None,
+                stem_suffix: None,
+                extension: Some("jpg".to_string()),
+                glob_pattern: None,
+            }
+        );
+    }
+
+    #[test]
+    fn test_extract_dynamic_patterns_template_literal_no_extension() {
+        let line = r#"const p = `/assets/projects/${slug}/${image}`;"#;
+        let patterns = extract_dynamic_patterns(line);
+        assert_eq!(patterns.len(), 1);
+        assert_eq!(patterns[0].dir_prefix, Some("assets/projects".to_string()));
+        assert_eq!(patterns[0].extension, None);
+    }
+
+    #[test]
+    fn test_extract_dynamic_patterns_import_meta_glob_and_classpath() {
+        // import.meta.glob with query
+        let line_glob = r#"const stickers = import.meta.glob('../stickers/*.svg', { eager: true, as: 'url' });"#;
+        let patterns_glob = extract_dynamic_patterns(line_glob);
+        assert_eq!(patterns_glob.len(), 1);
+        assert_eq!(
+            patterns_glob[0].glob_pattern,
+            Some("../stickers/*.svg".to_string())
+        );
+
+        // Spring Boot classpath in SQL migration
+        let line_cp =
+            r#"INSERT INTO icons (path) VALUES ('classpath:static/images/icons/svg/*.svg');"#;
+        let patterns_cp = extract_dynamic_patterns(line_cp);
+        assert_eq!(patterns_cp.len(), 1);
+        assert_eq!(
+            patterns_cp[0].glob_pattern,
+            Some("static/images/icons/svg/*.svg".to_string())
+        );
+
+        // Flutter pubspec.yaml assets directory declaration
+        let line_pubspec = r#"    - assets/icons/supported_selectable_icons/"#;
+        let patterns_pub = extract_dynamic_patterns_with_context(
+            line_pubspec,
+            &std::collections::HashMap::new(),
+            "pubspec.yaml",
+        );
+        assert_eq!(patterns_pub.len(), 1);
+        assert_eq!(
+            patterns_pub[0].dir_prefix,
+            Some("assets/icons/supported_selectable_icons".to_string())
         );
     }
 
@@ -904,9 +1294,11 @@ mod tests {
     fn test_asset_matches_dynamic_pattern() {
         let pat = DynamicPattern {
             dir_prefix: Some("characters".to_string()),
+            stem_exact: None,
             stem_prefix: None,
             stem_suffix: None,
-            extension: "webp".to_string(),
+            extension: Some("webp".to_string()),
+            glob_pattern: None,
         };
         let src_path = std::path::Path::new("/workspace/src/App.tsx");
 

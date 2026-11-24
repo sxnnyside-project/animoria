@@ -31,6 +31,12 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Core Rust: Real-World False Positives & Dynamic Reference Tracing**:
+  - **Runtime-Constructed Paths & Interpolations**: Added support for Dart bare-variable interpolations (`$scope/$id.svg`, `$_imagePath/foo.png`, `$avatar.svg`), local variable assignment tracking (`const dir = '...'`), string concatenations (`'res/icons/overlay/' + n + '.png'`, `dir + i + '.jpg'`), and template literals without static extensions (``/assets/projects/${slug}/${image}``).
+  - **Glob Imports & Query Parameters**: Resolved `import.meta.glob('…/*.svg', ...)` and query parameter specifiers (`?url`, `?raw`), allowing files imported with queries (`./hero.svg?url`) to match asset files accurately.
+  - **External Declarations & Spring Classpath**: Added `.sql` and `.properties` to scannable source code extensions, expanded Spring Boot `classpath:static/.../*.svg` patterns, and supported directory declarations in Flutter `pubspec.yaml`.
+  - **Packaging Conventions**: Whitelisted Fastlane screenshots (`phoneScreenshots`, `tabletScreenshots`), Flutter test goldens (`*.dart.0.png`, `goldens/`), Windows/Tauri logos (`Square{N}x{N}Logo.png`, `StoreLogo.png`), and Flutter web icons/splash from `no-unreferenced-assets`.
+  - **Category-Weighted Overall Health Score**: Aligned overall health score calculation with category-weighted summation ($\sum \text{cat.score} \times \text{weight}$), mathematically bounding the score within $[\min(\text{categories}), \max(\text{categories})]$ and fixing 0 F misclassifications when categories score high (e.g. ~76 C on `vibetype`).
 - **JetBrains: Android Studio & Multi-Module Project Asset Discovery**:
   - Fixed content root resolution in `CoreProcessManager.resolveContentRoots()` and `AnimoriaVFSListener`: when `ModuleManager` reports submodules (`:app`, `:core`), `project.basePath` is preserved alongside module roots with ancestral deduplication, preventing shared root assets (`assets/`, cross-platform media) from being omitted.
   - Pinned `ProcessBuilder.directory` to `project.basePath` ensuring daemon relative path lookups evaluate correctly from the workspace root.
