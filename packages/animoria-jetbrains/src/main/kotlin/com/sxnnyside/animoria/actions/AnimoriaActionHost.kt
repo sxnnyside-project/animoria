@@ -25,14 +25,24 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.put
 
-// The one place a JetBrains action's intent becomes an Animoria operation, shared by every entry point (action,
-// toolbar button, context menu) so they can't drift into disagreeing implementations. Decides nothing about
-// governance itself — forwards to the daemon and presents what comes back.
+/**
+ * Project-level coordinator executing Animoria user operations triggered from actions, toolbars, and menus.
+ *
+ * Serves as the single authority translating user intent into daemon commands or UI navigation, preventing
+ * diverging logic between menu actions and tool window controls. Does not perform governance calculations locally;
+ * instead forwards requests to [CoreProcessManager] and routes results to editor documents or UI panels.
+ */
 @Service(Service.Level.PROJECT)
 class AnimoriaActionHost(
     private val project: Project,
 ) {
     companion object {
+        /**
+         * Resolves the project-level [AnimoriaActionHost] coordinator service instance.
+         *
+         * @param project The active project.
+         * @return The bound [AnimoriaActionHost] instance.
+         */
         fun of(project: Project): AnimoriaActionHost = project.service()
 
         /** Tool window id, shared with the factory that registers it. */
@@ -45,13 +55,12 @@ class AnimoriaActionHost(
         get() = project.getService(CoreProcessManager::class.java)
 
     /**
-     * Whether Animoria has a workspace it can act on — the guard every action's
-     * `update` uses.
+     * Determines whether Animoria has a workspace it can act upon.
      *
-     * `project.basePath != null` was close enough for a single-root project and wrong
-     * for a project opened as a set of modules with no base directory. The question
-     * an action needs answered is "is there anything indexed?", which is what the
-     * daemon's readiness reports.
+     * Evaluates daemon readiness or presence of a valid base directory to ensure action availability guards
+     * operate safely without blocking the UI thread.
+     *
+     * @return `true` if the project or daemon is ready to accept commands; `false` otherwise.
      */
     fun isReady(): Boolean = processManager.isReady || project.basePath != null
 
@@ -66,19 +75,18 @@ class AnimoriaActionHost(
      */
     fun refreshAnalysis() {
         runInBackground("Animoria: refreshing analysis") {
-            // `getSnapshot` is not a protocol method — the daemon answered every
-            // refresh with `unsupported-method`, so this action never refreshed
-            // anything. `getAnalysis` is the declared name.
-            processManager.sendCommand("getAnalysis")
+            val root = project.basePath.orEmpty()
+            val params = if (root.isNotEmpty()) buildJsonObject { put("workspace_path", root) } else buildJsonObject {}
+            processManager.sendCommand("getAnalysis", params)
         }
     }
 
     /** Runs the configured governance rules and opens the resulting report. */
     fun runGovernance() {
         runInBackground("Animoria: running governance") {
-            // `runGovernance` is not a protocol method either. `analyze` is the one
-            // that completes the analysis and emits `analysis-completed`.
-            processManager.sendCommand("analyze", timeoutMs = CoreProcessManager.ANALYZE_TIMEOUT_MS)
+            val root = project.basePath.orEmpty()
+            val params = if (root.isNotEmpty()) buildJsonObject { put("workspace_path", root) } else buildJsonObject {}
+            processManager.sendCommand("analyze", params, timeoutMs = CoreProcessManager.ANALYZE_TIMEOUT_MS)
             ApplicationManager.getApplication().invokeLater { GovernanceReportEditor.open(project) }
         }
     }

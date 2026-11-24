@@ -1,6 +1,7 @@
 package com.sxnnyside.animoria.docs
 
 import com.intellij.lang.documentation.AbstractDocumentationProvider
+import com.intellij.openapi.project.DumbAware
 import com.intellij.psi.PsiElement
 import com.sxnnyside.animoria.backend.AnimoriaAnalysisHolder
 import com.sxnnyside.animoria.backend.JetBrainsAsset
@@ -8,8 +9,13 @@ import com.sxnnyside.animoria.backend.JetBrainsAsset
 /**
  * Quick Documentation provider delivering rich metadata, governance status,
  * dimensions, and usage tracking for visual asset references in source code.
+ *
+ * Implements [DumbAware] so that asset documentation tooltips are instantly available
+ * during project indexing using in-memory cached analysis from [AnimoriaAnalysisHolder].
  */
-class AnimoriaDocumentationProvider : AbstractDocumentationProvider() {
+class AnimoriaDocumentationProvider :
+    AbstractDocumentationProvider(),
+    DumbAware {
     override fun generateDoc(
         element: PsiElement?,
         originalElement: PsiElement?,

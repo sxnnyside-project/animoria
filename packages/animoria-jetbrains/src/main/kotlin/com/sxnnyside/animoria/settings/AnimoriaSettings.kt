@@ -6,7 +6,12 @@ import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.project.Project
 
-// Persistent settings, stored per-project in .idea/animoria.xml. Fields must be `var` with defaults for XML bean binding.
+/**
+ * Persistent project-level settings service saving configuration to `.idea/animoria.xml`.
+ *
+ * Implements [PersistentStateComponent] to manage workspace preferences, such as thumbnail generation
+ * toggles, shared UI playback speed, locale, and dismissed cleanup candidates.
+ */
 @State(
     name = "AnimoriaSettings",
     storages = [Storage("animoria.xml")],

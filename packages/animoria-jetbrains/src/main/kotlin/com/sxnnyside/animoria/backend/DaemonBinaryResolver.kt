@@ -4,14 +4,24 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import java.io.File
 
-// Locates the bundled native `animoria` binary. A zipped JAR entry can't be spawned as a process, so it's
-// extracted once to a directory keyed by the entry's CRC+size (see daemonFingerprint), not by plugin version.
+/**
+ * Resolves and unpacks the bundled platform-native `animoria` daemon binary from plugin resources to disk.
+ *
+ * Ensures binary compatibility and execution privileges across macOS, Linux, and Windows. Extracted files
+ * are keyed by CRC-32 and file size fingerprints to avoid unnecessary re-extractions while guaranteeing
+ * seamless updates across plugin versions.
+ *
+ * @param project The active IntelliJ project context.
+ * @param logger Diagnostic logger for daemon resolution diagnostics.
+ */
 class DaemonBinaryResolver(
     private val project: Project,
     private val logger: Logger,
 ) {
     /**
      * Locates a self-contained native `animoria` executable for the current OS/architecture.
+     *
+     * @return The resolved executable [File], or `null` if no compatible binary could be located or extracted.
      */
     fun findBundledExecutable(): File? {
         val platformArchDir = platformArchDirName() ?: return null

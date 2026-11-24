@@ -12,8 +12,14 @@ import com.intellij.openapi.vfs.newvfs.events.VFileEvent
 import com.intellij.openapi.vfs.newvfs.events.VFileMoveEvent
 import com.intellij.openapi.vfs.newvfs.events.VFilePropertyChangeEvent
 
-// Bridges VFS events to the daemon's markStale. Uses BulkFileListener rather than a raw WatchService because VFS
-// guarantees IDE-driven mutations (refactors, saves) are surfaced, which a filesystem watcher can miss or delay.
+/**
+ * Project listener capturing Virtual File System (VFS) events and notifying the daemon of invalidated cache entries.
+ *
+ * Implements [BulkFileListener] to observe IDE-driven mutations (refactors, saves, deletions) in batches.
+ * Debounces notifications per event batch to invoke `markStale` efficiently without saturating the IPC channel.
+ *
+ * @param project The active project context.
+ */
 class AnimoriaVFSListener(
     private val project: Project,
 ) : BulkFileListener {
@@ -30,15 +36,21 @@ class AnimoriaVFSListener(
      * Read per event batch rather than cached: a root can be added or removed while
      * the IDE is open, and a stale list silently reintroduces the same gap.
      */
-    private fun contentRoots(): List<String> =
-        runCatching {
-            ModuleManager
-                .getInstance(project)
-                .modules
-                .flatMap { module -> ModuleRootManager.getInstance(module).contentRoots.toList() }
-                .mapNotNull { it.canonicalPath }
-        }.getOrDefault(emptyList())
-            .ifEmpty { listOfNotNull(project.basePath) }
+    private fun contentRoots(): List<String> {
+        val fromModules =
+            runCatching {
+                ModuleManager
+                    .getInstance(project)
+                    .modules
+                    .flatMap { module -> ModuleRootManager.getInstance(module).contentRoots.toList() }
+                    .mapNotNull { it.canonicalPath }
+            }.getOrDefault(emptyList())
+
+        val allRoots = (listOfNotNull(project.basePath) + fromModules).distinct().sorted()
+        return allRoots.filterIndexed { index, candidate ->
+            allRoots.take(index).none { candidate.startsWith("$it/") }
+        }
+    }
 
     override fun after(events: List<VFileEvent>) {
         val roots = contentRoots()

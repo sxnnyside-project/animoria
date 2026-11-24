@@ -14,9 +14,13 @@ import com.sxnnyside.animoria.backend.RuleDiagnosticData
 import com.sxnnyside.animoria.ui.AnimoriaSharedUiPanel
 import com.sxnnyside.animoria.ui.AnimoriaToolWindows
 
-// Surfaces Animoria's governance findings in the IDE's Problems view, attached to the asset file itself
-// (not a referencing line, since findings are about the asset). Reads AnimoriaAnalysisHolder verbatim — no
-// re-derivation. A null analysis yields no problems, which means "not reported yet", not "this asset is fine".
+/**
+ * Local inspection surfacing Animoria governance diagnostics directly in the IDE Problems tool window.
+ *
+ * Attaches findings directly to visual asset files based on cached diagnostics in [AnimoriaAnalysisHolder].
+ * Operates purely on synchronous in-memory analysis data to respect IntelliJ's EDT and read-action constraints
+ * during editor highlighting passes.
+ */
 class AnimoriaGovernanceInspection : LocalInspectionTool() {
     override fun getDisplayName(): String = "Animoria asset governance"
 

@@ -179,7 +179,7 @@ class AnimoriaGalleryPanel(
                         scope.launch {
                             val manager = project.getService(CoreProcessManager::class.java)
                             val analysis = AnimoriaAnalysisHolder.of(project).current()
-                            val root = analysis?.rootPath?.ifEmpty { null } ?: project.basePath.orEmpty()
+                            val root = project.basePath?.ifEmpty { null } ?: analysis?.rootPath.orEmpty()
                             if (root.isNotEmpty()) {
                                 manager.sendCommand(
                                     "analyze",
@@ -207,7 +207,10 @@ class AnimoriaGalleryPanel(
         return header
     }
 
-    /** Renders the analysis Core produced, then fills in thumbnails behind it. */
+    /**
+     * Renders the analysis snapshot held in [AnimoriaAnalysisHolder], populates animated and static assets
+     * into the tree model, and triggers background thumbnail generation for animated assets.
+     */
     fun publishAnalysis() {
         val holder = AnimoriaAnalysisHolder.of(project)
         val analysis = holder.current()
@@ -234,7 +237,12 @@ class AnimoriaGalleryPanel(
         requestThumbnails(analysis.assets.filter { it.kind == "motion" })
     }
 
-    /** Shows a terminal daemon failure in the tree rather than an empty gallery. */
+    /**
+     * Displays a terminal daemon startup or communication failure message directly within the gallery tree
+     * so that errors are immediately noticeable without checking IDE logs.
+     *
+     * @param message Descriptive error message detailing why the daemon engine is unavailable.
+     */
     fun showUnavailable(message: String) {
         model.setDaemonUnavailable(message)
     }

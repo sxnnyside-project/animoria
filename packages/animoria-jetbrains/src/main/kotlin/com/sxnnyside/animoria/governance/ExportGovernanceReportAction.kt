@@ -1,11 +1,13 @@
 package com.sxnnyside.animoria.governance
 
 import com.intellij.icons.AllIcons
+import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileChooser.FileChooserFactory
 import com.intellij.openapi.fileChooser.FileSaverDescriptor
+import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.sxnnyside.animoria.backend.AnimoriaCoroutineScope
@@ -19,12 +21,23 @@ import kotlinx.serialization.json.put
 
 /**
  * Saves the current governance report to disk as Markdown or JSON.
+ *
  * Registered on the governance section's context menu. Mirrors VS Code's
- * `exportGovernanceReport()` (save dialog + `workspace.fs.writeFile`).
+ * `exportGovernanceReport()` (save dialog + `workspace.fs.writeFile`). Implements [DumbAware]
+ * and specifies [ActionUpdateThread.BGT] to prevent UI thread lockups during indexing.
+ *
+ * @param project The active project context within which the report is generated and saved.
  */
 class ExportGovernanceReportAction(
     private val project: Project,
-) : AnAction("Export Governance Report", "Save the governance report as Markdown or JSON", AllIcons.Actions.MenuSaveall) {
+) : AnAction(
+        "Export Governance Report",
+        "Save the governance report as Markdown or JSON",
+        AllIcons.Actions.MenuSaveall,
+    ),
+    DumbAware {
+    override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
+
     override fun actionPerformed(e: AnActionEvent) {
         val descriptor =
             FileSaverDescriptor(

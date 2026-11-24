@@ -7,6 +7,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.progress.ProgressIndicator
+import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.ui.ColoredListCellRenderer
@@ -22,14 +23,23 @@ import javax.swing.ListCellRenderer
 
 /**
  * Factory creating Animoria Search Everywhere contributor for quick asset discovery.
+ *
+ * Implements [DumbAware] so that visual assets remain searchable during indexing passes.
  */
-class AnimoriaSearchEverywhereContributorFactory : SearchEverywhereContributorFactory<JetBrainsAsset> {
+class AnimoriaSearchEverywhereContributorFactory :
+    SearchEverywhereContributorFactory<JetBrainsAsset>,
+    DumbAware {
     override fun createContributor(initEvent: AnActionEvent): SearchEverywhereContributor<JetBrainsAsset> =
         AnimoriaSearchEverywhereContributor(initEvent.project)
 }
 
 /**
  * Contributes workspace visual assets directly to IntelliJ's Search Everywhere dialog (Shift+Shift).
+ *
+ * Resolves assets from the in-memory cache in [AnimoriaAnalysisHolder], allowing instant lookups
+ * without disk I/O and remaining active during background index generation via [isDumbAware].
+ *
+ * @property project The host project context, or `null` if opened outside an active project.
  */
 class AnimoriaSearchEverywhereContributor(
     private val project: Project?,
@@ -41,6 +51,8 @@ class AnimoriaSearchEverywhereContributor(
     override fun getSortWeight(): Int = 250
 
     override fun showInFindResults(): Boolean = true
+
+    override fun isDumbAware(): Boolean = true
 
     override fun fetchElements(
         pattern: String,

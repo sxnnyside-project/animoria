@@ -15,7 +15,11 @@ data object GalleryRoot
 /** Shown in place of every section when the workspace has no discovered assets yet. */
 data object EmptyStateNode
 
-// Shown instead of every other section when the daemon fails to start, so "nothing works" is diagnosable, not silent.
+/**
+ * Section node rendered when the background daemon process cannot be reached or crashes.
+ *
+ * @property message Descriptive failure reason explaining the daemon state to the user.
+ */
 data class DaemonUnavailableNode(
     val message: String,
 )
@@ -136,6 +140,11 @@ class AnimoriaTreeModel : DefaultTreeModel(DefaultMutableTreeNode(GalleryRoot)) 
         rebuildTree()
     }
 
+    /**
+     * Updates the animated asset dataset rendered in the tree, resetting thumbnail caches.
+     *
+     * @param newAssets Discovered visual assets categorized as motion/animated.
+     */
     fun setAssets(newAssets: List<JetBrainsAsset>) {
         // Real data arriving is definitive proof the daemon is actually running.
         daemonUnavailableMessage = null
@@ -143,10 +152,16 @@ class AnimoriaTreeModel : DefaultTreeModel(DefaultMutableTreeNode(GalleryRoot)) 
         thumbnails.clear()
         thumbnailFailures.clear()
         thumbnailPending.clear()
+        AnimoriaTreeCellRenderer.clearCache()
         analysis = null
         rebuildTree()
     }
 
+    /**
+     * Updates or inserts a single visual asset leaf node in the tree model.
+     *
+     * @param asset The updated visual asset representation.
+     */
     fun updateAsset(asset: JetBrainsAsset) {
         val idx = assets.indexOfFirst { it.path == asset.path }
         if (idx == -1) {
@@ -157,6 +172,11 @@ class AnimoriaTreeModel : DefaultTreeModel(DefaultMutableTreeNode(GalleryRoot)) 
         rebuildTree()
     }
 
+    /**
+     * Removes an asset and its cached thumbnail state from the tree model.
+     *
+     * @param path Filesystem path of the asset to remove.
+     */
     fun removeAsset(path: String) {
         assets = assets.filter { it.path != path }
         thumbnails.remove(path)
@@ -165,16 +185,32 @@ class AnimoriaTreeModel : DefaultTreeModel(DefaultMutableTreeNode(GalleryRoot)) 
         rebuildTree()
     }
 
+    /**
+     * Updates the collection of static image assets rendered in the gallery tree.
+     *
+     * @param newStaticAssets List of static raster and vector assets.
+     */
     fun setStaticAssets(newStaticAssets: List<StaticAssetData>) {
         staticAssets = newStaticAssets
         rebuildTree()
     }
 
+    /**
+     * Replaces the active workspace analysis data and triggers tree rebuilding.
+     *
+     * @param result Latest workspace analysis result from the daemon.
+     */
     fun setAnalysis(result: WorkspaceAnalysisData) {
         analysis = result
         rebuildTree()
     }
 
+    /**
+     * Sets a resolved thumbnail path for an asset leaf node.
+     *
+     * @param assetPath Path to the target visual asset.
+     * @param thumbPath Rendered thumbnail PNG/SVG path on disk.
+     */
     fun setThumbnail(
         assetPath: String,
         thumbPath: String,
@@ -185,16 +221,31 @@ class AnimoriaTreeModel : DefaultTreeModel(DefaultMutableTreeNode(GalleryRoot)) 
         rebuildTree()
     }
 
+    /**
+     * Marks an asset thumbnail as actively generating in the background.
+     *
+     * @param assetPath Path to the target visual asset.
+     */
     fun markThumbnailPending(assetPath: String) {
         thumbnailPending.add(assetPath)
     }
 
+    /**
+     * Marks an asset thumbnail as failed, enabling fallback icon rendering.
+     *
+     * @param assetPath Path to the target visual asset.
+     */
     fun markThumbnailFailed(assetPath: String) {
         thumbnailPending.remove(assetPath)
         thumbnailFailures.add(assetPath)
         rebuildTree()
     }
 
+    /**
+     * Switches the tree presentation between flat listing and nested folder hierarchy.
+     *
+     * @param mode Target gallery view mode ([ViewMode.FLAT] or [ViewMode.TREE]).
+     */
     fun setViewMode(mode: ViewMode) {
         viewMode = mode
         rebuildTree()

@@ -46,6 +46,11 @@ object GovernanceReportEditor {
         FileEditorManager.getInstance(project).openFile(virtualFile, true)
     }
 
+    /**
+     * Fetches the formatted Markdown governance report from the core daemon and displays it in the editor.
+     *
+     * @param project The active project context.
+     */
     fun open(project: Project) {
         val processManager = project.getService(CoreProcessManager::class.java)
         AnimoriaCoroutineScope.of(project).launch(Dispatchers.IO) {

@@ -16,8 +16,16 @@ import kotlinx.serialization.json.putJsonObject
 import java.io.File
 import java.util.Base64
 
-// Split out of JetBrainsHostBridge (which pushed detekt's size budget) since it's the only part that reads
-// files and decides how to render them. Never classifies an asset — that stays Core's list.
+/**
+ * Sub-handler of [JetBrainsHostBridge] managing preview and thumbnail binary requests for the JCEF webview.
+ *
+ * Resolves still placeholders, Base64 data URIs for raster formats, and Lottie document payload delivery,
+ * adhering to the daemon's canonical classification without reinventing asset format semantics.
+ *
+ * @param project The active IntelliJ project instance.
+ * @param scope Coroutine scope executing asynchronous disk reads and daemon queries.
+ * @param post Callback emitting framed JSON messages back across the JCEF query boundary.
+ */
 internal class JetBrainsPreviewRequests(
     private val project: Project,
     private val scope: CoroutineScope,

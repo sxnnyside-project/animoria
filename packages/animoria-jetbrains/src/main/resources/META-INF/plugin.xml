@@ -34,6 +34,7 @@
         <toolWindow id="Animoria"
                     anchor="right"
                     icon="AllIcons.Actions.Preview"
+                    dumbAware="true"
                     factoryClass="com.sxnnyside.animoria.ui.AnimoriaToolWindowFactory"/>
         <projectConfigurable instance="com.sxnnyside.animoria.settings.AnimoriaSettingsConfigurable"
                              id="com.sxnnyside.animoria.settings"

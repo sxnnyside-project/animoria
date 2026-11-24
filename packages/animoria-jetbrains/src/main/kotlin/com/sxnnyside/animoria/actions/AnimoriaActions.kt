@@ -4,16 +4,26 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 
-// Standalone (not inner classes of the panel) so the platform can construct and register them via a no-arg
-// constructor — that's what makes them reachable from Find Action, Search Everywhere, and the Keymap.
-// Each resolves its project from AnActionEvent; the real work lives in AnimoriaActionHost.
+/**
+ * Base class for all standalone Animoria actions in the JetBrains IDE.
+ *
+ * Implements [DumbAware] so that actions remain reachable and interactive during IDE background
+ * indexing passes. Presentation state is computed off the EDT via [ActionUpdateThread.BGT], and
+ * execution delegates directly to [AnimoriaActionHost].
+ *
+ * @param text The user-visible action text.
+ * @param description Detailed description for status bars and tooltips.
+ * @param icon Optional Swing icon displayed next to the action.
+ */
 abstract class AnimoriaAction(
     text: String,
     description: String,
     icon: javax.swing.Icon? = null,
-) : AnAction(text, description, icon) {
+) : AnAction(text, description, icon),
+    DumbAware {
     /**
      * Enables the action only when the project is active and the daemon engine is initialized.
      */

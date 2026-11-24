@@ -37,12 +37,27 @@ class AnimoriaAnalysisHolder(
     @Volatile
     private var diagnosticsByAssetPath: Map<String, List<RuleDiagnosticData>> = emptyMap()
 
-    /** The latest flattened analysis, or `null` when none has arrived yet. */
+    /**
+     * Retrieves the latest flattened analysis snapshot, or `null` when no analysis has arrived yet.
+     *
+     * @return The cached [WorkspaceAnalysisData], or `null` if the initial daemon scan is pending.
+     */
     fun current(): WorkspaceAnalysisData? = analysis
 
-    /** The latest canonical multi-root payload, for the shared UI. */
+    /**
+     * Retrieves the latest canonical multi-root payload as JSON, formatted for `@animoria/ui` consumption.
+     *
+     * @return The raw [JsonElement] payload matching the core contracts, or `null` if unavailable.
+     */
     fun currentCanonical(): JsonElement? = canonical
 
+    /**
+     * Updates the held analysis snapshot, pre-indexes assets and diagnostics for O(1) lookups,
+     * and notifies UI listeners (status bar widget, editor notification banners) on the EDT.
+     *
+     * @param next The parsed workspace analysis data model.
+     * @param canonicalPayload The raw JSON payload for webview transport.
+     */
     fun update(
         next: WorkspaceAnalysisData,
         canonicalPayload: JsonElement,
@@ -101,21 +116,47 @@ class AnimoriaAnalysisHolder(
         val reference: UsageReferenceData,
     )
 
-    /** References inside one source file, or empty when none are known yet. */
+    /**
+     * Retrieves all cached asset usage references located inside the specified source file.
+     *
+     * @param filePath The absolute path of the source code file.
+     * @return List of [AssetReference] occurrences within the file, or an empty list if none exist.
+     */
     fun referencesInFile(filePath: String): List<AssetReference> = referencesByFile[filePath].orEmpty()
 
-    /** Synchronous O(1) lookup of asset reference at a specific 1-based line inside a file. */
+    /**
+     * Performs a synchronous O(1) lookup of an asset reference located at a specific 1-based line.
+     *
+     * @param filePath The absolute path of the source code file.
+     * @param line The 1-based line number inside the file.
+     * @return The [AssetReference] present at the line, or `null` if no reference is indexed.
+     */
     fun referenceInFileAtLine(
         filePath: String,
         line: Int,
     ): AssetReference? = referencesByFileAndLine[filePath]?.get(line)
 
-    /** Synchronous lookup of all references pointing to a given asset path. */
+    /**
+     * Synchronously resolves all references pointing to the given visual asset path across the project.
+     *
+     * @param assetPath The canonical absolute or relative path of the asset.
+     * @return List of matching [AssetReference] instances across all scanned source files.
+     */
     fun referencesForAsset(assetPath: String): List<AssetReference> = referencesByFile.values.flatten().filter { it.assetPath == assetPath }
 
-    /** Whether the cached reference set describes the analysis currently held. */
+    /**
+     * Verifies whether the cached usage reference set matches the generation of the active analysis snapshot.
+     *
+     * @return `true` if references are synchronized with the active analysis; `false` otherwise.
+     */
     fun referencesAreCurrent(): Boolean = analysis != null && referencesGeneration == (analysis?.generation ?: -1)
 
+    /**
+     * Atomically replaces the indexed usage references with a new generation payload.
+     *
+     * @param generation The monotonically increasing scan sequence identifier.
+     * @param references The complete list of usage references extracted from the codebase.
+     */
     fun updateReferences(
         generation: Int,
         references: List<AssetReference>,
@@ -129,13 +170,29 @@ class AnimoriaAnalysisHolder(
         referencesGeneration = generation
     }
 
-    /** The asset Core attributed to this path, or `null`. Never re-derived from the path. O(1) lookup. */
+    /**
+     * Synchronously looks up the asset record attributed to the specified path in O(1) time.
+     *
+     * @param assetPath The exact canonical path of the asset.
+     * @return The corresponding [JetBrainsAsset], or `null` if unindexed.
+     */
     fun assetForPath(assetPath: String): JetBrainsAsset? = assetsByPath[assetPath]
 
-    /** Diagnostics concerning one asset path, or empty when there are none or nothing is known. O(1) lookup. */
+    /**
+     * Synchronously looks up all governance diagnostics associated with the specified asset path in O(1) time.
+     *
+     * @param assetPath The exact canonical path of the asset.
+     * @return List of [RuleDiagnosticData] findings, or an empty list if clean or unindexed.
+     */
     fun diagnosticsFor(assetPath: String): List<RuleDiagnosticData> = diagnosticsByAssetPath[assetPath].orEmpty()
 
     companion object {
+        /**
+         * Resolves the project-level [AnimoriaAnalysisHolder] service instance.
+         *
+         * @param project The active project.
+         * @return The bound [AnimoriaAnalysisHolder] instance.
+         */
         fun of(project: Project): AnimoriaAnalysisHolder = project.service()
     }
 }

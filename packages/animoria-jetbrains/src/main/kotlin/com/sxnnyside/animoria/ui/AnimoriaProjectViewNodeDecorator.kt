@@ -3,16 +3,19 @@ package com.sxnnyside.animoria.ui
 import com.intellij.ide.projectView.PresentationData
 import com.intellij.ide.projectView.ProjectViewNode
 import com.intellij.ide.projectView.ProjectViewNodeDecorator
-import com.intellij.packageDependencies.ui.PackageDependenciesNode
+import com.intellij.openapi.project.DumbAware
 import com.sxnnyside.animoria.backend.AnimoriaAnalysisHolder
 
 /**
  * Decorates visual asset nodes in IntelliJ's native Project View file tree with governance badges.
  *
  * Appends badges like `[unused]`, `[duplicate]`, and `[issue]` in the node's location string and sets
- * informative hover tooltips without blocking EDT.
+ * informative hover tooltips without blocking EDT. Implements [DumbAware] so decorations remain active
+ * during indexing passes.
  */
-class AnimoriaProjectViewNodeDecorator : ProjectViewNodeDecorator {
+class AnimoriaProjectViewNodeDecorator :
+    ProjectViewNodeDecorator,
+    DumbAware {
     override fun decorate(
         node: ProjectViewNode<*>,
         data: PresentationData,
@@ -46,13 +49,5 @@ class AnimoriaProjectViewNodeDecorator : ProjectViewNodeDecorator {
 
             data.tooltip = "Animoria: $badge ${diagnostics.first().message}"
         }
-    }
-
-    @Deprecated("Deprecated in ProjectViewNodeDecorator")
-    override fun decorate(
-        node: PackageDependenciesNode,
-        cellRenderer: com.intellij.ui.ColoredTreeCellRenderer,
-    ) {
-        // No-op for dependency graph view
     }
 }

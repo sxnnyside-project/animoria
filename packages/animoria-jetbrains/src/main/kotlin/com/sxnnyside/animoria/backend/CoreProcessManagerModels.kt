@@ -17,7 +17,13 @@ val animoriaJson =
         coerceInputValues = true
     }
 
-// Wire-format DTOs CoreProcessManager decodes from the daemon's NDJSON events and requests.
+/**
+ * Encapsulates a raw NDJSON event received from the daemon background process.
+ *
+ * @property event The event type identifier emitted by the daemon.
+ * @property data The raw payload payload associated with the event.
+ * @property requestId Optional request correlation identifier echoing client requests.
+ */
 @Serializable
 data class CoreEvent(
     val event: String,
@@ -226,9 +232,12 @@ data class DuplicateGroupData(
     val potentialSavingsBytes: Long = 0,
 )
 
-// `assets`/`diagnostics` are the bare lists the daemon actually sends, never the attribution-wrapped
-// {rootId, rootName, asset} shape — typing them as that previously threw MissingFieldException on every
-// real payload, silently, so a live scan never reached AnimoriaAnalysisHolder.
+/**
+ * Represents the multi-root analysis envelope transmitted by the daemon upon scan completion.
+ *
+ * Holds lists of roots, individual assets, diagnostics, and duplicate groups. Can be flattened
+ * via [flatten] into a unified [WorkspaceAnalysisData] instance for UI consumption.
+ */
 @Serializable
 data class MultiRootAnalysisData(
     val generatedAt: String = "",
@@ -363,12 +372,16 @@ data class DuplicateResolutionResultData(
     val error: String? = null,
 )
 
-// ── Duplicate resolution plan (S4) ────────────────────────────────────────────
-//
-// The plan a client previews *and* the plan execution consumes. Preview and
-// execution reading from one shape is what makes "what you saw is what ran" a
-// structural property rather than a convention two code paths have to honour.
-
+/**
+ * Represents an asset proposed for deletion as part of a duplicate remediation plan.
+ *
+ * Used both during preview in the shared UI and during execution by the daemon engine to guarantee
+ * structural consistency between what the user reviews and what is applied.
+ *
+ * @property path Filesystem path to the asset candidate.
+ * @property name Short display name of the asset.
+ * @property sizeBytes Size on disk in bytes to be reclaimed.
+ */
 @Serializable
 data class PlannedAssetRemovalData(
     val path: String,
@@ -422,8 +435,13 @@ data class ResolutionPlanResponseData(
     val error: String? = null,
 )
 
-// ── Trash sessions (S2) ───────────────────────────────────────────────────────
-
+/**
+ * Records an individual asset moved to `.animoria/trash/` during a cleanup or remediation session.
+ *
+ * @property originalPath The filesystem path the asset was moved from.
+ * @property trashPath The destination path inside `.animoria/trash/`.
+ * @property sizeBytes Size of the moved asset in bytes.
+ */
 @Serializable
 data class TrashEntryData(
     val originalPath: String,

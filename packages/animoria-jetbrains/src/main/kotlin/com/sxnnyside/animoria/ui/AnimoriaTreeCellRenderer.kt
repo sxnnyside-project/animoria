@@ -56,6 +56,13 @@ class AnimoriaTreeCellRenderer : ColoredTreeCellRenderer() {
                 }
             }
         }
+
+        /**
+         * Clears cached thumbnail icons to release memory upon workspace reload or project disposal.
+         */
+        fun clearCache() {
+            iconCache.clear()
+        }
     }
 
     override fun customizeCellRenderer(

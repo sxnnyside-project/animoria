@@ -5,6 +5,7 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.vfs.VirtualFile
 import com.sxnnyside.animoria.backend.AnimoriaAnalysisHolder
 import com.sxnnyside.animoria.backend.JetBrainsAsset
@@ -13,14 +14,18 @@ import com.sxnnyside.animoria.ui.AnimoriaSharedUiPanel
 import com.sxnnyside.animoria.ui.AnimoriaToolWindows
 
 /**
- * Context action to reveal and focus the selected asset in the Animoria Gallery / Preview panel.
+ * Context menu action revealing and focusing a selected visual asset inside the Animoria Gallery and Preview tab.
+ *
+ * Evaluates visibility on the background thread via [ActionUpdateThread.BGT] and implements [DumbAware] so it
+ * remains accessible during project indexing.
  */
 class ShowInGalleryContextAction :
     AnAction(
         "Show in Animoria Gallery",
         "Reveal and preview this asset in the Animoria tool window",
         AllIcons.Actions.Preview,
-    ) {
+    ),
+    DumbAware {
     override fun update(e: AnActionEvent) {
         val project = e.project
         val file = e.getData(CommonDataKeys.VIRTUAL_FILE)
@@ -56,14 +61,17 @@ class ShowInGalleryContextAction :
 }
 
 /**
- * Context action to request and copy code integration snippets for the selected asset.
+ * Context menu action requesting and copying framework-specific code snippets for the selected visual asset.
+ *
+ * Implements [DumbAware] so integration snippets can be generated and copied even during indexing.
  */
 class CopySnippetContextAction :
     AnAction(
         "Copy Animoria Snippet...",
         "Generate and copy code integration snippet for this asset",
         AllIcons.Actions.Copy,
-    ) {
+    ),
+    DumbAware {
     override fun update(e: AnActionEvent) {
         val project = e.project
         val file = e.getData(CommonDataKeys.VIRTUAL_FILE)

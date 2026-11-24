@@ -4,7 +4,12 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindow
 
-// Brings a tool window tab to the front — the half of "focus" a webview can't do itself, since it can't select its own IDE tab.
+/**
+ * Registry and navigation helper managing the activation and tab selection of Animoria tool windows.
+ *
+ * Coordinates tool window tab focus requests dispatched from webview bridge messages or native actions,
+ * ensuring UI transitions execute safely on the Event Dispatch Thread (EDT).
+ */
 object AnimoriaToolWindows {
     private val windows = mutableMapOf<String, ToolWindow>()
 

@@ -104,7 +104,10 @@ class AnimoriaSharedUiPanel(
         browser.cefBrowser.executeJavaScript(script, browser.cefBrowser.url, 0)
     }
 
-    /** Pushes the analysis the daemon most recently reported. */
+    /**
+     * Pushes the latest analysis and diagnostics from [com.sxnnyside.animoria.backend.AnimoriaAnalysisHolder]
+     * to the embedded `@animoria/ui` webview via the host bridge, flushing any queued focus navigation requests.
+     */
     fun publishAnalysis() {
         bridge?.publishAnalysis()
         // Anything an action asked for while the UI was still mounting is delivered
@@ -116,7 +119,14 @@ class AnimoriaSharedUiPanel(
         }
     }
 
-    /** Where an action wants the developer to land, and about what. */
+    /**
+     * UI target destination describing where a user action intends to navigate inside `@animoria/ui`.
+     *
+     * @property tab Target tab identifier (e.g., "assets", "findings", "cleanup").
+     * @property assetPath Optional file path of the asset to scroll to and select.
+     * @property groupId Optional deduplication cluster ID to highlight.
+     * @property rootId Optional workspace root key for multi-root projects.
+     */
     data class Focus(
         val tab: String,
         val assetPath: String? = null,
@@ -126,7 +136,11 @@ class AnimoriaSharedUiPanel(
 
     private var pendingFocus: Focus? = null
 
-    /** Routes the UI to [focus], or queues it until the UI can receive. */
+    /**
+     * Directs the UI webview to focus the specified [Focus] target, or queues it if the webview is mounting.
+     *
+     * @param focus The desired focus destination.
+     */
     fun focus(focus: Focus) {
         pendingFocus = focus
         publishAnalysis()
@@ -136,6 +150,12 @@ class AnimoriaSharedUiPanel(
         // A registry (not a service) because the panel's lifetime is the tool window's; Disposer clears it on teardown.
         private val mounted = mutableMapOf<String, MutableMap<String, AnimoriaSharedUiPanel>>()
 
+        /**
+         * Registers a panel instance in the per-project registry keyed by its product surface name.
+         *
+         * @param project The active project.
+         * @param panel The initialized [AnimoriaSharedUiPanel] instance.
+         */
         fun register(
             project: Project,
             panel: AnimoriaSharedUiPanel,
@@ -143,11 +163,22 @@ class AnimoriaSharedUiPanel(
             mounted.getOrPut(project.locationHash) { mutableMapOf() }[panel.surface] = panel
         }
 
+        /**
+         * Clears all registered panels for the project upon tool window disposal.
+         *
+         * @param project The project whose panels should be unmounted.
+         */
         fun unregister(project: Project) {
             mounted.remove(project.locationHash)
         }
 
-        /** The panel rendering [surface], or any panel when none is named. */
+        /**
+         * Looks up an active panel for the project, either for a specific product surface or the first available.
+         *
+         * @param project The active project.
+         * @param surface The surface name ("inspector", "findings", "duplicates", "cleanup"), or `null` for default.
+         * @return The active [AnimoriaSharedUiPanel], or `null` if unmounted or disposed.
+         */
         fun of(
             project: Project,
             surface: String? = null,
@@ -157,6 +188,9 @@ class AnimoriaSharedUiPanel(
         }
     }
 
+    /**
+     * Releases references to the JCEF browser, JS query, and host bridge on disposal.
+     */
     override fun dispose() {
         browser = null
         jsQuery = null

@@ -9,6 +9,7 @@ import com.sxnnyside.animoria.logging.AnimoriaLogger
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
 import java.io.BufferedReader
+import java.io.File
 import java.io.InputStreamReader
 import java.io.PrintWriter
 import java.util.UUID
@@ -94,7 +95,14 @@ class CoreProcessManager(
     @Volatile
     private var cachedAssets: List<JetBrainsAsset> = emptyList()
 
-    /** Best-effort snapshot of the most recently known asset list. */
+    /**
+     * Returns a snapshot of the most recently cached visual assets.
+     *
+     * Updated synchronously from `scanComplete` and watcher push events to provide instant,
+     * non-blocking reads for UI components and gutter providers without requiring an IPC round-trip.
+     *
+     * @return List of current [JetBrainsAsset] models, or an empty list if no scan has completed.
+     */
     fun getCachedAssets(): List<JetBrainsAsset> = cachedAssets
 
     // ── Push-event callbacks ──────────────────────────────────────────────────
@@ -189,6 +197,7 @@ class CoreProcessManager(
                 // a tool window stuck on "Waiting for the Animoria engine…"
                 // for its whole lifetime.
                 val pb = ProcessBuilder(listOf(bundledExecutable.absolutePath, "daemon"))
+                project.basePath?.let { pb.directory(File(it)) }
                 // Keep stdout separate from stderr so we can parse JSON cleanly.
                 pb.redirectErrorStream(false)
 
@@ -218,11 +227,17 @@ class CoreProcessManager(
     }
 
     /**
-     * Sends a command to the daemon via stdin and returns a `Deferred` that
-     * resolves when the daemon emits a response carrying the matching `requestId`.
+     * Sends a command to the native daemon via stdin NDJSON protocol and awaits the response.
      *
-     * If no response arrives within `timeoutMs` milliseconds, the deferred
-     * completes exceptionally with a `TimeoutCancellationException`.
+     * Automatically restarts the daemon process if it is inactive. Correlates the response
+     * using a unique request ID.
+     *
+     * @param command The RPC method name to invoke on the daemon (e.g. "analyze", "ping", "exportReport").
+     * @param data Optional JSON parameters payload to pass to the method.
+     * @param timeoutMs Maximum duration in milliseconds to wait before cancelling the request.
+     * @return The JSON element result payload returned by the daemon.
+     * @throws kotlinx.coroutines.TimeoutCancellationException If the daemon fails to reply within [timeoutMs].
+     * @throws IllegalStateException If the daemon process could not be started.
      */
     suspend fun sendCommand(
         command: String,
@@ -267,10 +282,10 @@ class CoreProcessManager(
     }
 
     /**
-     * Liveness check with a short timeout of its own. Requests are answered
-     * in arrival order over one stdio pipe, so a `ping` queued behind a
-     * long-running scan waits for it like anything else — this confirms the
-     * daemon is alive between operations, not concurrently during one.
+     * Performs an asynchronous liveness check by pinging the background daemon.
+     *
+     * @param timeoutMs Timeout duration in milliseconds for the ping round-trip.
+     * @return `true` if the daemon responded promptly; `false` if unresponsive or unreachable.
      */
     suspend fun ping(timeoutMs: Long = 2_000L): Boolean =
         runCatching {
@@ -278,12 +293,11 @@ class CoreProcessManager(
         }.isSuccess
 
     /**
-     * Fire-and-forget: tells the daemon its cached analysis for [workspacePath]
-     * is stale, called from [AnimoriaVFSListener] on every in-scope VFS event.
-     * The daemon has no filesystem watcher of its own — this is IntelliJ's VFS
-     * forwarding what it already knows, not a request for an immediate re-scan.
-     * Any UI reading `LifecycleState.Stale` decides for itself whether/when to
-     * trigger the next `analyze`.
+     * Notifies the daemon asynchronously that file modifications occurred within [workspacePath].
+     *
+     * Fire-and-forget: does not block the caller or the VFS event listener.
+     *
+     * @param workspacePath The root or file path where mutations took place.
      */
     fun notifyFileChanged(workspacePath: String) {
         if (!scope.isActive || process?.isAlive != true || stdinWriter == null) return
@@ -321,14 +335,13 @@ class CoreProcessManager(
     /**
      * Every content root this project declares, canonicalized and deduplicated.
      *
-     * `project.basePath` is where `.idea` lives, not the project's asset universe: a
-     * multi-module project, or one with an attached folder elsewhere, has roots
-     * `basePath` does not contain. Reading the module manager is the platform's own
-     * answer to "what belongs to this project", and using anything else means Kotlin
-     * is reconstructing the workspace model instead of reporting it.
+     * Always includes `project.basePath` alongside `ModuleManager` roots: in Android Studio and
+     * Gradle-based projects, modules are subdirectories (e.g. `:app`, `:core`) while shared
+     * assets (e.g. Flutter/React Native/shared assets) reside at the project root. Discarding
+     * `basePath` when modules exist leaves root assets invisible.
      *
-     * Falls back to `basePath` only when the module manager reports nothing, which
-     * happens for a project opened as a plain directory.
+     * Child roots whose ancestor is already in the list are deduplicated away so the daemon
+     * indexes the overarching root cleanly.
      */
     private fun resolveContentRoots(): List<String> {
         val fromModules =
@@ -340,14 +353,10 @@ class CoreProcessManager(
                     .mapNotNull { it.canonicalPath }
             }.getOrDefault(emptyList())
 
-        val roots = if (fromModules.isNotEmpty()) fromModules else listOfNotNull(project.basePath)
+        val allRoots = (listOfNotNull(project.basePath) + fromModules).distinct().sorted()
 
-        // Nested roots are dropped: the daemon attributes a path to its most specific
-        // root anyway, and passing both would index the inner one twice under two
-        // configurations.
-        val sorted = roots.distinct().sorted()
-        return sorted.filterIndexed { index, candidate ->
-            sorted.take(index).none { candidate.startsWith("$it/") }
+        return allRoots.filterIndexed { index, candidate ->
+            allRoots.take(index).none { candidate.startsWith("$it/") }
         }
     }
 

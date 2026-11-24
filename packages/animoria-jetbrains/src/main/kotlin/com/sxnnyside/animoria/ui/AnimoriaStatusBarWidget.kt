@@ -15,7 +15,10 @@ import javax.swing.JComponent
 import javax.swing.JLabel
 
 /**
- * Factory for creating the Animoria status bar widget in IntelliJ IDEs.
+ * Factory registering the Animoria status bar widget with IntelliJ's status bar extension point.
+ *
+ * Provides lifecycle instantiation and disposal hooks for the status bar indicator without
+ * blocking editor startup.
  */
 class AnimoriaStatusBarWidgetFactory : StatusBarWidgetFactory {
     override fun getId(): String = AnimoriaStatusBarWidget.ID
@@ -35,7 +38,10 @@ class AnimoriaStatusBarWidgetFactory : StatusBarWidgetFactory {
 
 /**
  * Custom status bar widget displaying Animoria governance health score and findings count.
- * Clicking the widget reveals the Animoria Tool Window.
+ *
+ * Clicking the widget reveals the Animoria Tool Window focusing on the native Assets gallery tab.
+ *
+ * @param project The project context this status bar widget is attached to.
  */
 class AnimoriaStatusBarWidget(
     private val project: Project,
@@ -57,7 +63,7 @@ class AnimoriaStatusBarWidget(
                 event: MouseEvent,
                 clickCount: Int,
             ): Boolean {
-                AnimoriaToolWindows.show(project, "Preview")
+                AnimoriaToolWindows.show(project, "Assets")
                 return true
             }
         }.installOn(label)
@@ -65,7 +71,9 @@ class AnimoriaStatusBarWidget(
         update()
     }
 
-    /** Updates the widget presentation using the latest synchronous analysis in AnimoriaAnalysisHolder. */
+    /**
+     * Updates the widget presentation text and tooltip using the latest synchronous analysis in [AnimoriaAnalysisHolder].
+     */
     fun update() {
         if (project.isDisposed) return
         val analysis = AnimoriaAnalysisHolder.of(project).current()

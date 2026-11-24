@@ -1,6 +1,7 @@
 package com.sxnnyside.animoria.editor
 
 import com.intellij.openapi.fileEditor.FileEditor
+import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.EditorNotificationPanel
@@ -16,8 +17,13 @@ import javax.swing.JComponent
 /**
  * Displays an editor notification banner at the top of opened asset files when
  * governance findings (unreferenced, duplicates, format violations, etc.) are detected.
+ *
+ * Implements [DumbAware] so that asset file warnings are shown immediately even while
+ * the IDE is performing background project indexing.
  */
-class AnimoriaEditorNotificationProvider : EditorNotificationProvider {
+class AnimoriaEditorNotificationProvider :
+    EditorNotificationProvider,
+    DumbAware {
     override fun collectNotificationData(
         project: Project,
         file: VirtualFile,

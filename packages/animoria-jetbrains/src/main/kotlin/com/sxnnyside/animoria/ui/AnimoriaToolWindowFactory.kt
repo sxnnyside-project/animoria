@@ -7,10 +7,12 @@ import com.intellij.ui.content.ContentFactory
 import com.sxnnyside.animoria.backend.CoreProcessManager
 
 /**
- * Factory for creating the Animoria Tool Window content in JetBrains IDEs.
+ * Factory constructing the Animoria Tool Window interface tabs in JetBrains IDEs.
  *
- * Initializes the native daemon process, registers the tool window instance, and constructs
- * the content tabs (Assets gallery panel and shared UI panels for Preview, Findings, Duplicates, and Cleanup).
+ * Inherits [com.intellij.openapi.project.DumbAware] via [AnimoriaToolWindowFactoryBase] to remain interactive
+ * during background indexing. Initializes the native Rust daemon process on demand, registers content tabs
+ * (native asset gallery and JCEF shared UI panels for Preview, Findings, Duplicates, and Cleanup), and binds
+ * push-event callbacks to synchronize UI state.
  */
 class AnimoriaToolWindowFactory : AnimoriaToolWindowFactoryBase() {
     override fun createToolWindowContent(

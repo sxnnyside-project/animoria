@@ -5,6 +5,7 @@ import com.intellij.codeInsight.daemon.LineMarkerInfo
 import com.intellij.codeInsight.daemon.LineMarkerProvider
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.editor.markup.GutterIconRenderer
+import com.intellij.openapi.project.DumbAware
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.util.Function
@@ -17,8 +18,11 @@ import com.sxnnyside.animoria.ui.AnimoriaToolWindows
  * referencing an Animoria visual asset.
  *
  * Clicking the gutter marker focuses the asset preview inside the Animoria tool window.
+ * Implements [DumbAware] so gutter indicators render without waiting for index completion.
  */
-class AnimoriaLineMarkerProvider : LineMarkerProvider {
+class AnimoriaLineMarkerProvider :
+    LineMarkerProvider,
+    DumbAware {
     override fun getLineMarkerInfo(element: PsiElement): LineMarkerInfo<*>? {
         // Fast exit: only attach to leaf PSI elements (identifiers/tokens)
         if (element.firstChild != null) return null
