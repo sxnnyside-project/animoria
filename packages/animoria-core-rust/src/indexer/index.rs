@@ -312,6 +312,10 @@ impl AssetIndex {
         } else {
             LifecycleState::Ready
         };
+
+        // Automatically prune orphaned or stale thumbnails so .animoria/thumbnails never accumulates dead assets
+        let _ = crate::thumbnail::prune_stale_thumbnails(&self.root_path, &self.assets());
+
         Ok(self.to_workspace_analysis())
     }
 

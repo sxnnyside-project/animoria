@@ -1,4 +1,5 @@
 import { builtinModules } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
@@ -18,14 +19,12 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@animoria/ui/bridge': new URL(
-        '../../packages/animoria-ui/src/bridge/index.ts',
-        import.meta.url,
-      ).pathname,
-      '@animoria/contracts': new URL(
-        '../../packages/animoria-contracts/src/index.ts',
-        import.meta.url,
-      ).pathname,
+      '@animoria/ui/bridge': fileURLToPath(
+        new URL('../../packages/animoria-ui/src/bridge/index.ts', import.meta.url),
+      ),
+      '@animoria/contracts': fileURLToPath(
+        new URL('../../packages/animoria-contracts/src/index.ts', import.meta.url),
+      ),
     },
   },
 });

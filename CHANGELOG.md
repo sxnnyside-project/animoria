@@ -9,6 +9,54 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+---
+
+## [2.4.0] — 2026-11-24
+
+### Added
+
+- **Core Rust: Thumbnail Cache & Workspace Trash Cleanup**:
+  - Added `--cache`, `--empty-trash`, and `--all` flags to `animoria clean` for purging generated preview thumbnails and permanently emptying `.animoria/trash/`.
+  - Added automatic stale thumbnail orphan pruning during workspace indexing in `AssetIndex::scan_workspace`.
+  - Added automatic removal of `.animoria/` directory when empty via `clean_empty_animoria_dir`.
+  - Exposed `purgeThumbnailCache` (or `clearCache`) and `emptyTrash` RPC methods in the native daemon server.
+- **Standalone Windows & Multi-Platform CLI Distribution**:
+  - Added automated packaging in `release.yml` producing standalone CLI archives (`animoria-v<version>-windows-x64.zip`, `animoria-v<version>-linux-x64.tar.gz`, `animoria-v<version>-linux-arm64.tar.gz`, `animoria-v<version>-darwin-arm64.tar.gz`) with accompanying `SHA256SUMS`.
+  - **WinGet Manifests**: Created canonical multi-file manifests (`SxnnysideProject.Animoria.yaml`, `SxnnysideProject.Animoria.installer.yaml`, `SxnnysideProject.Animoria.locale.en-US.yaml`) under `manifests/s/SxnnysideProject/Animoria/` for submission to `microsoft/winget-pkgs`.
+  - **Scoop Manifest**: Configured `bucket/animoria.json` in `scoop-bucket` supporting automated Windows 64-bit portable installation via Scoop.
+- **Core Rust: CLI `explain` Subcommand & Compact Ergonomics**:
+  - Added `animoria explain <rule-id>` subcommand providing compact diagnostic context, rule rationale, and actionable remediation steps formatted for developer terminals and agent workflows.
+- **Core Rust: SARIF Export & CI Quality Gates**:
+  - Implemented standard SARIF (Static Analysis Results Interchange Format) 2.1.0 report generation (`governance/sarif.rs`) for direct integration into GitHub Code Scanning and CI workflows.
+
+### Fixed
+
+- **JetBrains: Android Studio & Multi-Module Project Asset Discovery**:
+  - Fixed content root resolution in `CoreProcessManager.resolveContentRoots()` and `AnimoriaVFSListener`: when `ModuleManager` reports submodules (`:app`, `:core`), `project.basePath` is preserved alongside module roots with ancestral deduplication, preventing shared root assets (`assets/`, cross-platform media) from being omitted.
+  - Pinned `ProcessBuilder.directory` to `project.basePath` ensuring daemon relative path lookups evaluate correctly from the workspace root.
+- **JetBrains: Dumb Mode (Background Indexing) Resilience**:
+  - Implemented `DumbAware` across `AnimoriaToolWindowFactory`, `AnimoriaSearchEverywhereContributor` (`isDumbAware() = true`), `ExportGovernanceReportAction`, `AnimoriaEditorNotificationProvider`, `AnimoriaDocumentationProvider`, and `AnimoriaLineMarkerProvider`.
+  - Ensured all actions declare `ActionUpdateThread.BGT` to eliminate EDT freezing during indexing passes.
+  - Added thumbnail cache eviction (`AnimoriaTreeCellRenderer.clearCache()`) to eliminate memory leaks across scan lifecycles.
+- **VS Code: Space-Tolerant Vite Path Resolution**:
+  - Fixed Vite alias resolution in `packages/animoria-vscode/vite.config.ts` using `fileURLToPath` instead of `URL.pathname`, preventing `UNLOADABLE_DEPENDENCY` build errors when repositories reside in paths containing spaces.
+  - Stabilized warm scan latency thresholds in `native-daemon.integration.test.ts` to prevent false test failures under heavy CPU contention.
+
+### Refactored
+
+- **Core Rust: Policy Engine & Monorepo Scoped Overrides**:
+  - Overhauled configuration resolution (`governance/policy.rs`) supporting hierarchical `.animoriarc.json` overrides across subfolders and `extends` presets.
+  - Hardened trash session journal integrity (`remediation/trash.rs`) with atomic file writes and JSONL audit logging.
+- **Contracts: Pure Domain Models & Boolean Naming Alignment**:
+  - Regenerated all TypeScript contract bindings via `ts-rs` with strict type bounds matching the Rust backend.
+  - Standardized boolean property names with `is-` prefix across all 33 contract models (e.g. `is_unreferenced`, `is_duplicate`, `is_error`, `is_indexed`), resolving P16 and P17 pure naming violations.
+- **@animoria/ui: Idiomatic Lit Element Decomposition**:
+  - Extracted `<animoria-cleanup-tab>` and `<animoria-findings-tab>` custom elements out of `animoria-workspace.ts`.
+  - Purged over 320 lines of accumulated monolithic CSS in favor of modular, scoped CSS token sheets.
+  - Fixed P16/P17 purity violations across bridge contracts and view models (`data`, `item`, unadorned booleans).
+- **JetBrains: 100% Purist KDoc Coverage**:
+  - Upgraded documentation across all public classes, methods, and companion objects to third-person declarative KDoc with explicit `@param`, `@return`, and `@throws` tags matching `sxnnyside-pure-doc-comments`.
+
 ### Changed
 
 - **CI Actions Bump** (SHA-pinned, `ci.yml` and `release.yml`):
@@ -300,7 +348,8 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.3.3...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/sxnnyside-project/animoria/compare/v2.3.3...v2.4.0
 [2.3.3]: https://github.com/sxnnyside-project/animoria/compare/v2.3.2...v2.3.3
 [2.3.2]: https://github.com/sxnnyside-project/animoria/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/sxnnyside-project/animoria/compare/v2.3.0...v2.3.1

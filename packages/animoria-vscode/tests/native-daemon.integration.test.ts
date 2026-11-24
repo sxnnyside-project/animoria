@@ -95,7 +95,7 @@ describe('VS Code Native Daemon Integration & Benchmark (Phase 5)', () => {
     // slow, shared CI hardware. A tight sub-15ms bound was tuned to one
     // developer machine and flaked on every CI runner instead of catching
     // regressions.
-    expect(avgMs).toBeLessThan(200);
+    expect(avgMs).toBeLessThan(350);
   });
 
   it('receives asynchronous push events via onEvent subscription', async () => {

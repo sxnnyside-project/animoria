@@ -106,13 +106,25 @@ pub enum Commands {
         #[arg(default_value = ".")]
         path: PathBuf,
 
-        /// Actually move files. Without this flag, clean only previews what would move.
+        /// Actually move or purge files. Without this flag, clean only previews what would move or delete.
         #[arg(long = "apply")]
         should_apply: bool,
 
         /// Explicitly run in preview/dry-run mode without modifying any files (default behavior)
         #[arg(long = "dry-run")]
         is_dry_run: bool,
+
+        /// Purge the generated thumbnail cache (.animoria/thumbnails/)
+        #[arg(long = "cache")]
+        should_purge_cache: bool,
+
+        /// Permanently remove all staged trash sessions (.animoria/trash/)
+        #[arg(long = "empty-trash")]
+        should_empty_trash: bool,
+
+        /// Clean duplicate assets, purge thumbnail cache, and empty trash
+        #[arg(long = "all")]
+        should_clean_all: bool,
     },
 
     /// List or restore a trash session recorded by `clean --apply`

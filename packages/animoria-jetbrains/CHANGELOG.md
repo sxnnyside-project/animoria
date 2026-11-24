@@ -9,7 +9,38 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-<!-- Changes staged for the next release go here. -->
+---
+
+## [2.4.0] — 2026-11-24
+
+### Fixed
+
+- **Android Studio & Multi-Module Project Asset Discovery**:
+  - Resolved bug where multi-module projects (e.g. `:app`, `:core`) discarded `project.basePath`, resulting in an empty `"No visual assets found yet"` gallery state when media lived at the repository root. Combined module content roots with `project.basePath` using ancestral deduplication.
+  - Pinned `ProcessBuilder.directory(File(project.basePath))` in `CoreProcessManager.start()` so relative file paths evaluate reliably from the project root.
+- **Dumb Mode (Background Indexing) Resilience**:
+  - Implemented `DumbAware` across `AnimoriaToolWindowFactory`, `AnimoriaSearchEverywhereContributor` (`isDumbAware() = true`), `ExportGovernanceReportAction`, `AnimoriaEditorNotificationProvider`, `AnimoriaDocumentationProvider`, and `AnimoriaLineMarkerProvider`. All core features now function during indexing passes.
+  - Specified `ActionUpdateThread.BGT` across all actions to eliminate EDT freezing.
+- **Memory Leak Mitigation**:
+  - Added explicit thumbnail cache eviction (`clearCache()`) in `AnimoriaTreeCellRenderer` called on every `AnimoriaTreeModel.setAssets()` update.
+- **Deprecated API Cleanup**:
+  - Removed deprecated `ProjectViewNodeDecorator.decorate(PackageDependenciesNode, ...)` override in favor of modern IntelliJ Platform APIs.
+
+### Refactored
+
+- **100% Purist KDoc Coverage**:
+  - Rewrote and enhanced documentation across all public services, models, actions, and companion objects to follow strict third-person declarative KDoc with explicit `@param`, `@return`, and `@throws` tags.
+- **Status Bar Navigation**:
+  - Clicking `AnimoriaStatusBarWidget` now brings forward the native `"Assets"` gallery tab rather than opening the potentially blank `"Preview"` tab.
+
+---
+
+## [2.3.3] — 2026-11-19
+
+### Fixed
+
+- **Path Alias Resolution & Extensionless Imports**: Synchronized parity with Core Rust 2.3.3 daemon capabilities.
+- **Application Icon Whitelisting**: Suppressed false positive orphan warnings for Android `android-icon-*` and iOS `AppIcon.appiconset` platform assets.
 
 ---
 
@@ -129,7 +160,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.3.2...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/sxnnyside-project/animoria/compare/v2.3.3...v2.4.0
+[2.3.3]: https://github.com/sxnnyside-project/animoria/compare/v2.3.2...v2.3.3
 [2.3.2]: https://github.com/sxnnyside-project/animoria/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/sxnnyside-project/animoria/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/sxnnyside-project/animoria/compare/v2.2.1...v2.3.0

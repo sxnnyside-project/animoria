@@ -7,9 +7,9 @@ branding:
 
 inputs:
   version:
-    description: 'Version of Animoria native CLI to use (defaults to 2.3.3)'
+    description: 'Version of Animoria native CLI to use (defaults to 2.4.0)'
     required: false
-    default: '2.3.3'
+    default: '2.4.0'
   path:
     description: 'Workspace directory path to analyze (defaults to .)'
     required: false

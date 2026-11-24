@@ -2,7 +2,7 @@
 
 ![Animoria banner](docs/assets/animoria-banner.png)
 
-![Version](https://img.shields.io/badge/version-2.3.3-blue)
+![Version](https://img.shields.io/badge/version-2.4.0-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 [![CI](https://github.com/sxnnyside-project/animoria/actions/workflows/ci.yml/badge.svg)](https://github.com/sxnnyside-project/animoria/actions/workflows/ci.yml)
 ![MSRV](https://img.shields.io/badge/MSRV-1.88-orange)

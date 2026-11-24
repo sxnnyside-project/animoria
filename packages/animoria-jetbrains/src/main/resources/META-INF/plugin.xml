@@ -19,6 +19,14 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h4>2.4.0</h4>
+        <ul>
+            <li>Fixed Android Studio & multi-module project content root discovery, ensuring assets at project root are discovered reliably.</li>
+            <li>Implemented full Dumb Mode awareness and background thread execution across all tools, linemarkers, and inspections.</li>
+            <li>Added thumbnail cache clearing on tree refreshes to eliminate memory retention.</li>
+            <li>Added support for thumbnail cache purge and trash disposal via Core Rust daemon.</li>
+            <li>100% purist KDoc documentation across all public APIs and components.</li>
+        </ul>
         <h4>2.3.3</h4>
         <ul>
             <li>Fixed path alias resolution for <code>@/</code> and <code>~/</code> imports in web and mobile codebases.</li>

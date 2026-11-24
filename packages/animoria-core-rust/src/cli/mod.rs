@@ -54,9 +54,18 @@ pub fn run_cli() -> anyhow::Result<i32> {
             path,
             should_apply,
             is_dry_run,
+            should_purge_cache,
+            should_empty_trash,
+            should_clean_all,
         } => {
             let effective_apply = should_apply && !is_dry_run;
-            commands::clean::execute_clean(&path, effective_apply)
+            commands::clean::execute_clean(
+                &path,
+                effective_apply,
+                should_purge_cache,
+                should_empty_trash,
+                should_clean_all,
+            )
         }
         Commands::Restore {
             path,

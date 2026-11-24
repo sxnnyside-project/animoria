@@ -9,7 +9,31 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-<!-- Changes staged for the next release go here. -->
+---
+
+## [2.4.0] — 2026-11-24
+
+### Fixed
+
+- **Space-Tolerant Vite Path Resolution**:
+  - Switched Vite alias resolution in `vite.config.ts` to use `fileURLToPath` instead of `URL.pathname`, eliminating `UNLOADABLE_DEPENDENCY` build failures when the workspace parent directory contains whitespace (e.g. `Core Red`).
+- **Benchmark Test Reliability**:
+  - Adjusted warm scan benchmark thresholds in `tests/native-daemon.integration.test.ts` to prevent CI test flakiness under system CPU spikes while maintaining strict proof of daemon process persistence.
+
+---
+
+## [2.3.3] — 2026-11-19
+
+### Fixed
+
+- **Path Alias `@/` and `~/` Import Resolution**:
+  - Correctly resolved module import aliases across Next.js, Vite, and React Native workspaces.
+- **Extensionless Asset Imports**:
+  - Allowed extensionless imports in JavaScript and TypeScript files to link directly to corresponding `.json` visual assets.
+- **Dead Barrel Export Pruning**:
+  - Pruned unconsumed barrel exports in `index.ts` files from counting as valid asset usages.
+- **App Icons & Favicons Whitelisting**:
+  - Prevented false positive unreferenced asset reports for native iOS, Android, and web favicon bundles.
 
 ---
 
@@ -172,7 +196,9 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.3.2...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/sxnnyside-project/animoria/compare/v2.3.3...v2.4.0
+[2.3.3]: https://github.com/sxnnyside-project/animoria/compare/v2.3.2...v2.3.3
 [2.3.2]: https://github.com/sxnnyside-project/animoria/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/sxnnyside-project/animoria/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/sxnnyside-project/animoria/compare/v2.2.1...v2.3.0

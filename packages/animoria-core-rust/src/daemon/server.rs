@@ -104,6 +104,9 @@ fn supported_methods() -> Vec<String> {
         "applyResolutionPlan",
         "listTrashSessions",
         "restoreTrashSession",
+        "purgeThumbnailCache",
+        "clearCache",
+        "emptyTrash",
         "shutdown",
     ]
     .into_iter()
@@ -1533,6 +1536,91 @@ impl DaemonServer {
                 }
             }
 
+            "purgeThumbnailCache" | "clearCache" => {
+                let workspace_path = req
+                    .params
+                    .get("workspace_path")
+                    .or_else(|| req.params.get("workspacePath"))
+                    .and_then(|v| v.as_str());
+
+                match self.resolve_workspace_dir(workspace_path) {
+                    Some(root_dir) => match crate::thumbnail::purge_all_thumbnails(&root_dir) {
+                        Ok((removed_count, freed_bytes)) => {
+                            let resp = DaemonResponse {
+                                protocol: PROTOCOL_VERSION,
+                                id: req.id,
+                                result: Some(serde_json::json!({
+                                    "purged": true,
+                                    "removed_count": removed_count,
+                                    "freed_bytes": freed_bytes,
+                                })),
+                                error: None,
+                            };
+                            (resp, false)
+                        }
+                        Err(e) => {
+                            let err_msg = e.to_string();
+                            let resp = DaemonResponse {
+                                protocol: PROTOCOL_VERSION,
+                                id: req.id,
+                                result: None,
+                                error: Some(DaemonErrorPayload {
+                                    code: "cache-purge-failed".to_string(),
+                                    message: format!("Failed to purge thumbnail cache: {err_msg}"),
+                                    detail: Some(err_msg),
+                                }),
+                            };
+                            (resp, false)
+                        }
+                    },
+                    None => (no_workspace_error(req.id), false),
+                }
+            }
+
+            "emptyTrash" => {
+                let workspace_path = req
+                    .params
+                    .get("workspace_path")
+                    .or_else(|| req.params.get("workspacePath"))
+                    .and_then(|v| v.as_str());
+
+                match self.resolve_workspace_dir(workspace_path) {
+                    Some(root_dir) => {
+                        let trash_mgr = TrashManager::new(&root_dir);
+                        match trash_mgr.purge_trash() {
+                            Ok((removed_count, freed_bytes)) => {
+                                let resp = DaemonResponse {
+                                    protocol: PROTOCOL_VERSION,
+                                    id: req.id,
+                                    result: Some(serde_json::json!({
+                                        "emptied": true,
+                                        "removed_count": removed_count,
+                                        "freed_bytes": freed_bytes,
+                                    })),
+                                    error: None,
+                                };
+                                (resp, false)
+                            }
+                            Err(e) => {
+                                let err_msg = e.to_string();
+                                let resp = DaemonResponse {
+                                    protocol: PROTOCOL_VERSION,
+                                    id: req.id,
+                                    result: None,
+                                    error: Some(DaemonErrorPayload {
+                                        code: "trash-purge-failed".to_string(),
+                                        message: format!("Failed to empty trash: {err_msg}"),
+                                        detail: Some(err_msg),
+                                    }),
+                                };
+                                (resp, false)
+                            }
+                        }
+                    }
+                    None => (no_workspace_error(req.id), false),
+                }
+            }
+
             "shutdown" => {
                 let resp = DaemonResponse {
                     protocol: PROTOCOL_VERSION,
@@ -1657,5 +1745,68 @@ mod ndjson_framing_tests {
         let mut cursor = Cursor::new(payload);
         let line = read_capped_line(&mut cursor, 100).unwrap();
         assert_eq!(line, Some("a".repeat(100)));
+    }
+}
+
+#[cfg(test)]
+mod daemon_cache_and_trash_tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn daemon_purges_thumbnail_cache_and_cleans_empty_animoria() {
+        let dir = tempdir().unwrap();
+        let ws = dir.path();
+        let thumb_dir = ws.join(".animoria").join("thumbnails");
+        fs::create_dir_all(&thumb_dir).unwrap();
+        fs::write(thumb_dir.join("test.png"), b"image data").unwrap();
+
+        let mut daemon = DaemonServer::new();
+        let req = DaemonRequest {
+            protocol: PROTOCOL_VERSION,
+            id: "req-1".to_string(),
+            method: "purgeThumbnailCache".to_string(),
+            params: serde_json::json!({
+                "workspace_path": ws.to_string_lossy().to_string(),
+            }),
+        };
+
+        let (resp, exit) = daemon.handle_request(req);
+        assert!(!exit);
+        assert!(resp.error.is_none());
+        let res = resp.result.unwrap();
+        assert_eq!(res["purged"], true);
+        assert_eq!(res["removed_count"], 1);
+        assert!(!ws.join(".animoria").exists());
+    }
+
+    #[test]
+    fn daemon_empties_trash_and_cleans_empty_animoria() {
+        let dir = tempdir().unwrap();
+        let ws = dir.path();
+        let trash_mgr = TrashManager::new(ws);
+        let sample = ws.join("sample.png");
+        fs::write(&sample, b"sample content").unwrap();
+        trash_mgr.stage_to_trash("sample-id", &sample).unwrap();
+        assert!(ws.join(".animoria").join("trash").exists());
+
+        let mut daemon = DaemonServer::new();
+        let req = DaemonRequest {
+            protocol: PROTOCOL_VERSION,
+            id: "req-2".to_string(),
+            method: "emptyTrash".to_string(),
+            params: serde_json::json!({
+                "workspace_path": ws.to_string_lossy().to_string(),
+            }),
+        };
+
+        let (resp, exit) = daemon.handle_request(req);
+        assert!(!exit);
+        assert!(resp.error.is_none());
+        let res = resp.result.unwrap();
+        assert_eq!(res["emptied"], true);
+        assert_eq!(res["removed_count"], 1);
+        assert!(!ws.join(".animoria").exists());
     }
 }

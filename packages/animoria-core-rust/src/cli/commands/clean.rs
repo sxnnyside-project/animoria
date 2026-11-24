@@ -5,30 +5,138 @@ use crate::indexer::AssetIndex;
 use crate::remediation::{create_duplicate_resolution_plan, TrashManager};
 use std::path::Path;
 
-/// Stages duplicate assets to `.animoria/trash`, or previews doing so.
+/// Stages duplicate assets to `.animoria/trash`, purges cache, or previews doing so.
 ///
 /// `should_apply` defaults to `false` at the call site (see `cli/args.rs`): running
-/// `animoria clean <path>` with no flags only prints what *would* move.
-/// Nothing on disk changes until the caller passes `--apply`, and only then
-/// is a trash session actually recorded — a dry run must not litter
-/// `.animoria/trash/sessions.json` with a session there is nothing to
-/// restore.
-pub fn execute_clean(target_path: &Path, should_apply: bool) -> anyhow::Result<i32> {
+/// `animoria clean <path>` with no flags only prints what *would* move or purge.
+/// Nothing on disk changes until the caller passes `--apply`.
+pub fn execute_clean(
+    target_path: &Path,
+    should_apply: bool,
+    should_purge_cache: bool,
+    should_empty_trash: bool,
+    should_clean_all: bool,
+) -> anyhow::Result<i32> {
     let (bold, reset) = (ui::bold_start(), ui::reset());
     let quiet = ui::is_quiet();
     let canonical = resolve_workspace_path(target_path)?;
-    let mut index = AssetIndex::new(canonical.to_string_lossy().to_string(), canonical.clone());
-    let analysis = index.scan_workspace(&[])?;
 
-    let duplicate_groups = index.duplicate_groups();
+    let purge_cache = should_purge_cache || should_clean_all;
+    let empty_trash = should_empty_trash || should_clean_all;
+    let clean_duplicates = should_clean_all || (!should_purge_cache && !should_empty_trash);
 
     if !quiet {
         println!(
             "\n{} {}\n",
             brand("animoria"),
-            title("Asset Remediation & Trash Staging")
+            title("Asset Remediation & Cache Maintenance")
         );
     }
+
+    // 1. Purge thumbnail cache if requested
+    if purge_cache {
+        let thumb_dir = canonical.join(".animoria/thumbnails");
+        let (file_count, byte_count) = if thumb_dir.is_dir() {
+            let mut count = 0;
+            let mut bytes = 0;
+            if let Ok(entries) = std::fs::read_dir(&thumb_dir) {
+                for entry in entries.filter_map(Result::ok) {
+                    if entry.path().is_file() {
+                        bytes += entry.metadata().map(|m| m.len()).unwrap_or(0);
+                        count += 1;
+                    }
+                }
+            }
+            (count, bytes)
+        } else {
+            (0, 0)
+        };
+
+        if file_count > 0 {
+            if should_apply {
+                let (purged, freed) = crate::thumbnail::purge_all_thumbnails(&canonical)?;
+                if !quiet {
+                    println!(
+                        "  {} Purged thumbnail cache: {} file(s) ({}) reclaimed.",
+                        success("✔"),
+                        purged,
+                        format_bytes(freed)
+                    );
+                }
+            } else if !quiet {
+                println!(
+                    "  {} [Dry Run] Would purge thumbnail cache: {} file(s) ({})",
+                    warning("▲"),
+                    file_count,
+                    format_bytes(byte_count)
+                );
+            }
+        } else if !quiet {
+            println!("  {} Thumbnail cache is already clean.", success("✔"));
+        }
+    }
+
+    // 2. Empty trash if requested
+    if empty_trash {
+        let trash_mgr = TrashManager::new(&canonical);
+        let trash_dir = canonical.join(".animoria/trash");
+        let (file_count, byte_count) = if trash_dir.is_dir() {
+            let mut count = 0;
+            let mut bytes = 0;
+            if let Ok(entries) = std::fs::read_dir(&trash_dir) {
+                for entry in entries.filter_map(Result::ok) {
+                    let p = entry.path();
+                    if p.is_file() {
+                        bytes += entry.metadata().map(|m| m.len()).unwrap_or(0);
+                        count += 1;
+                    } else if p.is_dir() {
+                        if let Ok(subs) = std::fs::read_dir(&p) {
+                            for sub in subs.filter_map(Result::ok) {
+                                bytes += sub.metadata().map(|m| m.len()).unwrap_or(0);
+                                count += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            (count, bytes)
+        } else {
+            (0, 0)
+        };
+
+        if file_count > 0 {
+            if should_apply {
+                let (purged, freed) = trash_mgr.purge_trash()?;
+                if !quiet {
+                    println!(
+                        "  {} Emptied trash: {} file(s) ({}) permanently deleted.",
+                        success("✔"),
+                        purged,
+                        format_bytes(freed)
+                    );
+                }
+            } else if !quiet {
+                println!(
+                    "  {} [Dry Run] Would empty trash: {} file(s) ({})",
+                    warning("▲"),
+                    file_count,
+                    format_bytes(byte_count)
+                );
+            }
+        } else if !quiet {
+            println!("  {} Trash is already empty.", success("✔"));
+        }
+    }
+
+    if !clean_duplicates {
+        crate::thumbnail::clean_empty_animoria_dir(&canonical);
+        return Ok(0);
+    }
+
+    let mut index = AssetIndex::new(canonical.to_string_lossy().to_string(), canonical.clone());
+    let analysis = index.scan_workspace(&[])?;
+
+    let duplicate_groups = index.duplicate_groups();
 
     if duplicate_groups.is_empty() {
         if !quiet {
@@ -37,6 +145,7 @@ pub fn execute_clean(target_path: &Path, should_apply: bool) -> anyhow::Result<i
                 success("✔")
             );
         }
+        crate::thumbnail::clean_empty_animoria_dir(&canonical);
         return Ok(0);
     }
 
@@ -198,7 +307,7 @@ mod tests {
         )
         .unwrap();
 
-        execute_clean(ws.path(), true).unwrap();
+        execute_clean(ws.path(), true, false, false, false).unwrap();
 
         assert!(ws.path().join("a.png").exists() && ws.path().join("b.png").exists());
     }
@@ -206,7 +315,7 @@ mod tests {
     #[test]
     fn clean_apply_trashes_unreferenced_duplicate_and_can_restore() {
         let ws = workspace_with_duplicates();
-        execute_clean(ws.path(), true).unwrap();
+        execute_clean(ws.path(), true, false, false, false).unwrap();
         assert!(ws.path().join("a.png").exists() != ws.path().join("b.png").exists());
 
         let sessions = crate::daemon::cleanup::read_sessions(ws.path());
@@ -222,7 +331,7 @@ mod tests {
     #[test]
     fn clean_dry_run_changes_nothing() {
         let ws = workspace_with_duplicates();
-        execute_clean(ws.path(), false).unwrap();
+        execute_clean(ws.path(), false, false, false, false).unwrap();
         assert!(ws.path().join("a.png").exists() && ws.path().join("b.png").exists());
         assert!(crate::daemon::cleanup::read_sessions(ws.path()).is_empty());
     }
@@ -230,7 +339,7 @@ mod tests {
     #[test]
     fn interrupted_restore_can_be_retried() {
         let ws = workspace_with_duplicates();
-        execute_clean(ws.path(), true).unwrap();
+        execute_clean(ws.path(), true, false, false, false).unwrap();
         let session = crate::daemon::cleanup::read_sessions(ws.path()).remove(0);
         // Simulate a first restore that moved the file back but died before updating the journal.
         let session_item = &session.items[0];
@@ -242,5 +351,29 @@ mod tests {
             "nothing was restored by the retry itself"
         );
         assert!(crate::daemon::cleanup::read_sessions(ws.path()).is_empty());
+    }
+
+    #[test]
+    fn clean_cache_and_empty_trash_flags_work() {
+        let ws = tempdir().unwrap();
+        let thumb_dir = ws.path().join(".animoria/thumbnails");
+        fs::create_dir_all(&thumb_dir).unwrap();
+        fs::write(thumb_dir.join("test-123.svg"), b"<svg></svg>").unwrap();
+
+        let trash_dir = ws.path().join(".animoria/trash/session_1");
+        fs::create_dir_all(&trash_dir).unwrap();
+        fs::write(trash_dir.join("trash.png"), b"content").unwrap();
+
+        assert!(thumb_dir.exists());
+        assert!(trash_dir.exists());
+
+        // Dry run: does not delete
+        execute_clean(ws.path(), false, true, true, false).unwrap();
+        assert!(thumb_dir.exists());
+        assert!(trash_dir.exists());
+
+        // Apply: deletes cache and empties trash, removing .animoria/ when empty
+        execute_clean(ws.path(), true, true, true, false).unwrap();
+        assert!(!ws.path().join(".animoria").exists());
     }
 }

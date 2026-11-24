@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+PackageIdentifier: SxnnysideProject.Animoria
+PackageVersion: 2.4.0
+InstallerType: portable
+Commands:
+  - animoria
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/sxnnyside-project/animoria/releases/download/v2.4.0/animoria-v2.4.0-windows-x64.zip
+    InstallerSha256: 0000000000000000000000000000000000000000000000000000000000000000 # Computed automatically or updated upon release asset publish
+ManifestType: installer
+ManifestVersion: 1.6.0

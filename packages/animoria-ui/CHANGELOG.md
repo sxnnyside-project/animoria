@@ -9,7 +9,32 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-<!-- Changes staged for the next release go here. -->
+---
+
+## [2.4.0] — 2026-11-24
+
+### Added
+
+- **Modular Tab Elements**:
+  - `<animoria-cleanup-tab>`: Standalone Lit custom element encapsulating cleanup review proposals, selection state, and action dispatch.
+  - `<animoria-findings-tab>`: Standalone Lit custom element encapsulating governance findings, search filters, and rule detail drawers.
+- **Typed Event Emission Helpers**:
+  - Added reusable custom event dispatch helpers ensuring type-safe message bubbling up to the host bridge.
+
+### Refactored
+
+- **Monolithic CSS Elimination**:
+  - Decomposed 320+ lines of monolithic styles previously aggregated in `AnimoriaWorkspace` into scoped component styles with CSS design tokens.
+- **Purity & Naming Conventions**:
+  - Resolved P16 (`data`, `item`) and P17 (non-prefixed booleans) violations across bridge contracts, view models, and component properties.
+
+---
+
+## [2.3.3] — 2026-11-19
+
+### Changed
+
+- Synchronized contract dependencies with Core Rust 2.3.3 multi-root protocol.
 
 ---
 
@@ -24,5 +49,7 @@ and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/sxnnyside-project/animoria/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/sxnnyside-project/animoria/compare/v2.3.3...v2.4.0
+[2.3.3]: https://github.com/sxnnyside-project/animoria/compare/v1.0.0...v2.3.3
 [1.0.0]: https://github.com/sxnnyside-project/animoria/releases/tag/v1.0.0

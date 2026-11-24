@@ -177,6 +177,21 @@ impl TrashManager {
         }
         Ok(())
     }
+
+    /// Permanently removes all staged trash sessions and journals in `.animoria/trash`.
+    ///
+    /// Returns `(purged_file_count, bytes_reclaimed)`.
+    pub fn purge_trash(&self) -> anyhow::Result<(usize, u64)> {
+        if !self.trash_root.exists() {
+            crate::thumbnail::clean_empty_animoria_dir(&self.workspace_root);
+            return Ok((0, 0));
+        }
+
+        let (count, bytes) = dir_size_and_count(&self.trash_root);
+        fs::remove_dir_all(&self.trash_root)?;
+        crate::thumbnail::clean_empty_animoria_dir(&self.workspace_root);
+        Ok((count, bytes))
+    }
 }
 
 /// Atomically renames `src` to `dst`, with automatic fallback to copy-and-delete
@@ -199,6 +214,25 @@ fn move_file_safe(src: &Path, dst: &Path) -> anyhow::Result<()> {
             }
         }
     }
+}
+
+fn dir_size_and_count(dir: &Path) -> (usize, u64) {
+    let mut count = 0;
+    let mut bytes = 0;
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.filter_map(Result::ok) {
+            let p = entry.path();
+            if p.is_file() {
+                bytes += entry.metadata().map(|m| m.len()).unwrap_or(0);
+                count += 1;
+            } else if p.is_dir() {
+                let (sub_count, sub_bytes) = dir_size_and_count(&p);
+                count += sub_count;
+                bytes += sub_bytes;
+            }
+        }
+    }
+    (count, bytes)
 }
 
 #[cfg(test)]
@@ -298,5 +332,26 @@ mod tests {
         trash_mgr.restore_from_trash(&staged_item2).unwrap();
         assert_eq!(fs::read(&path1).unwrap(), b"content1");
         assert_eq!(fs::read(&path2).unwrap(), b"content2");
+    }
+
+    #[test]
+    fn test_purge_trash_empties_repository_and_removes_empty_animoria() {
+        let dir = tempdir().unwrap();
+        let ws_root = dir.path();
+        let trash_mgr = TrashManager::new(ws_root);
+
+        let file = ws_root.join("test.png");
+        fs::write(&file, b"sample content").unwrap();
+
+        let staged = trash_mgr.stage_to_trash("asset-1", &file).unwrap();
+        assert!(Path::new(&staged.trashed_path).exists());
+        assert!(ws_root.join(".animoria/trash").exists());
+
+        let (count, bytes) = trash_mgr.purge_trash().unwrap();
+        assert_eq!(count, 1);
+        assert!(bytes > 0);
+        assert!(!Path::new(&staged.trashed_path).exists());
+        assert!(!ws_root.join(".animoria/trash").exists());
+        assert!(!ws_root.join(".animoria").exists());
     }
 }

@@ -99,6 +99,106 @@ fn downscale_raster_thumbnail(workspace_root: &Path, asset: &Asset) -> Option<St
     Some(target.to_string_lossy().to_string())
 }
 
+/// Checks if the `.animoria` directory (or its subdirectories) is empty, and deletes it if so.
+pub fn clean_empty_animoria_dir(workspace_root: &Path) {
+    let animoria_dir = workspace_root.join(".animoria");
+    if !animoria_dir.is_dir() {
+        return;
+    }
+
+    // Attempt to remove empty subdirectories first
+    let subdirs = ["thumbnails", "trash", "audit"];
+    for sub in &subdirs {
+        let sub_path = animoria_dir.join(sub);
+        if sub_path.is_dir() {
+            if let Ok(mut entries) = fs::read_dir(&sub_path) {
+                if entries.next().is_none() {
+                    let _ = fs::remove_dir(&sub_path);
+                }
+            }
+        }
+    }
+
+    // Now check if .animoria itself has any entries
+    if let Ok(mut entries) = fs::read_dir(&animoria_dir) {
+        if entries.next().is_none() {
+            let _ = fs::remove_dir(&animoria_dir);
+        }
+    }
+}
+
+/// Prunes orphaned or stale thumbnail files in `.animoria/thumbnails/` whose
+/// corresponding asset is no longer present in `active_assets`.
+///
+/// Returns the number of orphaned thumbnail files deleted.
+pub fn prune_stale_thumbnails(workspace_root: &Path, active_assets: &[Asset]) -> usize {
+    let thumb_dir = workspace_root.join(".animoria/thumbnails");
+    if !thumb_dir.is_dir() {
+        return 0;
+    }
+
+    let mut valid_filenames = std::collections::HashSet::new();
+    for asset in active_assets {
+        if !asset.is_valid {
+            continue;
+        }
+        if needs_generated_thumbnail(asset.format) {
+            valid_filenames.insert(format!("{}-{}.svg", asset.stem, asset.id));
+        } else if should_downscale_raster(asset) {
+            let ext = if asset.format == AssetFormat::Jpeg {
+                "jpg"
+            } else {
+                "png"
+            };
+            valid_filenames.insert(format!("{}-{}-thumb.{}", asset.stem, asset.id, ext));
+        }
+    }
+
+    let mut pruned_count = 0;
+    if let Ok(entries) = fs::read_dir(&thumb_dir) {
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if !valid_filenames.contains(name) && fs::remove_file(&path).is_ok() {
+                        pruned_count += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    clean_empty_animoria_dir(workspace_root);
+    pruned_count
+}
+
+/// Purges all generated thumbnails in `.animoria/thumbnails/`.
+///
+/// Returns `(purged_file_count, bytes_reclaimed)`.
+pub fn purge_all_thumbnails(workspace_root: &Path) -> std::io::Result<(usize, u64)> {
+    let thumb_dir = workspace_root.join(".animoria/thumbnails");
+    if !thumb_dir.is_dir() {
+        return Ok((0, 0));
+    }
+
+    let mut count = 0;
+    let mut bytes = 0;
+
+    if let Ok(entries) = fs::read_dir(&thumb_dir) {
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path();
+            if path.is_file() {
+                bytes += entry.metadata().map(|m| m.len()).unwrap_or(0);
+                count += 1;
+            }
+        }
+    }
+
+    let _ = fs::remove_dir_all(&thumb_dir);
+    clean_empty_animoria_dir(workspace_root);
+    Ok((count, bytes))
+}
+
 fn format_label(format: AssetFormat) -> &'static str {
     match format {
         AssetFormat::Lottie => "Lottie",
@@ -283,5 +383,59 @@ mod tests {
         let generated_img = image::open(&thumb).expect("thumbnail opens");
         assert!(generated_img.width() <= 256);
         assert!(generated_img.height() <= 256);
+    }
+
+    #[test]
+    fn prunes_stale_thumbnails_and_removes_empty_animoria_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = dir.path();
+
+        let mut asset1 = make_asset(AssetFormat::Lottie, true);
+        asset1.id = "asset-1".to_string();
+        asset1.stem = "anim1".to_string();
+
+        let mut asset2 = make_asset(AssetFormat::Rive, true);
+        asset2.id = "asset-2".to_string();
+        asset2.stem = "anim2".to_string();
+
+        let thumb1 = resolve_thumbnail(ws, &asset1).unwrap();
+        let thumb2 = resolve_thumbnail(ws, &asset2).unwrap();
+        assert!(Path::new(&thumb1).exists());
+        assert!(Path::new(&thumb2).exists());
+
+        // When both assets are active, pruning removes 0 files
+        let pruned = prune_stale_thumbnails(ws, &[asset1.clone(), asset2.clone()]);
+        assert_eq!(pruned, 0);
+        assert!(Path::new(&thumb1).exists());
+        assert!(Path::new(&thumb2).exists());
+
+        // When asset2 is deleted from workspace, pruning removes its thumbnail
+        let pruned = prune_stale_thumbnails(ws, &[asset1.clone()]);
+        assert_eq!(pruned, 1);
+        assert!(Path::new(&thumb1).exists());
+        assert!(!Path::new(&thumb2).exists());
+
+        // When all assets are deleted, pruning removes remaining thumbnail and cleans .animoria/
+        let pruned = prune_stale_thumbnails(ws, &[]);
+        assert_eq!(pruned, 1);
+        assert!(!Path::new(&thumb1).exists());
+        assert!(!ws.join(".animoria").exists());
+    }
+
+    #[test]
+    fn purge_all_thumbnails_reclaims_bytes_and_removes_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = dir.path();
+
+        let mut asset = make_asset(AssetFormat::Lottie, true);
+        asset.id = "lottie-xyz".to_string();
+        let thumb = resolve_thumbnail(ws, &asset).unwrap();
+        assert!(Path::new(&thumb).exists());
+
+        let (count, bytes) = purge_all_thumbnails(ws).unwrap();
+        assert_eq!(count, 1);
+        assert!(bytes > 0);
+        assert!(!Path::new(&thumb).exists());
+        assert!(!ws.join(".animoria").exists());
     }
 }

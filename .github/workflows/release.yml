@@ -419,11 +419,30 @@ jobs:
           cd packages/animoria-jetbrains
           ./gradlew publishPlugin
 
+      - name: Package standalone CLI release archives
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          mkdir -p dist-cli
+
+          # Windows x64 ZIP (for Scoop, WinGet, and direct download)
+          (cd native-daemon/win32-x64 && zip -9 "../../dist-cli/animoria-v${VERSION}-windows-x64.zip" animoria.exe)
+
+          # Linux x64 tar.gz
+          tar -czf "dist-cli/animoria-v${VERSION}-linux-x64.tar.gz" -C native-daemon/linux-x64 animoria
+
+          # Linux arm64 tar.gz
+          tar -czf "dist-cli/animoria-v${VERSION}-linux-arm64.tar.gz" -C native-daemon/linux-arm64 animoria
+
+          # macOS arm64 tar.gz
+          tar -czf "dist-cli/animoria-v${VERSION}-darwin-arm64.tar.gz" -C native-daemon/darwin-arm64 animoria
+
       - name: Generate SHA256SUMS
         run: |
           mkdir -p dist-assets
           cp packages/animoria-vscode/*.vsix dist-assets/ 2>/dev/null || true
           cp packages/animoria-jetbrains/build/distributions/*.zip dist-assets/ 2>/dev/null || true
+          cp dist-cli/* dist-assets/ 2>/dev/null || true
           cd dist-assets && sha256sum -- * > SHA256SUMS || true
 
       # Final: Create GitHub Release with release assets
@@ -431,22 +450,40 @@ jobs:
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           files: |
+            dist-cli/*
+            dist-assets/SHA256SUMS
             packages/animoria-vscode/animoria-${{ steps.version.outputs.VERSION }}-*.vsix
             packages/animoria-jetbrains/build/distributions/*.zip
           generate_release_notes: true
           body: |
             ## Animoria v${{ steps.version.outputs.VERSION }}
 
-            See [CHANGELOG.md](https://github.com/sxnnyside-project/animoria/blob/main/packages/animoria-vscode/CHANGELOG.md) for details.
+            See [CHANGELOG.md](https://github.com/sxnnyside-project/animoria/blob/main/CHANGELOG.md) for details.
 
-            ### Install
-            Search **Animoria** in the VS Code Extensions panel — the Marketplace
-            serves the .vsix matching your platform automatically — or download
-            the one for your platform from this release and install manually:
+            ### Install IDE Extensions
+            - **VS Code**: Search **Animoria** in the VS Code Extensions panel, or download the platform `.vsix` below.
+            - **JetBrains**: Search **Animoria** in Settings -> Plugins -> Marketplace, or download the `.zip` below.
 
-            ```
-            code --install-extension animoria-${{ steps.version.outputs.VERSION }}-<platform>.vsix
-            ```
+            ### Install Standalone CLI
+            - **Windows (Scoop)**:
+              ```powershell
+              scoop bucket add sxnnyside https://github.com/sxnnyside-project/scoop-bucket
+              scoop install animoria
+              ```
+            - **Windows (WinGet)**:
+              ```powershell
+              winget install SxnnysideProject.Animoria
+              ```
+            - **macOS / Linux (Homebrew)**:
+              ```bash
+              brew tap sxnnyside-project/tap
+              brew install animoria
+              ```
+            - **Cargo**:
+              ```bash
+              cargo install animoria
+              ```
+            - **Manual**: Download the standalone archive for your operating system below.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
