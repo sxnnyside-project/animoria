@@ -53,13 +53,39 @@ Part of the Sxnnyside Project ecosystem.
 
 ## Installation
 
-### Prerequisites
+### CLI & Package Managers
 
-- Node.js (>= 22.0.0)
-- pnpm (>= 11.0.0)
-- Rust (stable toolchain, 1.88 or newer, via [rustup](https://rustup.rs)) — required to build the native engine
+Animoria provides ready-to-run standalone CLI binaries for macOS, Linux, and Windows:
 
-### From Source
+```bash
+# macOS & Linux (Homebrew)
+brew tap sxnnyside-project/tap && brew install animoria
+
+# Cargo (any platform with Rust)
+cargo install animoria
+
+# Windows (WinGet)
+winget install SxnnysideProject.Animoria
+
+# Windows (Scoop)
+scoop bucket add sxnnyside https://github.com/sxnnyside-project/scoop-bucket && scoop install animoria
+```
+
+Precompiled standalone binaries (`.tar.gz` and `.zip`) and signed archives are also available on [GitHub Releases](https://github.com/sxnnyside-project/animoria/releases/latest).
+
+### IDE Extensions
+
+- **VS Code**: Install **Animoria** from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=sxnnyside.animoria) or [Open VSX](https://open-vsx.org/extension/sxnnyside/animoria), or download the `.vsix` for your architecture from GitHub Releases.
+- **JetBrains IDEs**: Install **Animoria** from the [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/animoria) (Settings &rarr; Plugins &rarr; Marketplace), or install the `.zip` archive manually.
+
+### From Source (for Contributors)
+
+If you wish to contribute or build Animoria locally:
+
+**Prerequisites:**
+- Node.js (&ge; 22.0.0)
+- pnpm (&ge; 11.0.0)
+- Rust stable toolchain (&ge; 1.88, via [rustup](https://rustup.rs))
 
 ```bash
 git clone https://github.com/sxnnyside-project/animoria.git
@@ -70,7 +96,6 @@ pnpm build
 ```
 
 To package the extensions locally:
-
 - **VS Code extension:** `pnpm package:vscode`
 - **JetBrains plugin:** `pnpm package:jetbrains`
 
