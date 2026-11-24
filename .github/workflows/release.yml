@@ -446,7 +446,10 @@ jobs:
           cp packages/animoria-vscode/*.vsix dist-assets/ 2>/dev/null || true
           cp packages/animoria-jetbrains/build/distributions/*.zip dist-assets/ 2>/dev/null || true
           cp dist-cli/* dist-assets/ 2>/dev/null || true
-          cd dist-assets && sha256sum -- * > SHA256SUMS || true
+          (
+            cd dist-assets || exit 0
+            sha256sum -- * > SHA256SUMS || true
+          )
 
       # Final: Create GitHub Release with release assets
       - name: Create GitHub Release
