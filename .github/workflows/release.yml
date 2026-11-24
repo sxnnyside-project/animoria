@@ -99,7 +99,10 @@ jobs:
       - name: Install CLI tools
         uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with:
-          tool: just,actionlint,shfmt
+          tool: just,shfmt
+      - name: Install actionlint
+        run: |
+          curl -sSfL https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz | tar -xz -C /home/runner/.cargo/bin actionlint
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Re-run quality gate
