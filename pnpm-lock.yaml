@@ -67,8 +67,8 @@ importers:
         specifier: workspace:*
         version: link:../animoria-contracts
       '@rive-app/canvas':
-        specifier: ^2.50.0
-        version: 2.51.0
+        specifier: ^2.54.0
+        version: 2.54.0
       lit:
         specifier: ^3.3.3
         version: 3.3.3
@@ -607,8 +607,8 @@ packages:
   '@oxc-project/types@0.156.0':
     resolution: {integrity: sha512-1Duyg48TdJNdyhEB8Xn1L36bT9Pv6GUtlKjHxOys8xkaF/rQq3XJE+bAurSK/AgIz5mGFsb77cn9Pb20+WCScw==}
 
-  '@rive-app/canvas@2.51.0':
-    resolution: {integrity: sha512-CffuwjbZcpBhubyHUqR5yl5DmAqQoepVcoctPwSgGn2dpf96ZCVhe6wioBivJ7e6bAGTk3Nn1wOZoXdxIGioxw==}
+  '@rive-app/canvas@2.54.0':
+    resolution: {integrity: sha512-W1ZwZ7qj2r/aDBIt4ekXhmLL9vyRmj9D7UU29w5NcL0WlROSjxmm4qsZQzucRUqD1cPp6PRAwaO4dL2j8eQaiw==}
 
   '@rolldown/binding-android-arm-eabi@1.2.19':
     resolution: {integrity: sha512-e+Ebe0WT+9tbXmNKPIiC8YrWAHYwug3m6i4p3rZGGulfZri1jtI4HslT+OZnFf/OIHowWF71DTlHwXBP2SiA7A==}
@@ -2287,7 +2287,7 @@ snapshots:
 
   '@oxc-project/types@0.156.0': {}
 
-  '@rive-app/canvas@2.51.0': {}
+  '@rive-app/canvas@2.54.0': {}
 
   '@rolldown/binding-android-arm-eabi@1.2.19':
     optional: true
